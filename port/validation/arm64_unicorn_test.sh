@@ -6,9 +6,14 @@
 set -e
 export DEBIAN_FRONTEND=noninteractive
 echo "host arch: $(uname -m)"
-command -v cmake >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq build-essential cmake git pkg-config >/dev/null 2>&1; }
 U=/scratch/uni-arm64
 if [ ! -f "$U/b/libunicorn-static.a" ] && [ ! -f "$U/b/libunicorn.a" ]; then
+  # FIX (2026-07-27): the cmake/git bootstrap used to run unconditionally, at the top of the
+  # script. That made even the REUSE path require network, so running this under the project's
+  # standard `--network none` died in apt-get before reaching a single test — despite the
+  # persisted Unicorn build being right there and cmake not being needed at all. The bootstrap
+  # belongs inside the branch that actually builds.
+  command -v cmake >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq build-essential cmake git pkg-config >/dev/null 2>&1; }
   echo "== building Unicorn 2.1.4 for arm64 (UNICORN_ARCH=arm) — slow under nested qemu =="
   rm -rf "$U"; git clone -q https://github.com/unicorn-engine/unicorn "$U"
   git -C "$U" checkout -q 7c5db94191defc1e04a4f66f4eb1220903cba837
