@@ -3,6 +3,7 @@
 # PLAYS+WINS (not just boots) on modern Android. Dismisses the DeprecatedTargetSdkVersionDialog
 # first (tap OK), then runs the same proven tutorial play sequence (coords transfer: 640x320).
 set +e
+source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
 # watchdog raised 1450 -> 2100s: the frame-based settle below can add up to 300s over the old
 # fixed sleep, and boot-to-frame[601] has been observed at ~565s.
 ( sleep 2100; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
@@ -44,13 +45,10 @@ adb shell input swipe 207 118 118 136 700
 # 07-27 09:29 reported success on every log metric yet screenshotted a level still in progress,
 # which is why PROOF_8's source could not be regenerated. Wait on FRAMES, not wall-clock, so the
 # settle adapts to whatever rate the host happens to deliver.
-fnum(){ grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null | tail -1 | grep -oE '[0-9]+'; }
-F0=$(fnum); F0=${F0:-0}; say "  last drag sent at frame[$F0]; waiting +120 frames (cap 300s)"
-for i in $(seq 1 60); do sleep 5
-  FN=$(fnum); FN=${FN:-0}
-  [ "$FN" -ge $((F0+120)) ] && { say "  settled at frame[$FN] after ~$((i*5))s"; break; }
-done
-[ "$(fnum)" -lt $((F0+120)) ] && say "  WARNING: frame target not reached in 300s (rate very low) — screenshot may be early"
+# (2026-07-27, later: this was originally implemented inline here. It is now lib_settle.sh so
+#  the other seven playthrough scripts share ONE implementation instead of eight copies that
+#  can drift apart. Behaviour is unchanged: +120 frames, 300s cap, loud warning if unmet.)
+settle_frames "$ABLOG" 120 300
 adb exec-out screencap -p > "$OUT/modplay_3_end.png" 2>/dev/null
 say "== RESULTS (modern-Android full play) =="
 say "  install:           ok"

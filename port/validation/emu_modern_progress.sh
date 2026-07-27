@@ -39,7 +39,12 @@ adb exec-out screencap -p > "$OUT/modprog_1_cleared.png" 2>/dev/null
 # asset preloads (always 8, before frame[1]), identical in winning and non-winning runs.
 LC=$(grep -ac 'levelCompleteStars' "$ABLOG" 2>/dev/null); say "  starsAssetPreloads=$LC (NOT a win signal) frame=$(fnow) h_fatal=$(grep -ac '\[h_fatal\]' "$ABLOG")"
 say "== tap orange NEXT (378,256) -> does level 2 load on modern Android? =="
-adb shell input tap 378 256; sleep 3; adb shell input tap 378 256; sleep 16
+adb shell input tap 378 256; sleep 3; adb shell input tap 378 256
+# FIX (2026-07-27): was a fixed `sleep 16` gating the level-2 screenshot — i.e. gating PROOF_9,
+# the multi-level-progression evidence. Same flakiness as the last-drag settle: on a slow run
+# 16s is ~29 frames, so this could capture BEFORE level 2 finishes loading and the resulting
+# image would understate a working build. Wait on frames instead.
+settle_frames "$ABLOG" 120 300
 adb exec-out screencap -p > "$OUT/modprog_2_level2.png" 2>/dev/null
 say "== RESULTS (modern-Android multi-level progression) =="
 say "  install:           ok"

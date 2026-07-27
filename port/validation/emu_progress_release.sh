@@ -53,7 +53,11 @@ say "== tap orange NEXT-level button (378,256) =="
 F_BEFORE=$(fnow)
 adb shell input tap 378 256; sleep 3
 # fallbacks in case the button sits a few px off
-adb shell input tap 378 256; sleep 14
+adb shell input tap 378 256
+# FIX (2026-07-27): was a fixed `sleep 14` gating the level-2 screenshot — i.e. gating PROOF_7,
+# the multi-level-progression evidence. On a slow run that is ~25 frames, which can capture
+# before level 2 has finished loading and make a working build look broken. Wait on frames.
+settle_frames "$ABLOG" 120 300
 adb exec-out screencap -p > "$OUT/progR_2_level2.png" 2>/dev/null
 F_AFTER=$(fnow)
 say "  frame before next-tap=$F_BEFORE  after=$F_AFTER  h_fatal=$(fatal)"
