@@ -97,7 +97,18 @@ static void heap_ck(dispatch_t*d){
             dbg_log("[GALLOC-CORRUPT] chunk=0x%08x head=0x%08x size=%u cinuse=%u pf=0x%08x | next=0x%08x head=0x%08x pinuse=%u",
                     badchunk, h, sz, (h & 2u) ? 1u : 0u, gm_rd32(&d->cpu->mem, badchunk),
                     nx, nh, nh & 1u);
-            dbg_log("[GALLOC-CORRUPT] WATCH 0x%08x (next chunk's HEAD word, where PINUSE lives) — aim a write hook here", nx + 4);
+            /* Ask the chunk-head write watchpoint (cpu.c) who last wrote this head word. Only
+             * GUEST instruction writes are recorded there — galloc's own gm_wr32 goes through
+             * uc_mem_write, which does not fire UC_HOOK_MEM_WRITE. So a hit here names the guest
+             * code that clobbered PINUSE; a miss means no guest instruction touched it, which
+             * would point back at galloc after all and is itself the useful answer. */
+            uint32_t wa=0, wv=0, wpc=0, wlr=0;
+            if (cpu_hw_find(nx + 4, &wa, &wv, &wpc, &wlr))
+                dbg_log("[GALLOC-CORRUPT] WRITER FOUND: guest wrote 0x%08x val=0x%08x at pc=0x%08x lr=0x%08x (engine+0x%x) — %lu head-writes seen",
+                        wa, wv, wpc, wlr, wpc >= 0x40000000u ? wpc - 0x40000000u : wpc, cpu_hw_count());
+            else
+                dbg_log("[GALLOC-CORRUPT] NO guest write recorded for 0x%08x (%lu head-writes seen) — if the ring did not wrap, the writer is NOT guest code",
+                        nx + 4, cpu_hw_count());
         }
     }
     if(rc != last_rc){
