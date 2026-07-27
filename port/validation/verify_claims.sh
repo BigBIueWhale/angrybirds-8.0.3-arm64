@@ -12,9 +12,13 @@
 # false one cannot survive silently again. It does not check the claims that need a running
 # emulator (those are the emu_*.sh scripts) or the phone (nothing here can).
 #
-# Usage — needs the ab-port image for apksigner/zipalign, and ab-analyze for the manifest:
+# Usage — runs anywhere; it uses apksigner/zipalign from PATH when present (as inside ab-port,
+# which is how REPRODUCE.md step 3 invokes it) and otherwise shells out to the ab-port image.
+# Only minSdk/targetSdk needs ab-analyze; everything else, including the whole permission /
+# de-phone-home check, is self-contained.
 #   bash port/validation/verify_claims.sh
-# Exits non-zero if any checked claim is false.
+# Exits non-zero if any checked claim is false. Anything it could NOT check is counted and named
+# in the final line — a skip must never read as a pass.
 
 set +e
 cd "$(dirname "$0")/../.." || exit 1
@@ -24,6 +28,10 @@ ORIG=apks/com.rovio.angrybirds@8.0.3.apk
 FAIL=0
 ok(){ printf "  [ OK ] %s\n" "$1"; }
 bad(){ printf "  [FAIL] %s\n" "$1"; FAIL=1; }
+# A skipped check must not read as a passing one: "ALL CHECKED CLAIMS HOLD" printed after two
+# silent [skip]s is a false all-clear. Skips are counted and named in the verdict.
+SKIPPED=0; SKIPLIST=""
+skip(){ printf "  [skip] %s\n" "$1"; SKIPPED=$((SKIPPED+1)); SKIPLIST="$SKIPLIST\n           - $1"; }
 [ -f "$APK" ] || { echo "missing $APK — run port/build_apk.sh first"; exit 1; }
 
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
@@ -71,33 +79,61 @@ N=$(strings -a "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" | grep -cE 'GALLOC-C
 [ "$N" = "0" ] && ok "no diagnostic strings in the shipped shim" || bad "$N diagnostic string(s) leaked into release"
 
 echo "== CLAIM: signed v1+v2+v3, and 4-byte zipaligned =="
-if command -v docker >/dev/null 2>&1 && docker image inspect ab-port >/dev/null 2>&1; then
-  V=$(docker run --rm --network none -v "$PWD":/work ab-port apksigner verify -v "/work/$APK" 2>/dev/null | grep -cE "^Verified using v[123] scheme.*true")
+# Prefer the tools on PATH, fall back to docker. This script's DOCUMENTED invocation is inside
+# ab-port (REPRODUCE.md step 3), where apksigner/zipalign exist but `docker` does not - so probing
+# only for docker made both of these load-bearing checks silently [skip] in exactly the mode they
+# are meant to run in. The skip printed no warning and did not affect the exit code.
+SIGN=""; ALIGN=""; PFX=""
+if command -v apksigner >/dev/null 2>&1 && command -v zipalign >/dev/null 2>&1; then
+  SIGN="apksigner"; ALIGN="zipalign"
+elif command -v docker >/dev/null 2>&1 && docker image inspect ab-port >/dev/null 2>&1; then
+  SIGN="docker run --rm --network none -v $PWD:/work ab-port apksigner"
+  ALIGN="docker run --rm --network none -v $PWD:/work ab-port zipalign"; PFX="/work/"
+fi
+if [ -n "$SIGN" ]; then
+  V=$($SIGN verify -v "$PFX$APK" 2>/dev/null | grep -cE "^Verified using v[123] scheme.*true")
   [ "$V" = "3" ] && ok "v1+v2+v3 all verify" || bad "only $V of 3 signature schemes verify"
-  docker run --rm --network none -v "$PWD":/work ab-port zipalign -c 4 "/work/$APK" >/dev/null 2>&1 \
-    && ok "zipalign -c 4 passes" || bad "not 4-byte aligned"
+  $ALIGN -c 4 "$PFX$APK" >/dev/null 2>&1 && ok "zipalign -c 4 passes" || bad "not 4-byte aligned"
 else
-  echo "  [skip] ab-port image unavailable"
+  skip "signing/alignment (no apksigner on PATH, no ab-port image)"
 fi
 
 echo "== CLAIM: minSdk 16 / targetSdk 26, and NO live network permission =="
-if docker image inspect ab-analyze >/dev/null 2>&1; then
-  docker run --rm --network none -v "$PWD":/work ab-analyze python3 -c "
-from androguard.core.apk import APK
-a=APK('/work/$APK')
-net=[p for p in a.get_permissions() if 'INTERNET' in p or 'NETWORK' in p]
-print('RESULT', a.get_min_sdk_version(), a.get_target_sdk_version(), ';'.join(net) if net else 'NONE')
-" 2>/dev/null | grep '^RESULT' | while read -r _ mn tg net; do
-    [ "$mn" = "16" ] && ok "minSdk 16" || bad "minSdk $mn (want 16)"
-    [ "$tg" = "26" ] && ok "targetSdk 26" || bad "targetSdk $tg (want 26)"
-    case "$net" in
-      NONE) ok "no network permission at all" ;;
-      *X*)  ok "only mangled network perms present ($net) — kernel denies sockets" ;;
-      *)    bad "LIVE network permission present: $net" ;;
-    esac
-  done
+# The PERMISSION half is checked self-contained, always. depermission.py mangles each permission's
+# first letter (INTERNET -> XNTERNET) preserving byte length, so the literal string's presence or
+# absence in the AXML string pool is decisive - androguard is not needed for it. This half IS the
+# de-phone-home guarantee, so it must never depend on an optional image being present.
+unzip -p "$APK" AndroidManifest.xml > "$T/am.bin" 2>/dev/null
+LIVE=""
+for perm in android.permission.INTERNET android.permission.ACCESS_NETWORK_STATE \
+            android.permission.ACCESS_WIFI_STATE com.android.vending.BILLING \
+            android.permission.GET_ACCOUNTS com.google.android.c2dm.permission.RECEIVE; do
+  if strings -a "$T/am.bin" | grep -qxF "$perm" || strings -a -el "$T/am.bin" | grep -qxF "$perm"; then
+    LIVE="$LIVE $perm"
+  fi
+done
+[ -z "$LIVE" ] && ok "no live network/billing/account/push permission in the manifest" \
+               || bad "LIVE permission present in the manifest:$LIVE"
+# The mangled form must also BE there - otherwise "no INTERNET string" could equally mean the
+# manifest was never processed, or that we read the wrong file.
+if strings -a "$T/am.bin" | grep -qxF android.permission.XNTERNET \
+   || strings -a -el "$T/am.bin" | grep -qxF android.permission.XNTERNET; then
+  ok "INTERNET present-but-mangled (XNTERNET) - the strip demonstrably ran"
 else
-  echo "  [skip] ab-analyze image unavailable"
+  bad "no XNTERNET marker - depermission.py did not run on this manifest"
+fi
+# minSdk/targetSdk are AXML integers, not pool strings, so they need a parser — but requiring the
+# ab-analyze image meant this could only run from a host with docker, and the documented invocation
+# is INSIDE ab-port, where there is none. It therefore skipped every time in the one mode that is
+# documented. axml_sdk.py reads them with the stdlib alone; it was cross-checked against androguard
+# on this artifact (both report 16 / 26) before replacing it.
+RES=$(python3 port/validation/axml_sdk.py "$T/am.bin" 2>/dev/null | grep '^RESULT')
+if [ -n "$RES" ]; then
+  set -- $RES
+  [ "$2" = "16" ] && ok "minSdk 16" || bad "minSdk $2 (want 16)"
+  [ "$3" = "26" ] && ok "targetSdk 26 (installs on modern Android)" || bad "targetSdk $3 (want 26)"
+else
+  bad "could not parse minSdk/targetSdk out of the manifest"
 fi
 
 echo "== CLAIM: the SDK auto-init kill-switches are injected =="
@@ -157,7 +193,36 @@ for bogus in "call\[1\] nativeInit" "render\[N\] GL draws" "render\[1\] GL draws
   fi
 done
 
+echo "== CLAIM: the screenshot index describes exactly the proofs that exist =="
+# PROOF_2/3/4 silently went stale for a day: they showed a binary that no longer existed, and
+# nothing noticed because nothing recorded what they were supposed to show. reports/shots/README.md
+# now records that — but an index that can drift from the directory is just more stale
+# documentation. Check BOTH directions, so neither a new proof nor a removed one can slip past.
+IDX=reports/shots/README.md
+if [ ! -f "$IDX" ]; then bad "the screenshot index $IDX is missing"
+else
+  UNLISTED=""; GHOST=""
+  for p in reports/shots/PROOF_*.png; do
+    [ -e "$p" ] || continue
+    grep -qF "$(basename "$p")" "$IDX" || UNLISTED="$UNLISTED $(basename "$p")"
+  done
+  # every PROOF_*.png named in the index must exist (catches renames like PROOF_4_flight.png)
+  for n in $(grep -oE 'PROOF_[A-Za-z0-9_]+\.png' "$IDX" | sort -u); do
+    [ -f "reports/shots/$n" ] || GHOST="$GHOST $n"
+  done
+  [ -z "$UNLISTED" ] && ok "every proof on disk is described in the index" \
+                     || bad "proofs exist that the index never describes:$UNLISTED"
+  [ -z "$GHOST" ]    && ok "every proof the index names actually exists" \
+                     || bad "the index names proofs that do not exist:$GHOST"
+fi
+
 [ "${CLEANUP_ORIG:-0}" = "1" ] && rm -f "$ORIG"
 echo
-[ "$FAIL" = "0" ] && echo "ALL CHECKED CLAIMS HOLD" || echo "SOME CLAIMS ARE FALSE — fix the artifact or the docs"
+if [ "$FAIL" = "0" ]; then
+  if [ "$SKIPPED" = "0" ]; then echo "ALL CHECKED CLAIMS HOLD"
+  else
+    [ "$SKIPPED" = "1" ] && W="check was" || W="checks were"
+    printf "ALL CHECKED CLAIMS HOLD, but %s %s NOT checked:%b\n" "$SKIPPED" "$W" "$SKIPLIST"
+  fi
+else echo "SOME CLAIMS ARE FALSE — fix the artifact or the docs"; fi
 exit "$FAIL"
