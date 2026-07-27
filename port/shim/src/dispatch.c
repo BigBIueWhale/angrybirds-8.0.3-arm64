@@ -388,6 +388,21 @@ static const bent BR[] = {
     {"setjmp",1,h_setjmp},{"_setjmp",1,h_setjmp},{"sigsetjmp",1,h_setjmp},
     {"longjmp",0,h_longjmp},{"_longjmp",0,h_longjmp},{"siglongjmp",0,h_longjmp},
 };
+/* Choke-point pinpoint: EVERY bridge call becomes a heap checkpoint, labelled with the bridge's
+ * own name. This narrows the corruption window from "between two mallocs" (which spanned an
+ * unbounded amount of engine code) to "between two adjacent bridge calls", and names the bridge
+ * if one of them is the culprit. Cost is two heap walks per bridge call, but the pinpoint stops
+ * at the first failure and the failure happens early, so it is bounded. Non-release only. */
+#ifndef ABSHIM_RELEASE
+static uint64_t br_call_pinned(dispatch_t*d, const bent*b, mcur*cur){
+    heap_pin(d, "before", b->name);
+    uint64_t r = b->fn(d, cur);
+    heap_pin(d, "after", b->name);
+    return r;
+}
+#else
+#define br_call_pinned(d,b,cur) ((b)->fn((d),(cur)))
+#endif
 static const bent *find_bridge(const char*name){ for(size_t i=0;i<sizeof BR/sizeof BR[0];i++) if(!strcmp(BR[i].name,name)) return &BR[i]; return NULL; }
 
 enum { SC_UNRES=0, SC_GL, SC_ASSET, SC_BR, SC_LIBC, SC_FILE, SC_UNIMPL };
@@ -416,7 +431,7 @@ static void stub_cb(uc_engine *uc, uint64_t address, uint32_t size, void *user){
     uint8_t kind = (slot<LOADER_MAX_STUBS) ? d->scache_kind[slot] : SC_UNRES;
 
     /* ---- fast path: this stub was resolved on a prior call; skip the strcmp chains ---- */
-    if (kind==SC_BR){ const bent*b=(const bent*)d->scache_br[slot]; mcur cur; marshal_cur_init(&d->cpu->mem,&cur); br_ret(d,b,b->fn(d,&cur)); return; }
+    if (kind==SC_BR){ const bent*b=(const bent*)d->scache_br[slot]; mcur cur; marshal_cur_init(&d->cpu->mem,&cur); br_ret(d,b,br_call_pinned(d,b,&cur)); return; }
     if (kind==SC_UNIMPL){ uint32_t z=0; uc_reg_write(d->cpu->uc,UC_ARM_REG_R0,&z); return; }
     if (kind){
         const char *nm=loader_stub_name(d->ld,(uint32_t)address); if(!nm) return;
@@ -435,7 +450,7 @@ static void stub_cb(uc_engine *uc, uint64_t address, uint32_t size, void *user){
     if (name[0]=='g' && name[1]=='l'){ mcur gc; marshal_cur_init(&d->cpu->mem,&gc); if(gl_try(d->cpu,name,&gc)){ rk=SC_GL; goto cache; } }
     if (!strncmp(name,"AAsset",6) && d->jni){ mcur ac; marshal_cur_init(&d->cpu->mem,&ac); if(asset_try(d->cpu,d->jni,name,&ac)){ rk=SC_ASSET; goto cache; } }
     { const bent *b=find_bridge(name);
-      if (b){ mcur cur; marshal_cur_init(&d->cpu->mem,&cur); br_ret(d,b,b->fn(d,&cur));
+      if (b){ mcur cur; marshal_cur_init(&d->cpu->mem,&cur); br_ret(d,b,br_call_pinned(d,b,&cur));
               if(slot<LOADER_MAX_STUBS){ d->scache_kind[slot]=SC_BR; d->scache_br[slot]=b; } return; } }
     { mcur lc; marshal_cur_init(&d->cpu->mem,&lc); if(libc_try(d->cpu,name,&lc)){ rk=SC_LIBC; goto cache; } }
     { mcur fc; marshal_cur_init(&d->cpu->mem,&fc); if(file_try(d->cpu,name,&fc)){ rk=SC_FILE; goto cache; } }
