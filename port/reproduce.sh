@@ -5,17 +5,14 @@ set -e
 cd "$(dirname "$0")/.."                                  # -> apk-binary-analysis
 
 echo "== 0/3 prepare inputs: decompress the sovereign 8.0.3 APK + extract its 32-bit engine =="
-APK="apks/com.rovio.angrybirds@8.0.3.apk"
-if [ ! -f "$APK" ]; then
-  echo "        xz -d the committed input (sha256 verified below)"; xz -dk "$APK.xz"
-fi
-# sanity: the decompressed input must be the authentic 8.0.3 (sha256 0580c3d3...)
-echo "0580c3d3f79b21b344940bea65b8fadc22e8e5599c89dfe9b5e8a85004846b9a  $APK" | sha256sum -c - >/dev/null \
-  && echo "        input APK authenticity: OK (0580c3d3...)" || { echo "        FATAL: input APK sha mismatch"; exit 1; }
-# build_apk.sh reads the 32-bit engine from work803/libv7/ (js/adcolony it unzips from the APK itself)
-mkdir -p work803/libv7
-[ -f work803/libv7/libAngryBirdsClassic.so ] || \
-  unzip -o -j -q "$APK" lib/armeabi-v7a/libAngryBirdsClassic.so -d work803/libv7/
+# Delegated to prepare_inputs.sh rather than repeated here. This step used to be a hand-rolled copy
+# of that function, which meant the authentic-input sha256 was hardcoded in TWO places: if the input
+# were ever re-pinned, one could be updated and the other left behind, and the build would still
+# pass the stale gate. The duplicated extraction also assumed `unzip`, while prepare_inputs falls
+# back to python3's zipfile (needed by ab-hosttest, which has no unzip).
+. port/prepare_inputs.sh
+prepare_inputs || exit 1
+echo "        input APK authenticity: OK (sha256-gated in prepare_inputs.sh)"
 
 echo "== 1/3 build ab-port image (NDK r26d + Unicorn 2.1.4; ~15-20 min the first time) =="
 echo "        (this is the ONLY step that touches the network — outbound fetches, no ports)"
