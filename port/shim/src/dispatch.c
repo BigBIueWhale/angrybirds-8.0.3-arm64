@@ -86,12 +86,18 @@ static void heap_ck(dispatch_t*d){
         if(badchunk){
             /* Dump the chunk and its neighbour so the shape of the damage is visible: for rc=-5
              * the question is whether CINUSE(cur) or PINUSE(next) is the bit that moved. */
-            uint32_t h  = gm_rd32(&d->cpu->mem, badchunk);
-            uint32_t sz = h & ~7u;
+            /* Chunk layout (galloc.c:97-103): prev_foot at c+0, HEAD at c+4, payload at c+8;
+             * FLAGS=3, PINUSE=1, CINUSE=2. Reading c+0 gives prev_foot, which is meaningless for
+             * an in-use chunk — an earlier version of this dump did exactly that and printed a
+             * phantom hdr=0. Read c+4 and mask ~3. */
+            uint32_t h  = gm_rd32(&d->cpu->mem, badchunk + 4);
+            uint32_t sz = h & ~3u;
             uint32_t nx = badchunk + sz;
-            dbg_log("[GALLOC-CORRUPT] chunk=0x%08x hdr=0x%08x size=%u cinuse=%u | next=0x%08x hdr=0x%08x pinuse=%u",
-                    badchunk, h, sz, (h>>1)&1u, nx, gm_rd32(&d->cpu->mem, nx), gm_rd32(&d->cpu->mem, nx) & 1u);
-            dbg_log("[GALLOC-CORRUPT] WATCH THIS ADDRESS: 0x%08x (chunk header) — aim a write hook here to find the writer", nx);
+            uint32_t nh = gm_rd32(&d->cpu->mem, nx + 4);
+            dbg_log("[GALLOC-CORRUPT] chunk=0x%08x head=0x%08x size=%u cinuse=%u pf=0x%08x | next=0x%08x head=0x%08x pinuse=%u",
+                    badchunk, h, sz, (h & 2u) ? 1u : 0u, gm_rd32(&d->cpu->mem, badchunk),
+                    nx, nh, nh & 1u);
+            dbg_log("[GALLOC-CORRUPT] WATCH 0x%08x (next chunk's HEAD word, where PINUSE lives) — aim a write hook here", nx + 4);
         }
     }
     if(rc != last_rc){
