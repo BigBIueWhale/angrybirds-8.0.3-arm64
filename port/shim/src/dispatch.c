@@ -247,7 +247,9 @@ static void heap_pin(dispatch_t*d, const char *when, const char *op){
 static FILE *g_atr = NULL; static int g_atr_init = 0;
 static void alloc_trace(const char *what, uint32_t n){
     if(!g_atr_init){ g_atr_init=1; const char *p=getenv("ABSHIM_ALLOC_TRACE"); if(p&&*p) g_atr=fopen(p,"w"); }
-    if(g_atr) fprintf(g_atr, "%s %u\n", what, n);
+    /* flush per record: without this the FILE* is block-buffered, so a `timeout` kill
+     * truncates the trace and a live diff against another host reads a stale tail. */
+    if(g_atr){ fprintf(g_atr, "%s %u\n", what, n); fflush(g_atr); }
 }
 #else
 #define alloc_trace(w,n) ((void)0)

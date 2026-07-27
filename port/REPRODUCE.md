@@ -116,8 +116,8 @@ real bridge** (enforced by `port/shim/test/coverage_check.py` as a hard gate in 
 suite).
 
 **The game RENDERS AND PLAYS.** The *same* shim source — compiled for x86_64 instead of
-arm64 (only the outer ABI differs; the emulated ARM32 core is bit-identical across host
-arch) — was run in a real Android x86 emulator (real ART + full app lifecycle). It boots
+arm64 (only the outer ABI differs; the emulated ARM32 core runs faithfully on either host —
+though not to bit-identical guest state, see port/validation/README.md) — was run in a real Android x86 emulator (real ART + full app lifecycle). It boots
 through `nativeInit → nativeResume → nativeResize → nativeUpdate`, auto-loads the tutorial
 level and renders it; driving touch input then confirms **full interactive play** — a tap
 advances into the level, and a slingshot drag **launches the bird along a correct parabolic

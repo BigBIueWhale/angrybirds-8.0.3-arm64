@@ -12,9 +12,21 @@ unmodified, inside an ARM32→ARM64 emulation shim (Unicorn). targetSdk 26, self
   emulator** (real ART, real app lifecycle, real GLSurfaceView), boots → auto-loads the tutorial
   → renders → a slingshot drag **launches the bird on a correct Box2D arc, collapses the pig
   structure, scores, wins, and advances into the next level** — zero fatal
-  (`reports/shots/PROOF_2…7_*.png`). Because Unicorn emulates the ARM32 engine bit-identically
-  regardless of host arch (verified: identical guest heap on x86 and arm64), this x86 rig is a
-  faithful proxy for the arm64 build on the A56.
+  (`reports/shots/PROOF_2…7_*.png`). Unicorn runs the ARM32 engine faithfully on either host, so
+  this x86 rig is a good proxy for the arm64 build on the A56 — but see the caveat below on how
+  far that goes.
+
+  **Correction (2026-07-27): the guest heap is NOT bit-identical across host architectures.**
+  This document previously said it was. Measured with `test_ctors` after the 125 C++
+  constructors: x86 `605096` bytes in use, arm64 (qemu-user) `539536` — a gap of ~64 KB that is
+  deterministic on each host and present both before and after the allocator fix. Ruled out as
+  causes: the allocator change, differing Unicorn builds (the pinned commit built for x86-linux
+  gives the same figure as the prebuilt vendor blob), host page size (`h_sysconf`/`h_pagesz`
+  return a hardcoded 4096), and run-to-run nondeterminism (x86 is stable across repeats). The
+  guest's allocation *sequence* is identical for at least the first 4913 requests, and both hosts
+  run 125/125 constructors clean, so the emulation is faithful on both — but "both hosts work" is
+  a weaker claim than "both hosts produce identical state", and only the former is evidenced.
+  The cause is still open.
 - **The arm64 ABI itself is validated** via qemu-user: the real engine loads, all 125 C++
   constructors run under emulation on aarch64, and every ABI-sensitive logic suite passes.
 - **The shim source is host-suite-green** (`Dockerfile.ab-hosttest` → `run_tests.sh` exits 0):

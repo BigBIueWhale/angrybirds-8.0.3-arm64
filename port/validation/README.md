@@ -21,10 +21,20 @@ fails with *"Avd's CPU Architecture 'arm64' is not supported by the QEMU2 emulat
 host"* — Google removed cross-architecture QEMU. So the arm64 end-to-end run genuinely
 requires the physical Galaxy A56.
 
-The argument that the x86 rig proxies for arm64 is: identical shim source, Unicorn emulates
-the ARM32 guest deterministically regardless of host architecture, and the guest heap was
-verified bit-identical between x86 and arm64 runs. That is a strong argument. It is not the
-same as having run it. **`out/angrybirds-8.0.3-arm64.apk` has never been executed anywhere** —
+The argument that the x86 rig proxies for arm64 is: identical shim source, and Unicorn runs the
+ARM32 guest faithfully on either host — 125/125 C++ constructors execute clean on both, and the
+guest's allocation sequence is identical for at least the first 4913 requests.
+
+**That argument is weaker than this file used to claim.** It previously said the guest heap was
+"verified bit-identical between x86 and arm64 runs". It is not. `test_ctors` after the 125
+constructors reports x86 `605096` bytes in use versus arm64 `539536` — a ~64 KB gap, stable on
+each host, present both before and after the allocator fix, and not attributable to the Unicorn
+build (the pinned commit compiled for x86-linux reproduces the x86 figure exactly), to host page
+size (hardcoded 4096), or to nondeterminism (x86 repeats identically). Cause still open.
+
+So: both architectures execute the engine correctly, but they do not reach identical guest state,
+and "x86 passed therefore arm64 behaves identically" does not follow. It is not the same as
+having run it. **`out/angrybirds-8.0.3-arm64.apk` has never been executed anywhere** —
 it has been built, signed, aligned and statically audited only.
 
 The one arm64 execution that exists is `arm64_unicorn_test.sh`, and it is not the game: under
