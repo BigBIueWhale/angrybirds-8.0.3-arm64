@@ -8,6 +8,28 @@ is run *unmodified* inside an embedded ARM32→ARM64 emulation shim (Unicorn).
 
 Everything happens inside Docker. Two commands (or one, via `reproduce.sh`).
 
+
+## Reproducibility: verified from scratch (2026-07-27)
+
+Not just "the build script is deterministic on this machine" — the **toolchain image itself** was
+rebuilt with `docker build --no-cache`, forcing a real NDK download and a fresh clone + compile of
+Unicorn from the pinned commit, and the resulting image produced the **byte-identical APK**:
+
+```
+from-scratch toolchain : 68bf6f4aeb39c230302d14aa8ca219968e0c0efc0549e4b0c7235e8a5b59fc8d
+cached toolchain       : 68bf6f4aeb39c230302d14aa8ca219968e0c0efc0549e4b0c7235e8a5b59fc8d
+```
+
+The toolchain resolved independently to the same versions — apksigner 0.9 (deb 31.0.2-1),
+cmake 3.22.1, NDK 26.3.11579264, Unicorn 7c5db941 — so the one genuine drift risk (apksigner and
+zipalign come from `apt`, and a newer apksigner would emit a different signature block and change
+the hash with no code change) did not materialise: Ubuntu 22.04's archive holds them stable.
+
+Worth stating because the obvious check is misleading. Re-running `docker build` **without**
+`--no-cache` completes in under a second by reusing the layer cache and re-tagging it — which
+proves only that a cache exists on this machine, i.e. exactly the thing the claim is meant to
+exclude. Any future re-verification must use `--no-cache`.
+
 ## Inputs (committed in this repo)
 - `apks/com.rovio.angrybirds@8.0.3.apk` — the original 32-bit APK (Rovio-signed).
 - `work803/libv7/libAngryBirdsClassic.so` — the 32-bit engine extracted from it.
