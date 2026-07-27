@@ -129,6 +129,12 @@ bbcc34ee829f95c6350bd500bd7e9260caf08e7605cf9d5ce8276d463f1ba062  x86shim.apk   
 632f8d555865a4fac27dee13a8beff409737119a7bbfe6dca0f53012b1a1952c  x86shim-audio.apk    (audio variant)
 ```
 
+**PROOF_15** is the first piece of evidence tied to one of these hashes: a full API-34 win
+("LEVEL CLEARED", 3 stars, 45790, `h_fatal=0`, frame[1501]) produced by
+`emu_modern_playthrough.sh` on `x86shim-release.apk` = `7b08cb79…`. Before the reproducibility
+fix that sentence could not have been written — every build minted a different signing key, so
+no screenshot could be attributed to a recreatable binary.
+
 Re-verify with two consecutive builds and `sha256sum`. If a hash here goes stale, the shim source
 changed — regenerate the affected evidence rather than citing screenshots taken against a build
 that no longer exists.
