@@ -30,9 +30,22 @@ Worth stating because the obvious check is misleading. Re-running `docker build`
 proves only that a cache exists on this machine, i.e. exactly the thing the claim is meant to
 exclude. Any future re-verification must use `--no-cache`.
 
-## Inputs (committed in this repo)
-- `apks/com.rovio.angrybirds@8.0.3.apk` — the original 32-bit APK (Rovio-signed).
-- `work803/libv7/libAngryBirdsClassic.so` — the 32-bit engine extracted from it.
+## Inputs
+
+**Committed:**
+- `apks/com.rovio.angrybirds@8.0.3.apk.xz` — the original 32-bit APK (Rovio-signed), xz-compressed
+  because the raw file is ~100 MB. sha256 of the *decompressed* APK is `0580c3d3…`, and every build
+  script checks it before doing any work, so a wrong or tampered input is rejected up front.
+
+**Generated on first build (not in git — do not expect them after a clone):**
+- `apks/com.rovio.angrybirds@8.0.3.apk` — decompressed from the `.xz` above.
+- `work803/libv7/libAngryBirdsClassic.so` — the 32-bit engine, extracted from that APK.
+
+`port/prepare_inputs.sh` creates both, and every entry point calls it — `build_apk.sh`, the three
+x86 proxy builds, `build_offline_apk.sh`, and `port/shim/test/run_tests.sh`. This section previously
+listed all of these as "committed in this repo", which was wrong and actively misleading: those
+scripts read the files directly and every one of them failed from a fresh clone with an error
+naming a file the clone never had.
 - `port/shim/src/` — the emulation shim (C; built into `lib/arm64-v8a/libAngryBirdsClassic.so`).
 - `port/docker/Dockerfile.ab-port` — pins the whole toolchain (NDK r26d + Unicorn 2.1.4).
 - `port/debug.ks` — the fixed throwaway debug keystore (password `android`) the output is signed
