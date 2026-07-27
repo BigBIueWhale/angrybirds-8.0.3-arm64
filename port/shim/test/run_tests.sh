@@ -24,6 +24,11 @@ run() {  # $1=name  $2...=extra srcs
 }
 
 run galloc       "$SRC/galloc.c"
+# galloc_check() vs a QUARANTINED heap. Production enables quarantine (cpu.c:69) but the test
+# above runs with it OFF, so this combination was never covered — including by the 450k-op
+# torture. Added after the live shim reported galloc_check == -5 permanently and the allocator
+# had to be cleared of suspicion before blaming the guest.
+run galloc_quarantine "$SRC/galloc.c"
 run marshal      "$SRC/marshal.c"
 run format       "$SRC/format.c" "$SRC/marshal.c"
 run handle_table "$SRC/handle_table.c"
