@@ -7,6 +7,7 @@
 #      "pipeline runs + no freeze + no crash" is the decisive safety result (blocking AudioTrack.write
 #      is Java-side, not under the BEL, per AudioOutput.java).
 set +e
+source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
 ( sleep 1400; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-audio.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/audio.txt"; : >"$LOG"
@@ -32,7 +33,10 @@ FB=$(fnow); MB=$(grep -ac 'nativeMixData ENABLED' "$ABLOG"); say "  card at fram
 adb shell input tap 390 266; sleep 4; adb shell input tap 390 266; sleep 12
 adb shell input swipe 207 118 110 150 700; sleep 8
 adb shell input swipe 207 118 122 140 700; sleep 8
-adb shell input swipe 207 118 118 136 700; sleep 16
+adb shell input swipe 207 118 118 136 700
+# FIX (2026-07-27): was `sleep 16` — a fixed wall-clock settle against a frame rate that
+# varies ~1.8-15 fps between runs, so it silently captured mid-level on slow runs. See lib_settle.sh.
+settle_frames "$ABLOG" 120 300
 FE=$(fnow)
 adb exec-out screencap -p > "$OUT/audio_end.png" 2>/dev/null
 say "== RESULTS (audio) =="

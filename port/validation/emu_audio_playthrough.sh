@@ -5,6 +5,7 @@
 # DECISIVE METRIC here: with audio active, do frames climb PAST 601 (i.e., is it rendering/playing,
 # just slower under the audio overhead)? Give it a long settle + play + a multi-minute frame-watch.
 set +e
+source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
 ( sleep 2200; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-audio.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/audioplay.txt"; : >"$LOG"
@@ -33,7 +34,10 @@ adb shell input tap 390 266; sleep 8
 adb shell input tap 390 266; sleep 20
 adb shell input swipe 207 118 110 150 700; sleep 12
 adb shell input swipe 207 118 122 140 700; sleep 12
-adb shell input swipe 207 118 118 136 700; sleep 12
+adb shell input swipe 207 118 118 136 700
+# FIX (2026-07-27): was `sleep 12` — a fixed wall-clock settle against a frame rate that
+# varies ~1.8-15 fps between runs, so it silently captured mid-level on slow runs. See lib_settle.sh.
+settle_frames "$ABLOG" 120 300
 say "== KEY: watch frame progression for up to ~6 min (does it climb past the card with audio?) =="
 LASTF=$FB; STUCK=0
 for w in $(seq 1 24); do

@@ -5,6 +5,7 @@
 # under W^X, and PLAYS with audio active WITHOUT a crash on the A56's OS generation. Audio ENABLED
 # (no -no-audio; QEMU_AUDIO_DRV=none so AudioTrack still inits). Dismisses the deprecated-sdk dialog.
 set +e
+source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
 ( sleep 1600; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-audio.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/audiomod.txt"; : >"$LOG"
@@ -37,7 +38,10 @@ adb shell input tap 390 266; sleep 8
 adb shell input tap 390 266; sleep 20
 adb shell input swipe 207 118 110 150 700; sleep 12
 adb shell input swipe 207 118 122 140 700; sleep 12
-adb shell input swipe 207 118 118 136 700; sleep 12
+adb shell input swipe 207 118 118 136 700
+# FIX (2026-07-27): was `sleep 12` — a fixed wall-clock settle against a frame rate that
+# varies ~1.8-15 fps between runs, so it silently captured mid-level on slow runs. See lib_settle.sh.
+settle_frames "$ABLOG" 120 300
 for w in $(seq 1 20); do
   sleep 15; CF=$(fnow); HF=$(grep -ac '\[h_fatal\]' "$ABLOG"); SC=$(grep -ac stack_chk_fail "$ABLOG")
   say "  [t=$((w*15))s] frame[$CF] mixData=$(grep -ac 'nativeMixData ENABLED' "$ABLOG") h_fatal=$HF stack_chk=$SC"

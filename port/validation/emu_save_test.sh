@@ -3,6 +3,7 @@
 # dir on a win, and RELOAD it after force-stop + relaunch (so the user doesn't replay from scratch)?
 # The shim's FILE bridge (bridge_file.c) is host-suite-validated; this confirms it end-to-end on-device.
 set +e
+source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
 ( sleep 1550; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/save.txt"; : >"$LOG"
@@ -27,7 +28,10 @@ adb shell input tap 490 237; sleep 1; adb shell input tap 490 237; sleep 3
 adb shell input tap 390 266; sleep 4; adb shell input tap 390 266; sleep 12
 adb shell input swipe 207 118 110 150 700; sleep 8
 adb shell input swipe 207 118 122 140 700; sleep 8
-adb shell input swipe 207 118 118 136 700; sleep 18
+adb shell input swipe 207 118 118 136 700
+# FIX (2026-07-27): was `sleep 18` — a fixed wall-clock settle against a frame rate that
+# varies ~1.8-15 fps between runs, so it silently captured mid-level on slow runs. See lib_settle.sh.
+settle_frames "$AB1" 120 300
 # NOTE (2026-07-27): this line used to report `won: levelComplete=N`. That N was a count of
 # levelCompleteStars*.lua ASSET PRELOADS (always 8, before frame[1]) — it never indicated a win.
 # This test's real subject is save persistence below, which does not depend on winning.
