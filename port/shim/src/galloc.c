@@ -108,10 +108,33 @@ static void     SBK(galloc*a,uint32_t c,uint32_t v){ gm_wr32(a->m,c+12,v); }
 #define MEM(c) ((c)+CHUNK_OVH)
 #define CHK(p) ((p)-CHUNK_OVH)
 
+/* Chunk sizing must be at least as generous as the allocator the ENGINE was built against.
+ *
+ * Android's malloc uses 16-granular small size classes (jemalloc on API 25, scudo on modern
+ * releases), so malloc(n) yields align16(n) usable bytes, minimum 16. The old formula here gave
+ * align16(n + 8) - 8, which is SHORT of that by 8 bytes for a whole family of sizes: n = 1, 8, 17,
+ * 24, 33 ... For example malloc(17) gets 32 usable bytes on-device but only 24 from the old
+ * formula.
+ *
+ * That difference was corrupting the heap. Traced 2026-07-27 with the per-op pinpoint: the engine
+ * requests 17 bytes, memsets 17 into it (fits), then writes at payload offset 28 — which is inside
+ * the 32 bytes a real device would have given it, but 4 bytes past our 24, landing exactly on the
+ * SUCCESSOR chunk's head word and clearing PINUSE. Observed as galloc_check = -5, or -7 when the
+ * successor happened to be the top chunk. Permanent from op ~12-26k, 383/384 checks failing.
+ *
+ * Writing past a 17-byte request is a latent bug in the engine, but it is invisible on a real
+ * device because the size class absorbs it. We are emulating that device, so matching its
+ * usable-size semantics is correctness, not a workaround — and it fixes the corruption at its
+ * source rather than tolerating it.
+ *
+ * chunk = align16(n) + 16  =>  payload = align16(n) + 8  >=  align16(n) = what the device gives.
+ * Costs 16 bytes more per small allocation than the old formula; the arena is 512MB. */
 static uint32_t req2size(uint32_t n){
-    uint32_t s = n + CHUNK_OVH;
-    if (s < n) return 0;                         /* overflow guard (huge n) */
-    s = (s + (ALIGN-1)) & ~(ALIGN-1);
+    uint32_t want = (n + (ALIGN-1)) & ~(ALIGN-1);     /* device-equivalent usable bytes */
+    if (want < n) return 0;                           /* overflow guard (huge n) */
+    if (want < ALIGN) want = ALIGN;                   /* device minimum class is 16 */
+    uint32_t s = want + ALIGN;                        /* payload = want + 8 >= want */
+    if (s < want) return 0;                           /* overflow guard */
     if (s < MIN_CHUNK) s = MIN_CHUNK;
     return s;
 }
