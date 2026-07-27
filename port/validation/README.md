@@ -23,14 +23,14 @@ requires the physical Galaxy A56.
 
 The argument that the x86 rig proxies for arm64 is: identical shim source, and Unicorn runs the
 ARM32 guest faithfully on either host — 125/125 C++ constructors execute clean on both, and the
-guest's allocation sequence is identical for at least the first 4913 requests.
+guest's allocation sequence is identical for 7792 of 7793 requests (see below).
 
 **That argument is weaker than this file used to claim.** It previously said the guest heap was
 "verified bit-identical between x86 and arm64 runs". It is not. `test_ctors` after the 125
 constructors reports x86 `605096` bytes in use versus arm64 `539536` — a ~64 KB gap, stable on
 each host, present both before and after the allocator fix, and not attributable to the Unicorn
 build (the pinned commit compiled for x86-linux reproduces the x86 figure exactly), to host page
-size (hardcoded 4096), or to nondeterminism (x86 repeats identically). Cause still open.
+size (hardcoded 4096), or to nondeterminism (x86 repeats identically).
 
 **Cause identified (2026-07-27).** The divergence is not drift — it is exactly ONE allocation.
 Tracing the guest's full allocation sequence on both hosts (`ABSHIM_ALLOC_TRACE`) shows **7792 of
