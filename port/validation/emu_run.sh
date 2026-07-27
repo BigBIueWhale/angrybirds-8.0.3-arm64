@@ -57,21 +57,29 @@ echo "--- frames / draws ---" | tee -a "$LOG"
 grep -aE 'frame\[' "$ABLOG" | tail -3 | tee -a "$LOG"
 echo "== screenshot ==" | tee -a "$LOG"
 adb exec-out screencap -p > "$OUT/emu_screen.png" 2>/dev/null
-python3 - "$OUT/emu_screen.png" <<'PY' 2>&1 | tee -a "$LOG"
-import sys,struct,zlib
-try:
-    d=open(sys.argv[1],'rb').read(); assert d[:8]==b'\x89PNG\r\n\x1a\n'
-    # find IHDR
-    w,h=struct.unpack('>II',d[16:24]); print(f"screenshot {w}x{h}, {len(d)} bytes")
-    # crude non-black check: decompress IDAT, sample
-    idat=b''; i=8
-    while i<len(d):
-        ln=struct.unpack('>I',d[i:i+4])[0]; typ=d[i+4:i+8]
-        if typ==b'IDAT': idat+=d[i+8:i+8+ln]
-        i+=12+ln
-    raw=zlib.decompress(idat); nz=sum(1 for b in raw[:200000] if b>16)
-    print(f"non-trivial bytes in first 200KB of pixels: {nz} ({'RENDERS something' if nz>5000 else 'mostly black/empty'})")
-except Exception as e: print("screenshot check failed:",e)
-PY
+# FIX (2026-07-27): this used to shell out to python3, which the ab-emu image has NEVER
+# contained (see port/docker/Dockerfile.ab-emu — it installs a JDK and emulator deps, no
+# python). So every run printed "python3: command not found" and the screenshot was never
+# actually checked: dead code that looked like a passing verification. Replaced with a
+# dependency-free size heuristic, which is sufficient for the question being asked.
+#
+# Rationale for the threshold: a blank/black frame is almost entirely one colour and PNG
+# compresses it to near nothing — the early failed x86-shim captures were all exactly 1582
+# bytes. A frame with real geometry has been 50-150KB in every good run. 8KB sits well clear
+# of both, so it separates them without pretending to be a pixel analysis.
+if [ -s "$OUT/emu_screen.png" ]; then
+    PNGSZ=$(wc -c < "$OUT/emu_screen.png")
+    if head -c 8 "$OUT/emu_screen.png" | od -An -tx1 | grep -q "89 50 4e 47"; then
+        if [ "$PNGSZ" -gt 8192 ]; then
+            echo "screenshot: $PNGSZ bytes -> RENDERS something (well above the ~1.6KB blank-frame size)" | tee -a "$LOG"
+        else
+            echo "screenshot: $PNGSZ bytes -> mostly black/empty (blank frames compress to ~1.6KB)" | tee -a "$LOG"
+        fi
+    else
+        echo "screenshot: $PNGSZ bytes but NOT a PNG — screencap failed" | tee -a "$LOG"
+    fi
+else
+    echo "screenshot: missing/empty — screencap failed" | tee -a "$LOG"
+fi
 echo DONE | tee -a "$LOG"
 adb emu kill >/dev/null 2>&1
