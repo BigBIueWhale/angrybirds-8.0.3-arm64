@@ -1,0 +1,11 @@
+# ab-render: ab-port + mesa software GLES2/EGL (llvmpipe, surfaceless) for the host render harness.
+# Test-only image. Networked build (apt); the test itself is run with `docker run --network none`.
+FROM ab-port:latest
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgles2-mesa-dev libegl1-mesa-dev libgbm-dev libgl1-mesa-dri \
+    && rm -rf /var/lib/apt/lists/*
+# force software rendering, surfaceless
+ENV LIBGL_ALWAYS_SOFTWARE=1 \
+    MESA_LOADER_DRIVER_OVERRIDE=llvmpipe \
+    EGL_PLATFORM=surfaceless \
+    GALLIUM_DRIVER=llvmpipe

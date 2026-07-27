@@ -1,0 +1,68 @@
+# ab-emu-34 — x86_64 Android 14 (API 34) emulator rig.
+#
+# This is the "modern Android" tier: same W^X and install-policy regime the Galaxy A56's
+# Android 16 enforces. It produced PROOF_8 (level win on API 34) and PROOF_9 (advance into
+# level 2), and it is the rig that caught the missing `-lm` link bug — which would have
+# crashed the shim on launch on the A56 with `UnsatisfiedLinkError: cannot locate symbol
+# "sin"`. API 25 masked that; modern bionic does not. Do not retire this tier.
+#
+# ---------------------------------------------------------------------------
+# PROVENANCE
+# ---------------------------------------------------------------------------
+# The original ab-emu-34:latest was NOT built from a Dockerfile. It was produced
+# imperatively: a container was started from ab-emu:latest, a setup script was run inside
+# it, and the result was `docker commit`ed. A committed image has no build recipe, so the
+# recipe below was recovered from the image's own recorded config
+# (`docker inspect ab-emu-34:latest --format '{{json .Config.Cmd}}'`), which preserved the
+# exact setup command verbatim. The RUN steps below are that command, split into layers.
+#
+# `FROM ab-emu:latest` is not a convenience — it is what actually happened, and the
+# resulting image state was verified to match:
+#
+#   ab-emu:latest     AVDs: abtest                    system-images: android-25
+#   ab-emu-34:latest  AVDs: abtest, abtest34          system-images: android-25, android-34
+#
+# So ab-emu-34 is a strict superset and can run the API 25 scripts too. Build ab-emu first:
+#
+#   docker build -f port/docker/Dockerfile.ab-emu    -t ab-emu    port/docker
+#   docker build -f port/docker/Dockerfile.ab-emu-34 -t ab-emu-34 port/docker
+#
+# ---------------------------------------------------------------------------
+# NETWORK POLICY
+# ---------------------------------------------------------------------------
+# Building this image requires network (sdkmanager fetches the android-34 system image).
+# Every RUN of the image is launched `--network none`. See the same section in
+# Dockerfile.ab-emu, and port/validation/README.md, for the full rationale.
+# Treat the build host as internet-reachable: never `-p`/`--publish`, never `--network host`.
+#
+# ---------------------------------------------------------------------------
+# REPRODUCIBILITY LIMITATION
+# ---------------------------------------------------------------------------
+# Inherits every float described in Dockerfile.ab-emu, plus one of its own: Google revises
+# system images in place, so `system-images;android-34;default;x86_64` is not a fixed
+# artifact. Version installed in the image that generated the committed evidence:
+#
+#   system-images;android-34;default;x86_64     Pkg.Revision = 2
+#
+# The inherited /IMAGE_VERSIONS is extended with the android-34 entry below.
+
+# BASE is overridable so this image can be rebuilt and diffed against the existing
+# ab-emu-34:latest without overwriting the working ab-emu:latest that the committed
+# evidence was generated on:  --build-arg BASE=ab-emu:verify
+ARG BASE=ab-emu:latest
+FROM ${BASE}
+
+RUN yes | sdkmanager "system-images;android-34;default;x86_64" >/tmp/sdk.log 2>&1
+
+RUN echo "no" | avdmanager create avd -n abtest34 \
+        -k "system-images;android-34;default;x86_64" --force >/tmp/avd.log 2>&1
+
+# --- ADDITION: the original recipe printed AVD_OK/AVD_FAIL and carried on regardless.
+# --- Fail the build instead, so a broken image can never be published as a working one.
+RUN set -e; \
+    test -f "$HOME/.android/avd/abtest34.avd/config.ini" || { echo "FATAL: AVD abtest34 was not created"; cat /tmp/avd.log; exit 1; }; \
+    test -f "$HOME/.android/avd/abtest.avd/config.ini"   || { echo "FATAL: inherited AVD abtest is missing"; exit 1; }; \
+    { echo -n "sysimg-34      "; grep Pkg.Revision $ANDROID_SDK_ROOT/system-images/android-34/default/x86_64/source.properties; } >> /IMAGE_VERSIONS; \
+    cat /IMAGE_VERSIONS
+
+CMD ["/bin/bash"]

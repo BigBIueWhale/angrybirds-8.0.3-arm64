@@ -1,0 +1,93 @@
+# ab-emu — x86_64 Android 7.1 (API 25) emulator rig.
+#
+# This is the image that produced the shim play-validation evidence: PROOF_2/3/4
+# (interactive tutorial + slingshot launch), PROOF_5 (structure collapse, score 5820),
+# PROOF_6 (level-end survived), PROOF_7 (level-2 progression) and PROOF_10 (audio level win).
+# See port/validation/README.md for which script produced which artifact.
+#
+# ---------------------------------------------------------------------------
+# PROVENANCE
+# ---------------------------------------------------------------------------
+# The original ab-emu:latest was built from a Dockerfile that was never committed. This
+# file is a verbatim reconstruction from that image's intact buildkit layer history
+# (`docker history --no-trunc ab-emu:latest`), NOT a guess. Every RUN/ENV below is the
+# recorded command for a real layer, in recorded order. The base was confirmed by
+# comparing root filesystem layer digests:
+#
+#   ubuntu:22.04    -> sha256:8bba68e7621928237aa6d6e2c680cb9572c942ee23c2adabd22016bb67cb938d
+#   ab-emu:latest   -> sha256:8bba68e7621928237aa6d6e2c680cb9572c942ee23c2adabd22016bb67cb938d
+#
+# ---------------------------------------------------------------------------
+# NETWORK POLICY — read this before assuming a contradiction
+# ---------------------------------------------------------------------------
+# Building THIS IMAGE requires network access: it fetches Android cmdline-tools from
+# dl.google.com and then SDK packages via sdkmanager. That does not weaken any guarantee
+# made about the deliverable:
+#
+#   * The APK build (port/build_apk.sh) runs `docker run --network none` and is offline
+#     and bit-reproducible. It does not use this image.
+#   * Every RUN of this image is launched `--network none` (see port/validation/README.md),
+#     so the emulator and the app under test have no route off the host.
+#
+# Treat the build host as internet-reachable. Never add `-p`/`--publish`, never `--network host`.
+# The emulator opens console/adb ports 5554/5555; inside a `--network none` container those
+# live in an isolated netns with only a loopback and are unreachable from the host.
+#
+# ---------------------------------------------------------------------------
+# REPRODUCIBILITY LIMITATION — deliberate, do not paper over
+# ---------------------------------------------------------------------------
+# This image is NOT bit-reproducible, unlike the APK build. `sdkmanager "platform-tools"`
+# and `"emulator"` always resolve to the current release; there is no version pin syntax
+# for them, and Google revises system images in place under the same package name. A
+# rebuild months from now will differ. Only the cmdline-tools zip is pinned (by URL).
+#
+# The versions actually installed in the image that generated the committed evidence,
+# recorded here as the reference point for any future divergence:
+#
+#   cmdline-tools                               Pkg.Revision = 12.0
+#                                               (commandlinetools-linux-11076708_latest.zip)
+#   platform-tools                              Pkg.Revision = 37.0.0
+#     adb                                       1.0.41 / 37.0.0-14910828
+#   emulator                                    Pkg.Revision = 36.6.11
+#   system-images;android-25;default;x86_64     Pkg.Revision = 1
+#
+# The final RUN below writes the same manifest into the image at /IMAGE_VERSIONS so a
+# rebuilt image can be diffed against these numbers. That layer is an ADDITION to the
+# reconstructed history; everything above it is verbatim.
+
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV PATH=/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/emulator:/usr/bin:/bin
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openjdk-17-jdk-headless wget unzip ca-certificates socat \
+        libpulse0 libnss3 libxcomposite1 libxcursor1 libxi6 libxtst6 libxdamage1 \
+        libgl1 libglx-mesa0 libx11-6 libxcb1 libasound2 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p $ANDROID_SDK_ROOT/cmdline-tools && cd /tmp && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O ct.zip && \
+    unzip -q ct.zip -d $ANDROID_SDK_ROOT/cmdline-tools && \
+    mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest && rm ct.zip
+
+RUN yes | sdkmanager --licenses >/dev/null 2>&1 || true
+
+RUN sdkmanager "platform-tools" "emulator" "system-images;android-25;default;x86_64" >/dev/null 2>&1
+
+RUN echo no | avdmanager create avd -n abtest -k "system-images;android-25;default;x86_64" >/dev/null 2>&1
+
+# --- ADDITION (not in the original layer history): record resolved versions + fail loudly
+# --- if the AVD did not actually get created, which the original silenced with >/dev/null.
+RUN set -e; \
+    test -f "$HOME/.android/avd/abtest.avd/config.ini" || { echo "FATAL: AVD abtest was not created"; exit 1; }; \
+    { echo "# resolved at image build time"; \
+      echo -n "cmdline-tools  "; grep Pkg.Revision $ANDROID_SDK_ROOT/cmdline-tools/latest/source.properties; \
+      echo -n "platform-tools "; grep Pkg.Revision $ANDROID_SDK_ROOT/platform-tools/source.properties; \
+      echo -n "emulator       "; grep Pkg.Revision $ANDROID_SDK_ROOT/emulator/source.properties; \
+      echo -n "sysimg-25      "; grep Pkg.Revision $ANDROID_SDK_ROOT/system-images/android-25/default/x86_64/source.properties; \
+      echo -n "adb            "; adb --version | grep -m1 '^Version'; \
+    } > /IMAGE_VERSIONS; cat /IMAGE_VERSIONS
+
+CMD ["/bin/bash"]
