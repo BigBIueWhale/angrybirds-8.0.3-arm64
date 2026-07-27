@@ -141,7 +141,7 @@ source produced different APKs, which meant no PROOF could be tied to a specific
 causes are fixed (`port/build_apk_x86*.sh`); the proxies now rebuild byte-for-byte:
 
 ```
-f40c0598e79458bd5ae81acdbc3704a4bab5ab44a2c1d0ac66fc735ff6496eeb  x86shim.apk          (diagnostic)
+7f99c553dddc722c589ff7900800ee9fa27565a86145bee0f3e17f43bbe81090  x86shim.apk          (diagnostic)
 dda34e2cd3bb02af2dd34daaba28763333ff97f9fc55fed8c54e2aa5bb5a79a2  x86shim-release.apk  (shipping config)
 f622900aa7d10f2177c4cb7938049ea8689013427ae541c05d32edd64d19c4ae  x86shim-audio.apk    (audio variant)
 ```

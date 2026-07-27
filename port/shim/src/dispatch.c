@@ -338,10 +338,22 @@ static uint64_t h_log    (dispatch_t*d,mcur*c){ uint32_t pr=W(d,c); uint32_t tag
         s0=gm_rd32(M(d),sp); s1=gm_rd32(M(d),sp+4);
         uint8_t fb[12]; memset(fb,0,sizeof fb); M(d)->read(M(d),fb,fmt,sizeof fb);
         char hex[40]; for(int i=0;i<12;i++) snprintf(hex+i*3,4,"%02x ",fb[i]);
+        /* THE DECISIVE READ (OPEN_FINDINGS.md #1): dump the bytes AT the %s argument, then follow
+         * its first word and dump the bytes there. If the real text is one indirection away, the
+         * engine handed us the address of a string OBJECT rather than its character data; if the
+         * pointed-to memory is also not text, the buffer itself was filled with non-text and the
+         * problem is upstream of the log call. */
+        uint32_t arg = r[3];
+        uint8_t ab[16]; memset(ab,0,sizeof ab); M(d)->read(M(d),ab,arg,sizeof ab);
+        char ahex[52]; for(int i=0;i<16;i++) snprintf(ahex+i*3,4,"%02x ",ab[i]);
+        char aprint[17]; for(int i=0;i<16;i++) aprint[i]=(ab[i]>=0x20&&ab[i]<0x7f)?(char)ab[i]:'.'; aprint[16]=0;
+        uint32_t p1 = (uint32_t)ab[0]|((uint32_t)ab[1]<<8)|((uint32_t)ab[2]<<16)|((uint32_t)ab[3]<<24);
+        uint8_t db[24]; memset(db,0,sizeof db); M(d)->read(M(d),db,p1,sizeof db);
+        char dprint[25]; for(int i=0;i<24;i++) dprint[i]=(db[i]>=0x20&&db[i]<0x7f)?(char)db[i]:'.'; dprint[24]=0;
         static int (*rl2)(int,const char*,const char*,...)=0; static int t2=0;
         if(!t2){t2=1; rl2=(int(*)(int,const char*,const char*,...))dlsym(RTLD_DEFAULT,"__android_log_print");}
-        if(rl2) rl2(6,"abshim","[logdiag] r0=%08x r1=%08x r2=%08x r3=%08x sp=%08x [sp]=%08x [sp+4]=%08x fmt=%08x fmtbytes=%s tag='%s'",
-                    r[0],r[1],r[2],r[3],sp,s0,s1,fmt,hex,tg);
+        if(rl2) rl2(6,"abshim","[logdiag] tag='%s' fmt=%08x fmtb=%s | arg=%08x argb=%s argtxt='%s' | deref=%08x dereftxt='%s'",
+                    tg,fmt,hex,arg,ahex,aprint,p1,dprint);
       } }
 #endif
     static int (*rl)(int,const char*,const char*,...)=0; static int tried=0;
