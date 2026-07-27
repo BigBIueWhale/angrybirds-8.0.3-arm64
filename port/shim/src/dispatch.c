@@ -141,14 +141,22 @@ static inline void heap_ck(dispatch_t*d){ (void)d; }
 #ifndef ABSHIM_RELEASE
 static int  g_pin_done = 0;
 static const char *g_pin_prev = "(none yet)";
+static uint32_t g_pin_prev_lr = 0;      /* guest LR at the last CLEAN allocator call */
 static void heap_pin(dispatch_t*d, const char *when, const char *op){
     if (g_pin_done) return;
     uint32_t badchunk = 0;
     int rc = galloc_check_where(d->cpu->heap, &badchunk);
-    if (!rc){ if (when[0]=='a') g_pin_prev = op; return; }   /* remember last clean op */
+    uint32_t lr = 0; uc_reg_read(d->cpu->uc, UC_ARM_REG_LR, &lr);
+    if (!rc){ if (when[0]=='a'){ g_pin_prev = op; g_pin_prev_lr = lr; } return; }  /* remember last clean op */
     g_pin_done = 1;
     dbg_log("[HEAP-PINPOINT] FIRST failure rc=%d detected %s %s() — last clean point was after %s() — chunk=0x%08x",
             rc, when, op, g_pin_prev, badchunk);
+    /* The guest code that did it ran between these two return addresses. Both are engine-relative,
+     * so they can be looked up directly in reports/eng.dis. This costs one register read per
+     * allocator call — vastly cheaper than a memory watchpoint, and it brackets the culprit to the
+     * span of guest code executed between two consecutive allocator entries. */
+    dbg_log("[HEAP-PINPOINT] GUEST WINDOW: from engine+0x%x (return of the last clean %s) to engine+0x%x (caller of the failing %s) — the write happened in this span",
+            RGE(g_pin_prev_lr), g_pin_prev, RGE(lr), op);
     if (when[0]=='a')
         dbg_log("[HEAP-PINPOINT] VERDICT: %s() ITSELF broke the invariant (heap was clean on entry) -> the bug is INSIDE galloc", op);
     else
