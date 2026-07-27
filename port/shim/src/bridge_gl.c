@@ -22,12 +22,27 @@ static void *glsym(const char *n){
     return p;
 }
 #define W  marshal_pull_word(&c->mem, cur)
-static void RD(cpu_t*c,uint32_t g,void*h,uint32_t n){ if(n) uc_mem_read(c->uc,g,h,n); }
+/* Zero-fill on a failed guest read rather than leaving the caller's buffer holding stack
+ * residue - same contract as cpu.c's m_read. Every IN-parameter copy in this file uses RD. */
+static void RD(cpu_t*c,uint32_t g,void*h,uint32_t n){ if(n && uc_mem_read(c->uc,g,h,n)!=UC_ERR_OK) memset(h,0,n); }
 static void WR(cpu_t*c,uint32_t g,const void*h,uint32_t n){ if(n) uc_mem_write(c->uc,g,h,n); }
 
 /* growable host scratch for IN/OUT pixel/buffer copies */
 static uint8_t *g_tmp; static size_t g_tmpsz;
-static uint8_t *tmp(size_t n){ if(n>g_tmpsz){ g_tmpsz=n<4096?4096:n; g_tmp=realloc(g_tmp,g_tmpsz);} return g_tmp; }
+/* On realloc FAILURE the old code assigned NULL straight into g_tmp while g_tmpsz had already been
+ * bumped to the requested size. That leaked the old block, and every later call - including small
+ * ones the surviving buffer could have served - saw n <= g_tmpsz and returned the NULL. Keep the
+ * old buffer and its true size on failure, and return NULL for THIS request only. Returning the
+ * old (smaller) buffer would be worse than NULL: the caller would write n bytes into it. */
+static uint8_t *tmp(size_t n){
+    if(n>g_tmpsz){
+        size_t want = n<4096?4096:n;
+        uint8_t *p = realloc(g_tmp, want);
+        if(!p) return NULL;
+        g_tmp = p; g_tmpsz = want;
+    }
+    return g_tmp;
+}
 
 static float f_of(uint32_t b){ float f; memcpy(&f,&b,4); return f; }
 static uint32_t bpp(uint32_t fmt,uint32_t type){
@@ -212,10 +227,29 @@ DEF(h_glUniformMatrix4fv){ REAL(void,(int,int,uint8_t,const float*),"glUniformMa
     int loc=(int)W,cnt=(int)W; uint8_t tr=(uint8_t)W; uint32_t v=W; uint32_t n=(uint32_t)cnt*16*4; float*h=(float*)tmp(n); RD(c,v,h,n); f(loc,cnt,tr,h); return 0; }
 DEF(h_glShaderSource){ REAL(void,(uint32_t,int,const char*const*,const int*),"glShaderSource");
     uint32_t sh=W; int cnt=(int)W; uint32_t strp=W,lenp=W;
-    char**hs=calloc(cnt,sizeof(char*)); int*hl=lenp?calloc(cnt,sizeof(int)):0;
-    for(int i=0;i<cnt;i++){ uint32_t sp; uc_mem_read(c->uc,strp+i*4,&sp,4); int L; if(lenp){ uc_mem_read(c->uc,lenp+i*4,&L,4);} else L=-1;
-        uint32_t sl = L>=0? (uint32_t)L : 0; if(L<0){ for(;;sl++){uint8_t ch;uc_mem_read(c->uc,sp+sl,&ch,1);if(!ch)break;} }
-        hs[i]=malloc(sl+1); uc_mem_read(c->uc,sp,hs[i],sl); hs[i][sl]=0; if(hl)hl[i]=(int)sl; }
+    /* cnt and every length come from the guest. A negative or absurd cnt made calloc fail (or be
+     * called with a wrapped size), and the NULL was then indexed. Bound it: real shader sources are
+     * a handful of strings of a few KB. */
+    #define GL_SRC_MAXCNT 4096u
+    #define GL_SRC_MAXLEN (1u<<20)
+    if(cnt<=0 || (unsigned)cnt>GL_SRC_MAXCNT) return 0;
+    char**hs=calloc((size_t)cnt,sizeof(char*)); int*hl=lenp?calloc((size_t)cnt,sizeof(int)):0;
+    if(!hs){ free(hl); return 0; }
+    for(int i=0;i<cnt;i++){ uint32_t sp=0; RD(c,strp+(uint32_t)i*4,&sp,4); int L=-1; if(lenp){ RD(c,lenp+(uint32_t)i*4,&L,4);}
+        uint32_t sl = L>=0? (uint32_t)L : 0;
+        if(L<0){
+            /* NUL-scan, now BOUNDED and error-checked. uc_mem_read's result was ignored here, so on
+             * an unmapped page `ch` was uninitialized: the scan could run far past the string and
+             * sl could keep growing (and wrap), after which malloc(sl+1) wrapped to 0 and the
+             * hs[i][sl] terminator became a wild write. */
+            for(; sl<GL_SRC_MAXLEN; sl++){ uint8_t ch=0; if(uc_mem_read(c->uc,sp+sl,&ch,1)!=UC_ERR_OK || !ch) break; }
+        }
+        if(sl>GL_SRC_MAXLEN) sl=GL_SRC_MAXLEN;
+        hs[i]=malloc((size_t)sl+1);
+        /* Bail out entirely rather than hand the driver a NULL entry - whether a GL implementation
+         * tolerates that is not something to assume. The shader simply is not sourced. */
+        if(!hs[i]){ for(int j=0;j<i;j++) free(hs[j]); free(hs); free(hl); return 0; }
+        RD(c,sp,hs[i],sl); hs[i][sl]=0; if(hl)hl[i]=(int)sl; }
     f(sh,cnt,(const char*const*)hs,hl);
     for(int i=0;i<cnt;i++) free(hs[i]);
     free(hs); free(hl); return 0; }

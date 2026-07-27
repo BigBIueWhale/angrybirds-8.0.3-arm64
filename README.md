@@ -19,7 +19,7 @@ Full scope note under [What's verified](#whats-verified).
 </p>
 <p align="center"><em>Left: a level won under the shim on Android 14 (the A56's OS regime). Right: it advances into the next level.<br>
 Both from the x86_64 proxy build — see the scope note above. The left image is PROOF_15, produced by a committed script on a
-bit‑reproducible binary (<code>0c3599e6…</code>), so it can be regenerated rather than taken on trust.</em></p>
+bit‑reproducible binary (<code>612fabae…</code>), so it can be regenerated rather than taken on trust.</em></p>
 
 ---
 

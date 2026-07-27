@@ -27,6 +27,10 @@
 #include <android/log.h>
 
 #define LOG(...)  __android_log_print(4,"abshim",__VA_ARGS__)
+/* Upper bound on a single guest-driven JNI array/string transfer. Every legitimate call in this
+ * game is orders of magnitude below this; the cap exists so a wild guest length cannot become a
+ * host allocation size or a copy length. */
+#define ABSHIM_JNI_ARR_MAX (64ull<<20)
 #define LOGE(...) __android_log_print(6,"abshim",__VA_ARGS__)
 /* --- hang watchdog state (defined here so env_dispatch_real/shim_call below can record ops) --- */
 volatile unsigned long g_op_seq = 0;              /* bumped by every bridge + JNI dispatch (dispatch.c externs it) */
@@ -327,7 +331,14 @@ static void env_dispatch_real(jni_state*J, uint32_t slot){
     /* Get<T>ArrayRegion (199..206) / Set<T>ArrayRegion (207..214) via a host temp buffer */
     if (slot>=199 && slot<=214){ int isset=slot>=207; int ty=(int)slot-(isset?207:199);
         uint32_t ar=PW,start=PW,len=PW,buf=PW; jarray ja=(jarray)real_of(ar);
-        uint32_t bytes=(uint32_t)len*jarr_esz(ty); void*tmp=bytes?malloc(bytes):NULL;
+        /* `len` here comes from the GUEST (unlike the Get<T>ArrayElements path, whose length comes
+         * from GetArrayLength). len*esz was computed in 32 bits and could WRAP: with len=0x40000001
+         * and esz=4 the product is 4, malloc(4) succeeds, and jarr_get_region is then asked to move
+         * 0x40000001 elements through that 4-byte buffer. Compute in 64 bits and reject anything
+         * far larger than any real call in this game makes. */
+        uint64_t bytes64=(uint64_t)len*(uint64_t)jarr_esz(ty);
+        if(bytes64>ABSHIM_JNI_ARR_MAX) return;
+        uint32_t bytes=(uint32_t)bytes64; void*tmp=bytes?malloc(bytes):NULL;
         if(tmp){ if(isset){ uc_mem_read(c->uc,buf,tmp,bytes); jarr_set_region(e,ty,ja,(jsize)start,(jsize)len,tmp); }
                  else { jarr_get_region(e,ty,ja,(jsize)start,(jsize)len,tmp); uc_mem_write(c->uc,buf,tmp,bytes); } free(tmp); }
         return; }
@@ -405,7 +416,10 @@ static void env_dispatch_real(jni_state*J, uint32_t slot){
     case 226:{ uint32_t o=PW; set_r0(tok((*e)->NewWeakGlobalRef(e,real_of(o)),HK_WEAK)); } break;
     case 227:{ uint32_t o=PW; (*e)->DeleteWeakGlobalRef(e,(jweak)real_of(o)); ht_delete_ref(HT(),o); } break;
     case 232:{ uint32_t o=PW; set_r0((uint32_t)(*e)->GetObjectRefType(e,real_of(o))); } break;
-    case 163:{ uint32_t p=PW,len=PW; jchar*t=(jchar*)malloc((len?len:1)*2); if(t) uc_mem_read(c->uc,p,t,len*2);
+    /* NewString: len*2 was computed in 32 bits and could wrap (len=0x80000000 -> 0); jsize is also
+     * signed, so a huge len reaches the JVM negative. Bound it like the array regions. */
+    case 163:{ uint32_t p=PW,len=PW; if((uint64_t)len*2ull>ABSHIM_JNI_ARR_MAX){ set_r0(tok(NULL,HK_LOCAL)); break; }
+               jchar*t=(jchar*)malloc(((size_t)(len?len:1))*2); if(t) uc_mem_read(c->uc,p,t,(size_t)len*2);
                jstring s=t?(*e)->NewString(e,t,(jsize)len):(*e)->NewString(e,NULL,0); free(t); set_r0(tok(s,HK_LOCAL)); } break;
     case 165:{ uint32_t st=PW; (void)PW; jstring js=(jstring)real_of(st); jsize len=(*e)->GetStringLength(e,js);
                const jchar*u=(*e)->GetStringChars(e,js,0); uint32_t g=galloc_malloc(c->heap,(uint32_t)(len+1)*2);

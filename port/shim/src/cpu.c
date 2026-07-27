@@ -75,8 +75,36 @@ int cpu_hw_find(uint32_t w,uint32_t*a,uint32_t*v,uint32_t*p,uint32_t*l){(void)w;
 unsigned long cpu_hw_count(void){ return 0; }
 #endif
 
-static void     m_read (guest_mem *m, void *d, uint32_t a, uint32_t n){ uc_mem_read ((uc_engine*)m->ctx, a, d, n); }
-static void     m_write(guest_mem *m, uint32_t a, const void *s, uint32_t n){ uc_mem_write((uc_engine*)m->ctx, a, (void*)s, n); }
+/* uc_mem_read/uc_mem_write CAN fail — an unmapped or out-of-range guest address returns
+ * UC_ERR_READ_UNMAPPED etc. Both return values were ignored. On a failed READ that left the host
+ * destination holding whatever was already on the stack, and the caller then used that garbage as
+ * if it were guest data: nondeterministic, and completely invisible. Every marshalled argument,
+ * every gm_rd32, every gstr byte goes through here.
+ *
+ * Zero-fill on failure instead. Zero is deterministic and usually takes a clean path (a NULL
+ * pointer, an empty string, a zero length) rather than steering on stack residue. Failures are
+ * counted and the first few logged, so a real occurrence shows up in `logcat -s abshim` instead of
+ * silently changing a decision. Cost on the success path is one comparison. */
+unsigned long g_gm_rfail = 0, g_gm_wfail = 0;
+static void     m_read (guest_mem *m, void *d, uint32_t a, uint32_t n){
+    if (uc_mem_read((uc_engine*)m->ctx, a, d, n) != UC_ERR_OK){
+        memset(d, 0, n);
+        /* first 16 in detail, then every 256th: enough to see the magnitude without flooding the
+         * log. MEASURED on a full API-34 playthrough: exactly 12, all a=e2dca500 n=1 - an unmapped
+         * address (between RG_RET and RG_KUSER) read a byte at a time, i.e. a string scan off a
+         * garbage pointer, on the JNI path that returns android.net.Network. That call is
+         * neutralised by the de-phone-home work, so the engine walks a pointer it never set. */
+        if (g_gm_rfail++ < 16 || (g_gm_rfail & 0xFF) == 0)
+            clog("[gm] read FAIL a=%08x n=%u -> zero-filled (#%lu)", a, n, g_gm_rfail);
+    }
+}
+static void     m_write(guest_mem *m, uint32_t a, const void *s, uint32_t n){
+    if (uc_mem_write((uc_engine*)m->ctx, a, (void*)s, n) != UC_ERR_OK){
+        if (g_gm_wfail++ < 16) clog("[gm] write FAIL a=%08x n=%u -> dropped (#%lu)", a, n, g_gm_wfail);
+    }
+}
+unsigned long cpu_gm_read_fails(void){ return g_gm_rfail; }
+unsigned long cpu_gm_write_fails(void){ return g_gm_wfail; }
 static uint32_t m_rg   (guest_mem *m, int i){ uint32_t v=0; uc_reg_read ((uc_engine*)m->ctx, reg_id(i), &v); return v; }
 static void     m_sg   (guest_mem *m, int i, uint32_t v){ uc_reg_write((uc_engine*)m->ctx, reg_id(i), &v); }
 
