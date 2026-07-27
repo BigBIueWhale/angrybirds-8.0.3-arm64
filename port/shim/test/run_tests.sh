@@ -14,6 +14,32 @@ OUT="/tmp/abshim-tests"; mkdir -p "$OUT"
 # real engine binary for the loader test (classification is checked against it)
 export ABSHIM_ENGINE_SO="$(cd "$HERE/../../.." && pwd)/work803/libv7/libAngryBirdsClassic.so"
 
+# Neither the raw input APK nor the extracted engine is tracked in git (only the xz-compressed
+# APK is), so on a FRESH CLONE this file did not exist and the suite died late, inside
+# coverage_check.py, with a raw Python traceback about readelf exiting 1 — giving no hint that the
+# real problem was a missing input. Prepare it here, using only what this image has: xz is present,
+# unzip is NOT, so the APK member is extracted with python3's zipfile.
+if [ ! -f "$ABSHIM_ENGINE_SO" ]; then
+  REPO="$(cd "$HERE/../../.." && pwd)"
+  APK="$REPO/apks/com.rovio.angrybirds@8.0.3.apk"
+  echo "== preparing test input: engine not extracted yet =="
+  if [ ! -f "$APK" ] && [ -f "$APK.xz" ]; then
+    command -v xz >/dev/null 2>&1 || { echo "FATAL: need xz to decompress $APK.xz"; exit 1; }
+    xz -dk "$APK.xz"
+  fi
+  [ -f "$APK" ] || { echo "FATAL: no input APK at $APK (nor .xz) — cannot run the suite"; exit 1; }
+  mkdir -p "$(dirname "$ABSHIM_ENGINE_SO")"
+  python3 - "$APK" "$ABSHIM_ENGINE_SO" <<'PYEOF'
+import sys, zipfile, shutil
+apk, dest = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(apk) as z, open(dest, "wb") as out:
+    with z.open("lib/armeabi-v7a/libAngryBirdsClassic.so") as src:
+        shutil.copyfileobj(src, out)
+PYEOF
+  [ -s "$ABSHIM_ENGINE_SO" ] || { echo "FATAL: engine extraction produced nothing"; exit 1; }
+  echo "   extracted $(stat -c%s "$ABSHIM_ENGINE_SO") bytes"
+fi
+
 # test name -> source files (space-separated, relative to test/ or src/)
 run() {  # $1=name  $2...=extra srcs
   local name="$1"; shift
