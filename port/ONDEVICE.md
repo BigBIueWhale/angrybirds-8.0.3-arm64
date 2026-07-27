@@ -136,7 +136,7 @@ just on its own silicon.
 
 | Symptom in logcat | Diagnosis | Action |
 |---|---|---|
-| **No `abshim` lines at all** | The `.so` didn't load: wrong ABI, or ART didn't pick `libAngryBirdsClassic.so`. | Confirm arm64 (`adb shell getprop ro.product.cpu.abi` → `arm64-v8a`) and that it installed (`adb shell pm path com.rovio.angrybirds`). |
+| **No `abshim` lines at all** | The `.so` never loaded, so the shim never ran. **`-s abshim` hides the reason** — the failure is reported by ART under `AndroidRuntime`, not by us. | Re-run WITHOUT the tag filter and look for the load error: `adb logcat -c && adb logcat AndroidRuntime:E ReconfigureLinker:E '*:S'` then launch. See the note directly below this table. |
 | `open ... libengine32.so failed` / `mmap engine failed` | The 32-bit engine payload is missing next to the shim. | Re-run `build_apk.sh`; `unzip -l out/…apk \| grep libengine32`. |
 | `cpu_create failed` / `loader_load failed` | Unicorn init or ELF relocation failed on-device. | Capture the line — this would be a host/arm64 divergence; send it. |
 | `init_array INCOMPLETE (N/125) last_unimpl='X'` | A C++ static ctor faulted needing unbridged symbol `X`. | Host + qemu-user both run 125/125, so this implies a device-only import; bridge `X` (coverage_check enforces 0). |
@@ -146,6 +146,32 @@ just on its own silicon.
 | **`render[N] GL draws=0`** repeating | Booted but no scene loaded. | `build_apk.sh` injects `assets/data/script_paths.json` so this should NOT happen; if it does, enable the asset trace to see the missing file. |
 | Runs but **very slow / stutters** | Steady-state double-work (Unicorn ARM32 emulation). | Warms up after first-frame JIT (≈350 Minsn/s on x86; the A56's cores are the real test). Note any action that specifically stutters. |
 | **Loses save progress** between launches | File write path / data dir. | Saves go via real `fopen`/`fwrite` to the app private dir; `adb shell run-as com.rovio.angrybirds ls files/`. Note: a *rebuilt* APK signed with a different key can't update-install over an old one — `port/debug.ks` is fixed so rebuilds keep the same signer. |
+
+### If you get NO `abshim` output at all
+
+This is the one failure the `-s abshim` filter cannot show you, because the shim never got far
+enough to log anything. Capture the unfiltered error instead:
+
+```bash
+adb logcat -c
+adb logcat AndroidRuntime:E ReconfigureLinker:E '*:S' > loadfail.txt   # then launch the app
+```
+
+What to look for, and what it means:
+
+- `UnsatisfiedLinkError: dlopen failed: cannot locate symbol "<name>"` — the shim references a
+  libc/libm symbol this device's bionic does not export from the library we linked. This is a real
+  class of bug, not hypothetical: the shim was once missing `-lm`, which would have failed here on
+  `sin`. Send the symbol name.
+- `dlopen failed: ... is 32-bit instead of 64-bit` / `has unexpected e_machine` — the wrong ABI got
+  installed. Confirm `adb shell getprop ro.product.cpu.abi` is `arm64-v8a` and that the APK contains
+  only `lib/arm64-v8a/` (`unzip -l out/angrybirds-8.0.3-arm64.apk | grep lib/`).
+- `dlopen failed: ... not 16 KB aligned` (or a segment-alignment complaint) — would mean the 16 KB
+  page alignment regressed; `port/validation/verify_claims.sh` checks exactly this before shipping.
+- `java.lang.UnsatisfiedLinkError: No implementation found for ...` — the library loaded but a JNI
+  entry point is missing; capture the method name.
+- Nothing at all, and `adb shell pm path com.rovio.angrybirds` prints nothing — the install did not
+  actually take. See the refused-install table above.
 
 ## The engine's OWN logs also reach logcat
 
