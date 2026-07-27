@@ -19,6 +19,7 @@
 set +e
 cd "$(dirname "$0")/../.." || exit 1
 APK=out/angrybirds-8.0.3-arm64.apk
+AUDIO=out/angrybirds-8.0.3-arm64-audio.apk
 ORIG=apks/com.rovio.angrybirds@8.0.3.apk
 FAIL=0
 ok(){ printf "  [ OK ] %s\n" "$1"; }
@@ -93,6 +94,36 @@ for k in firebase_messaging_auto_init_enabled com.facebook.sdk.AutoLogAppEventsE
   unzip -p "$APK" AndroidManifest.xml 2>/dev/null | strings | grep -q "$k" \
     && ok "$k present" || bad "$k MISSING"
 done
+
+echo "== CLAIM: de-phone-home layer 2 — the shim hard-fails the network for the guest =="
+strings -a "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" | grep -q "hard-fail (de-phone-home)" \
+  && ok "hard-fail bridge present in the shipped shim" || bad "de-phone-home bridge marker MISSING"
+# Stronger than the bridges returning -1: the shim must not even IMPORT socket syscalls, so there
+# is no socket capability in the binary for anything to reach.
+NETIMP=0
+for sym in socket connect sendto recvfrom getaddrinfo gethostbyname; do
+  c=$(readelf -sW --dyn-syms "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" 2>/dev/null \
+      | awk -v s="$sym" '$8==s && $7=="UND"{n++} END{print n+0}')
+  [ "$c" != "0" ] && { bad "shim IMPORTS host $sym (x$c) — it could open a real socket"; NETIMP=1; }
+done
+[ "$NETIMP" = "0" ] && ok "shim imports NO host socket symbols (no socket capability at all)"
+
+echo "== CLAIM: the audio variant is the same build with only the mixer enabled =="
+if [ -f "$AUDIO" ]; then
+  unzip -o -q "$AUDIO" -d "$T/a" 'lib/arm64-v8a/*' 'classes.dex' 2>/dev/null
+  for f in libengine32.so libjs32.so libadcolony32.so; do
+    x=$(sha256sum "$T/n/lib/arm64-v8a/$f" 2>/dev/null | cut -d" " -f1)
+    y=$(sha256sum "$T/a/lib/arm64-v8a/$f" 2>/dev/null | cut -d" " -f1)
+    [ -n "$x" ] && [ "$x" = "$y" ] && ok "audio variant: $f identical to the silent build" \
+                                   || bad "audio variant: $f DIFFERS from the silent build"
+  done
+  ad="$T/a/lib/arm64-v8a/libAngryBirdsClassic.so"
+  readelf -d "$ad" 2>/dev/null | grep -q libm.so && ok "audio variant: libm in DT_NEEDED" || bad "audio variant: libm MISSING"
+  n=$(strings -a "$ad" | grep -cE "GALLOC-CORRUPT|GALLOC-STATS|HEAP-PINPOINT|ABSHIM_ALLOC_TRACE")
+  [ "$n" = "0" ] && ok "audio variant: no diagnostic strings" || bad "audio variant: $n diagnostic string(s) leaked"
+else
+  echo "  [skip] $AUDIO not built"
+fi
 
 echo
 [ "$FAIL" = "0" ] && echo "ALL CHECKED CLAIMS HOLD" || echo "SOME CLAIMS ARE FALSE — fix the artifact or the docs"
