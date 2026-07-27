@@ -63,6 +63,24 @@ adb logcat -c && adb logcat -s abshim                  # clear, then watch ONLY 
 # launch the app from the launcher; watch the boot sequence stream
 ```
 
+### If the install itself is refused
+
+None of these are shim problems — they are Samsung/Android install policy, and each has a
+distinct message. Check here before reading any `abshim` output, because a refused install
+produces no shim log at all:
+
+| Message | Cause | Fix |
+|---|---|---|
+| Install blocked with no adb error, or the Files‑app install is greyed out | **Auto Blocker** is on by default in One UI 7/8 and blocks sideloading outright | Settings → Security and privacy → Auto Blocker → off (re‑enable it afterwards if you like) |
+| `INSTALL_FAILED_VERIFICATION_FAILURE` | Play Protect scanning the sideload | Play Store → Play Protect → turn off "Scan apps" for the install, or accept the "install anyway" prompt |
+| `INSTALL_FAILED_DEPRECATED_SDK_VERSION` | Android's minimum-installable targetSdk floor | This APK targets SDK 26 and Android 16's floor is 24, so it should not appear. If it does, `adb install -r --bypass-low-target-sdk-block <apk>` |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | A previous install signed with a different key | `adb uninstall com.rovio.angrybirds` first. Rebuilds keep the same signer (`port/debug.ks`), so this only happens across a genuinely different build |
+| `INSTALL_FAILED_NO_MATCHING_ABIS` | The device rejected the native libs | Confirm `adb shell getprop ro.product.cpu.abi` → `arm64-v8a`. This APK ships **only** `lib/arm64-v8a/` |
+
+`adb install` needs USB debugging enabled (Settings → Developer options) and the RSA prompt
+accepted on the phone. Use **USB**, not `adb tcpip` — see the network note in
+`port/validation/README.md` for why.
+
 Everything the shim does is logged under the tag **`abshim`**. Capture the whole run
 (`adb logcat -s abshim > boot.txt`) and read from the top — the LAST line before a stall or crash
 is the failure point.
