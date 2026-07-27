@@ -4,16 +4,22 @@
 cannot execute the game's 32‑bit ARM code — with every phone‑home and network access removed — via a
 fully reproducible, offline Docker pipeline.**
 
-The game plays and wins levels. It is validated end‑to‑end (boot → slingshot physics → level‑complete
-→ next level) on two Android generations. The APK is authentic (the game code is byte‑for‑byte
-Rovio's original 8.0.3), signed for sideload, and installs on modern Android including 16 KB‑page
-devices.
+The game plays and wins levels — boot → slingshot physics → level‑complete → next level, on two
+Android generations. The APK is authentic (the game code is byte‑for‑byte Rovio's original 8.0.3),
+signed for sideload, and installs on modern Android including 16 KB‑page devices.
+
+**Read this before believing the screenshots:** that gameplay was validated with the *same shim
+source compiled for x86_64*, in x86_64 Android emulators. **The arm64 APK has not yet been run on
+hardware** — an arm64 AVD is impossible on an x86_64 build host, so only the phone can settle it.
+Full scope note under [What's verified](#whats-verified).
 
 <p align="center">
-  <img src="reports/shots/PROOF_8_modern_android_win.png" width="49%" alt="LEVEL CLEARED on Android 14 (API 34)">
+  <img src="reports/shots/PROOF_15_win_on_reproducible_proxy.png" width="49%" alt="LEVEL CLEARED on Android 14 (API 34)">
   <img src="reports/shots/PROOF_9_modern_android_level2.png" width="49%" alt="advancing into level 2">
 </p>
-<p align="center"><em>Left: a level won under the shim on Android 14 (the A56's OS regime). Right: it advances into the next level.</em></p>
+<p align="center"><em>Left: a level won under the shim on Android 14 (the A56's OS regime). Right: it advances into the next level.<br>
+Both from the x86_64 proxy build — see the scope note above. The left image is PROOF_15, produced by a committed script on a
+bit‑reproducible binary (<code>7b08cb79…</code>), so it can be regenerated rather than taken on trust.</em></p>
 
 ---
 
