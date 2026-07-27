@@ -116,16 +116,25 @@ update-installs straight back over the audio build with no save-data loss.
 ```
 abshim: engine 11248680 bytes from /data/app/.../lib/arm64/libengine32.so
 abshim: init_array 125/125 (unimpl=0 last='')
-abshim: guest JNI_OnLoad -> 0x10006 (OK)
+abshim: guest JNI_OnLoad -> 0x10006
 abshim: abshim ready (host pagesize=4096)
-abshim: call[1] nativeInit (VII) @0x401de5ec
-abshim: call[2] nativeResize (ZII) @0x...
-abshim: call[3] nativeUpdate (Z) @0x...        ← game loop is turning
-abshim: render[1] GL draws=1274 clears=61 ...  ← geometry IS being submitted
-abshim: frame[601] ...                          ← the tutorial card is up; tap to advance
-abshim: [empty-json-guard] ... / [s-construct-null-guard] ...   ← level-end guards firing (normal)
-abshim: frame[1201] GL draws=28168 ...          ← level cleared / next level rendering
+abshim: call[1] Java_com_rovio_fusion_HockeyAppWrapper_setUpBreakpad (VL)
+abshim: call[2] Java_com_rovio_fusion_NativeApplication_nativeConfig (VL)
+abshim: call[3] Java_com_rovio_fusion_NativeApplication_nativeGetPossibleOrientations (I)
+abshim: frame[1] GL draws=3 (+3 since last) clears=1 useProgram=3      ← first frame submitted
+abshim: frame[301] GL draws=4398 (+4395 since last) clears=301 ...
+abshim: frame[601] GL draws=14286 (+9888 since last) clears=601 ...    ← tutorial card up; tap to play
+abshim: [empty-json-guard] ... / [s-construct-null-guard] ...          ← level-end guards firing (normal)
+abshim: frame[1501] GL draws=... (+...) clears=...                     ← level cleared / next level
 ```
+
+These are copied from a real run log (`reports/shots/progressR_abshim.txt`), not written from
+memory. An earlier version of this block showed `call[1] nativeInit (VII) @0x401de5ec` and a
+separate `render[N] GL draws=` line — neither of which the shim emits. The `call[N]` entries carry
+the **full `Java_…` symbol** of each JNI entry point (the first few are Rovio's own init calls,
+not `nativeInit`), and the draw counters live **on the `frame[N]` lines**, not on a separate
+`render[N]` line. If you were grepping for the old strings you would find nothing and reasonably
+conclude the shim had stalled.
 
 `frame[N]`/`render[N]` climbing = the engine is rendering. Reaching `frame[601]+` with the
 tutorial card = **it booted and is interactive** — tap the screen and play. On the x86 proxy this
