@@ -63,18 +63,29 @@ targets SDK 26 on purpose — see below); tap through it and play.
 
 ## What's verified
 
-Everything reachable without the physical phone has been verified against the **actual shipped bytes**:
+Everything reachable without the physical phone has been verified against the **actual shipped bytes**.
+
+> **Scope of the gameplay evidence.** Every play‑validation below was produced by the *same shim
+> source compiled for x86_64*, running in x86_64 Android emulators — the run logs all show the
+> engine loading from `lib/x86_64/libengine32.so`. **The arm64 APK itself has never been executed
+> on hardware**; it is built, signed, aligned and statically audited. An arm64 AVD is impossible on
+> an x86_64 host (the emulator refuses: *"Avd's CPU Architecture 'arm64' is not supported by the
+> QEMU2 emulator on x86_64 host"*), so an end‑to‑end arm64 run genuinely requires the device.
+> Unicorn runs the ARM32 guest faithfully on both hosts — 125/125 C++ constructors execute clean
+> on each, and 7792 of 7793 guest allocations match byte‑for‑byte — but that is *"both hosts
+> work"*, not *"both hosts reach identical state"*. See `port/validation/README.md`.
 
 | | Status |
 |---|---|
-| **Plays & wins** | boots → auto‑loads the tutorial → slingshot drag launches the bird on a correct Box2D arc → collapses the pig structure → scores → **"LEVEL CLEARED"** → advances into the next level. Screenshot‑proven (`reports/shots/PROOF_*.png`). |
-| **Two Android generations** | full playthrough + win on **Android 7.1 (API 25)** *and* **Android 14 (API 34)** — the same W^X + install‑policy regime as the A56's Android 16. Multi‑level progression and save persistence validated. |
+| **Plays & wins** *(x86 proxy)* | boots → auto‑loads the tutorial → slingshot drag launches the bird on a correct Box2D arc → collapses the pig structure → scores → **"LEVEL CLEARED"** → advances into the next level. Screenshot‑proven (`reports/shots/PROOF_*.png`). |
+| **Two Android generations** *(x86 emulators)* | full playthrough + win on **Android 7.1 (API 25)** *and* **Android 14 (API 34)** — the same W^X + install‑policy regime as the A56's Android 16. Multi‑level progression and save persistence validated. |
 | **Authentic** | the bundled engine, `libjs`, `libadcolony`, and `classes.dex` are **byte‑for‑byte identical** to the original 8.0.3 APK (SHA‑256 checked). The game code is unmodified — only the manifest is de‑permissioned and the native lib is the shim wrapping the untouched engine. |
 | **Installs on modern Android** | targetSdk 26 → installs with plain `pm install`; Unicorn's JIT executes all 125 C++ constructors under **W^X** (targetSdk < 29 keeps writable+executable memory permitted); links **`libm`** (modern bionic needs it explicitly); ELF LOAD segments are **16 KB‑page aligned** so it `dlopen`s on 16 KB‑page devices as well as 4 KB. |
-| **No phone‑home** | four independent layers (below); **zero egress** confirmed empirically. |
+| **No phone‑home** | four independent layers (below). The app has no INTERNET permission and the shipped shim **imports no socket symbols at all** (`socket`/`connect`/`sendto`/`recvfrom`/`getaddrinfo` are absent from its dynamic symbols), so there is no socket capability in the binary to reach. Note the emulator runs are `--network none`, so they demonstrate the *mechanisms*, not observed-and-blocked traffic. |
 | **Reproducible** | bit‑for‑bit identical rebuilds; the toolchain is version‑pinned and the full image→APK rebuild reproduces the exact deliverable (proven). |
 
-The **one** thing only the physical A56 can settle: real‑time frame‑rate and the real Mali/Xclipse
+What only the physical A56 can settle: **that the arm64 build runs at all** (see the scope note
+above), plus real‑time frame‑rate and the real Mali/Xclipse
 GPU's shader‑compile path (the validation emulators use software SwiftShader). `port/ONDEVICE.md`
 maps every `abshim` log line to a diagnosis so one `adb logcat` pinpoints anything device‑specific.
 
@@ -159,10 +170,12 @@ First official release of the arm64 port of Angry Birds Classic 8.0.3 for AArch6
 **Highlights**
 - Original 32‑bit engine runs unmodified inside an ARM32→ARM64 Unicorn shim, loaded natively by ART.
 - **Plays and wins** — full slingshot/Box2D physics, level‑complete, and multi‑level progression,
-  screenshot‑proven on Android 7.1 (API 25) and Android 14 (API 34).
+  screenshot‑proven on Android 7.1 (API 25) and Android 14 (API 34) — **on the x86_64 proxy
+  build**; the arm64 APK has not yet been run on hardware.
 - **Installs on modern Android**, including **16 KB‑page devices** (16 KB‑aligned ELF), with `libm`
   linked and Unicorn's JIT running under W^X (targetSdk 26).
-- **Airtight de‑phone‑home** — four independent layers; zero network egress verified.
+- **De‑phone‑home** — four independent layers; no INTERNET permission, and the shim imports no
+  socket symbols at all. Verified against the shipped bytes by `port/validation/verify_claims.sh`.
 - **Authentic** — game code byte‑for‑byte identical to Rovio's original 8.0.3.
 - **Reproducible** — bit‑identical builds from a version‑pinned toolchain; the whole image→APK
   pipeline reproduces the exact deliverable.
