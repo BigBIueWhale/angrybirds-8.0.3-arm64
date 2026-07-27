@@ -239,16 +239,29 @@ static void heap_pin(dispatch_t*d, const char *when, const char *op){
 #define heap_pin(d,w,o) ((void)0)
 #endif
 
+/* ALLOC TRACE (env-gated, non-release): dump the guest's allocation SEQUENCE so two hosts can be
+ * diffed against each other. The x86 and arm64 guest heaps differ by a near-constant ~64KB after
+ * the 125 ctors (605096 vs 539536), deterministically on each host — so some allocation differs in
+ * size or presence. Sizes alone, in order, localise it to the first divergent request. */
+#ifndef ABSHIM_RELEASE
+static FILE *g_atr = NULL; static int g_atr_init = 0;
+static void alloc_trace(const char *what, uint32_t n){
+    if(!g_atr_init){ g_atr_init=1; const char *p=getenv("ABSHIM_ALLOC_TRACE"); if(p&&*p) g_atr=fopen(p,"w"); }
+    if(g_atr) fprintf(g_atr, "%s %u\n", what, n);
+}
+#else
+#define alloc_trace(w,n) ((void)0)
+#endif
 static uint64_t h_malloc (dispatch_t*d,mcur*c){ heap_ck(d); heap_pin(d,"before","malloc");
-    uint32_t n=W(d,c); uint64_t r=galloc_malloc(d->cpu->heap,n?n:1);
+    uint32_t n=W(d,c); alloc_trace("m",n); uint64_t r=galloc_malloc(d->cpu->heap,n?n:1);
 #ifndef ABSHIM_RELEASE
     pin_note_alloc((uint32_t)r, n);
 #endif
     heap_pin(d,"after","malloc"); return r; }
 static uint64_t h_calloc (dispatch_t*d,mcur*c){ heap_pin(d,"before","calloc");
-    uint32_t a=W(d,c),b=W(d,c); uint64_t r=galloc_calloc(d->cpu->heap,a,b); heap_pin(d,"after","calloc"); return r; }
+    uint32_t a=W(d,c),b=W(d,c); alloc_trace("c",a*b); uint64_t r=galloc_calloc(d->cpu->heap,a,b); heap_pin(d,"after","calloc"); return r; }
 static uint64_t h_realloc(dispatch_t*d,mcur*c){ heap_pin(d,"before","realloc");
-    uint32_t p=W(d,c),n=W(d,c); uint64_t r=galloc_realloc(d->cpu->heap,p,n); heap_pin(d,"after","realloc"); return r; }
+    uint32_t p=W(d,c),n=W(d,c); alloc_trace("r",n); uint64_t r=galloc_realloc(d->cpu->heap,p,n); heap_pin(d,"after","realloc"); return r; }
 static uint64_t h_free   (dispatch_t*d,mcur*c){ heap_ck(d);
 #ifndef ABSHIM_RELEASE
     uint32_t lr=0; uc_reg_read(d->cpu->uc,UC_ARM_REG_LR,&lr); galloc_note_free_lr(RGE(lr));   /* WAF free-site diag (per-free) — non-release only; the leak fix uses only the canary */
