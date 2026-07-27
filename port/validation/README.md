@@ -116,6 +116,23 @@ That is how PROOF_2/3/4 were produced. It requires launching the container detac
 
 ---
 
+## The proxies the evidence runs on
+
+Until 2026-07-27 these were **not reproducible** — no mtime normalisation, and `KS=/tmp/debug.ks`
+was wiped by `--rm` so every build minted a fresh random signing key. Two builds of identical
+source produced different APKs, which meant no PROOF could be tied to a specific binary. Both
+causes are fixed (`port/build_apk_x86*.sh`); the proxies now rebuild byte-for-byte:
+
+```
+bbcc34ee829f95c6350bd500bd7e9260caf08e7605cf9d5ce8276d463f1ba062  x86shim.apk          (diagnostic)
+7b08cb790b5c0e52d95f6edb9cb75d1bbef01397b40cc3de1064512a44afcf1f  x86shim-release.apk  (shipping config)
+632f8d555865a4fac27dee13a8beff409737119a7bbfe6dca0f53012b1a1952c  x86shim-audio.apk    (audio variant)
+```
+
+Re-verify with two consecutive builds and `sha256sum`. If a hash here goes stale, the shim source
+changed — regenerate the affected evidence rather than citing screenshots taken against a build
+that no longer exists.
+
 ## Script → evidence map
 
 PROOF mapping verified by md5 against the source screenshots, not by filename.
