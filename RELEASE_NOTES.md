@@ -43,8 +43,8 @@ Both are signed with the same key, so either update‑installs over the other wi
 
 **SHA‑256**
 ```
-4259575ca4129e7b05282110a63d0f3d27d9137d29314e755f80f6bbad28a7f0  angrybirds-8.0.3-arm64.apk
-2aa4d353c0be5ede4631f8ee5c99461fb38235ebf972c298b148d72d6652c8dd  angrybirds-8.0.3-arm64-audio.apk
+68bf6f4aeb39c230302d14aa8ca219968e0c0efc0549e4b0c7235e8a5b59fc8d  angrybirds-8.0.3-arm64.apk
+f099fc46f353f1671911f7d4e7c763efedc437db62c903b920e7975cdef85f6b  angrybirds-8.0.3-arm64-audio.apk
 ```
 
 ## What's verified
@@ -61,6 +61,15 @@ Both are signed with the same key, so either update‑installs over the other wi
 
 ## Changes since the first build
 
+- **Fixed a heap-corruption bug at its root.** The shim's allocator returned 8 fewer usable
+  bytes than a real device for a family of small sizes (n = 1, 8, 17, 24, 33 …). Android's
+  malloc uses 16‑granular small size classes, so `malloc(17)` yields 32 usable bytes; the shim
+  gave 24. The engine legitimately writes past 17 bytes into that block — harmless on hardware,
+  but under the shim it landed on the next heap chunk's header. Traced by checking the heap
+  before and after every allocator and bridge call: the guest heap went permanently
+  inconsistent by ~16 000 allocations into every session (383 of 384 checks failing) and is now
+  clean for the whole run. Chunk sizing now matches the device's usable-size semantics,
+  costing about 3 % more memory.
 - **A diagnostic was removed from the release build.** `heap_ck()` ran a full guest‑heap + free‑list walk every 8192 malloc/free operations and was not gated out of release, unlike the sibling diagnostic beside it. Measured on the production path (real Unicorn backend, where every chunk header field is its own `uc_mem_read`), one check costs 0.45 ms at a minimal heap and 7.9 ms at 200k live chunks — against a 16.7 ms frame budget, on phone cores slower than the bench host. It is now release‑gated; the debug build keeps it. This is why the SHA‑256s differ from any earlier build.
 - Validation scripts corrected: a `levelComplete` metric that actually counted particle‑script asset preloads (constant at 8 in every run, including crashes) was removed, and a fixed‑duration wait that made playthrough tests flaky was replaced with a frame‑based one.
 
