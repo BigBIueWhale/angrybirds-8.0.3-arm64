@@ -125,14 +125,50 @@ static void heap_ck(dispatch_t*d){
 #else
 static inline void heap_ck(dispatch_t*d){ (void)d; }
 #endif
-static uint64_t h_malloc (dispatch_t*d,mcur*c){ heap_ck(d); uint32_t n=W(d,c); return galloc_malloc(d->cpu->heap,n?n:1); }
-static uint64_t h_calloc (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c); return galloc_calloc(d->cpu->heap,a,b); }
-static uint64_t h_realloc(dispatch_t*d,mcur*c){ uint32_t p=W(d,c),n=W(d,c); return galloc_realloc(d->cpu->heap,p,n); }
+/* ---- PER-OPERATION PINPOINT (non-release) -----------------------------------------------------
+ * The UC_HOOK_MEM_WRITE watchpoint works but instruments every guest write and defeats TCG block
+ * chaining, so a run cannot even reach the failure op inside a normal test window. This is the
+ * cheap alternative: one heap walk per allocator call (~0.45 ms at 5k live chunks, measured) with
+ * NO codegen instrumentation, so emulation speed is unaffected apart from the walks themselves.
+ * It stops at the first failure, and the failure has been observed by op ~12-26k, so the total
+ * cost is bounded at a few tens of seconds.
+ *
+ * It is decisive about WHO. Checking immediately before and immediately after each galloc call:
+ *   BAD after the call, OK before it   -> that galloc operation broke the invariant
+ *   OK after the call, BAD before next -> nothing in galloc did it; guest code executing between
+ *                                         the two allocator calls wrote the header
+ * Either answer eliminates half the search space, which the sampled census cannot do. */
+#ifndef ABSHIM_RELEASE
+static int  g_pin_done = 0;
+static const char *g_pin_prev = "(none yet)";
+static void heap_pin(dispatch_t*d, const char *when, const char *op){
+    if (g_pin_done) return;
+    uint32_t badchunk = 0;
+    int rc = galloc_check_where(d->cpu->heap, &badchunk);
+    if (!rc){ if (when[0]=='a') g_pin_prev = op; return; }   /* remember last clean op */
+    g_pin_done = 1;
+    dbg_log("[HEAP-PINPOINT] FIRST failure rc=%d detected %s %s() — last clean point was after %s() — chunk=0x%08x",
+            rc, when, op, g_pin_prev, badchunk);
+    if (when[0]=='a')
+        dbg_log("[HEAP-PINPOINT] VERDICT: %s() ITSELF broke the invariant (heap was clean on entry) -> the bug is INSIDE galloc", op);
+    else
+        dbg_log("[HEAP-PINPOINT] VERDICT: heap was clean after %s() and is broken on entry to %s() -> NO galloc code ran in between, so GUEST code wrote the header", g_pin_prev, op);
+}
+#else
+#define heap_pin(d,w,o) ((void)0)
+#endif
+
+static uint64_t h_malloc (dispatch_t*d,mcur*c){ heap_ck(d); heap_pin(d,"before","malloc");
+    uint32_t n=W(d,c); uint64_t r=galloc_malloc(d->cpu->heap,n?n:1); heap_pin(d,"after","malloc"); return r; }
+static uint64_t h_calloc (dispatch_t*d,mcur*c){ heap_pin(d,"before","calloc");
+    uint32_t a=W(d,c),b=W(d,c); uint64_t r=galloc_calloc(d->cpu->heap,a,b); heap_pin(d,"after","calloc"); return r; }
+static uint64_t h_realloc(dispatch_t*d,mcur*c){ heap_pin(d,"before","realloc");
+    uint32_t p=W(d,c),n=W(d,c); uint64_t r=galloc_realloc(d->cpu->heap,p,n); heap_pin(d,"after","realloc"); return r; }
 static uint64_t h_free   (dispatch_t*d,mcur*c){ heap_ck(d);
 #ifndef ABSHIM_RELEASE
     uint32_t lr=0; uc_reg_read(d->cpu->uc,UC_ARM_REG_LR,&lr); galloc_note_free_lr(RGE(lr));   /* WAF free-site diag (per-free) — non-release only; the leak fix uses only the canary */
 #endif
-    galloc_free(d->cpu->heap,W(d,c)); return 0; }
+    heap_pin(d,"before","free"); galloc_free(d->cpu->heap,W(d,c)); heap_pin(d,"after","free"); return 0; }
 static uint64_t h_memcpy (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c),n=W(d,c); em_copy(d->cpu,a,b,n); return a; }
 static uint64_t h_memmove(dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c),n=W(d,c); em_move(d->cpu,a,b,n); return a; }
 static uint64_t h_ae_cpy (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c),n=W(d,c); em_copy(d->cpu,a,b,n); return 0; }

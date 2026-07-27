@@ -33,7 +33,11 @@ static int reg_id(int i){
  *
  * The address is NOT stable run to run (observed 0x500db338@op12544 and 0x5025ce48@op26368), so a
  * fixed watchpoint cannot work; this records into a ring and the failure site queries it. */
-#ifndef ABSHIM_RELEASE
+/* OPT-IN (2026-07-27): this hook instruments every guest write and defeats TCG block
+ * chaining — a run under it could not even reach the failure op inside a normal test
+ * window. It is therefore behind its own flag, so the far cheaper per-op pinpoint in
+ * dispatch.c can run at full emulation speed. Build with -DABSHIM_HW_WATCH to enable. */
+#if !defined(ABSHIM_RELEASE) && defined(ABSHIM_HW_WATCH)
 #define HW_RING 1024u
 static struct { uint32_t addr, val, pc, lr; } g_hw[HW_RING];
 static unsigned long g_hw_n = 0;
@@ -66,6 +70,9 @@ int cpu_hw_find(uint32_t want, uint32_t *addr, uint32_t *val, uint32_t *pc, uint
     return 0;
 }
 unsigned long cpu_hw_count(void){ return g_hw_n; }
+#elif !defined(ABSHIM_RELEASE)
+int cpu_hw_find(uint32_t w,uint32_t*a,uint32_t*v,uint32_t*p,uint32_t*l){(void)w;(void)a;(void)v;(void)p;(void)l;return 0;}
+unsigned long cpu_hw_count(void){ return 0; }
 #endif
 
 static void     m_read (guest_mem *m, void *d, uint32_t a, uint32_t n){ uc_mem_read ((uc_engine*)m->ctx, a, d, n); }
@@ -119,7 +126,7 @@ int cpu_create(cpu_t *c){
      * (kills the cyclic-_Rb_tree nativeInit grind + registry loop + garbage strings at the mechanism). */
     galloc_set_quarantine(c->heap, 131072u);
     clog("[cpu-init] heap UAF-quarantine enabled (depth 131072)");
-#ifndef ABSHIM_RELEASE
+#if !defined(ABSHIM_RELEASE) && defined(ABSHIM_HW_WATCH)
     {   /* watch GUEST writes that land on chunk head words (see hw_write_hook above) */
         uc_hook hh;
         if (uc_hook_add(c->uc, &hh, UC_HOOK_MEM_WRITE, (void*)hw_write_hook, NULL,
