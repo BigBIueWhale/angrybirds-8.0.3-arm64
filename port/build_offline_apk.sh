@@ -5,6 +5,9 @@
 # Output: /work/out/angrybirds-8.0.3-offline.apk
 set -e
 IN=/work/apks/com.rovio.angrybirds@8.0.3.apk
+# Prepare untracked inputs from the committed .xz (fresh-clone safe) — see prepare_inputs.sh
+. /work/port/prepare_inputs.sh
+REPO=/work prepare_inputs || exit 1
 OUTDIR=/work/out; mkdir -p "$OUTDIR"
 OUT="$OUTDIR/angrybirds-8.0.3-offline.apk"
 WORK=/tmp/offwork
@@ -23,11 +26,14 @@ python3 /work/port/depermission.py "$WORK/AndroidManifest.xml" "$WORK/AndroidMan
 echo "== 3/4 strip signature, repack, align =="
 rm -f "$WORK"/META-INF/*.RSA "$WORK"/META-INF/*.SF "$WORK"/META-INF/*.MF 2>/dev/null || true
 rm -f /tmp/off.apk /tmp/offa.apk
-(cd "$WORK" && zip -q -r -X /tmp/off.apk .)
+# Deterministic zip (same as the other builds): fixed mtimes so rebuilds are byte-identical.
+find "$WORK" -exec touch -d @315532800 {} +
+(cd "$WORK" && TZ=UTC zip -q -r -X /tmp/off.apk .)
 zipalign -f -p 4 /tmp/off.apk /tmp/offa.apk
 
 echo "== 4/4 sign (debug key) =="
-KS=/tmp/debug.ks
+# Committed keystore, not /tmp (which --rm wipes, minting a fresh random key per build).
+KS=/work/port/debug.ks
 [ -f "$KS" ] || keytool -genkeypair -keystore "$KS" -storepass android -keypass android \
   -alias d -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=OfflineAngryBirds" >/dev/null 2>&1
 apksigner sign --ks "$KS" --ks-pass pass:android --key-pass pass:android --out "$OUT" /tmp/offa.apk
