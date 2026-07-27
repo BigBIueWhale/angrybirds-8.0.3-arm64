@@ -16,8 +16,8 @@ rebuilt with `docker build --no-cache`, forcing a real NDK download and a fresh 
 Unicorn from the pinned commit, and the resulting image produced the **byte-identical APK**:
 
 ```
-from-scratch toolchain : 68bf6f4aeb39c230302d14aa8ca219968e0c0efc0549e4b0c7235e8a5b59fc8d
-cached toolchain       : 68bf6f4aeb39c230302d14aa8ca219968e0c0efc0549e4b0c7235e8a5b59fc8d
+from-scratch toolchain : 8ff45e2501ee5c2fd324bd122ad877c192c903860c933442f33c259661731dd1
+cached toolchain       : 8ff45e2501ee5c2fd324bd122ad877c192c903860c933442f33c259661731dd1
 ```
 
 The toolchain resolved independently to the same versions — apksigner 0.9 (deb 31.0.2-1),

@@ -542,10 +542,23 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
 /* ---- JNI_OnLoad: load the 32-bit engine + wire everything ---- */
 static int load_engine_bytes(void){
     Dl_info di; if(!dladdr((void*)&shim_call,&di) || !di.dli_fname) return -1;
-    char path[1024]; snprintf(path,sizeof path,"%s",di.dli_fname);
-    char*sl=strrchr(path,'/'); if(!sl) return -1; strcpy(sl+1,"libengine32.so");
+    char path[1024];
+    /* Reject a TRUNCATED path outright. Without this, a path >= sizeof(path) would be silently
+     * cut and we would go on to open some other file (or fail confusingly). */
+    if(snprintf(path,sizeof path,"%s",di.dli_fname) >= (int)sizeof path){ LOGE("engine path too long"); return -1; }
+    char*sl=strrchr(path,'/'); if(!sl) return -1;
+    /* Bound the basename swap. This was an unbounded strcpy into a fixed buffer: with a directory
+     * part within 15 bytes of the end it would write past `path`. Android's native-lib dir is far
+     * shorter than that, so it was not reachable in practice - but the shipping loader should not
+     * depend on the platform's path length to stay in bounds. */
+    if(sizeof path - (size_t)(sl+1-path) < sizeof "libengine32.so"){ LOGE("engine path too long"); return -1; }
+    memcpy(sl+1,"libengine32.so",sizeof "libengine32.so");
     int fd=open(path,O_RDONLY); if(fd<0){ LOGE("open %s failed",path); return -1; }
-    struct stat st; fstat(fd,&st); G.engine_len=st.st_size;
+    /* fstat was unchecked: on failure st.st_size is indeterminate and we would mmap a garbage
+     * length. Also reject a zero/negative size rather than handing mmap a length of 0. */
+    struct stat st;
+    if(fstat(fd,&st) || st.st_size<=0){ LOGE("fstat %s failed",path); close(fd); return -1; }
+    G.engine_len=(size_t)st.st_size;
     void*m=mmap(0,G.engine_len,PROT_READ,MAP_PRIVATE,fd,0); close(fd);
     if(m==MAP_FAILED){ LOGE("mmap engine failed"); return -1; }
     G.engine=(uint8_t*)m; LOG("engine %zu bytes from %s",G.engine_len,path); return 0;

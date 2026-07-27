@@ -30,9 +30,9 @@ is given from the run that produced them and is marked `(by run, not hash)`.
 | Proof | What is visible | Build | API | Source |
 |---|---|---|---|---|
 | `PROOF_tutorial_render.png` | The engine renders — tutorial scene drawn under emulation | x86shim | 25 | `emu_fatal.sh` |
-| `PROOF_2_interactive_level.png` | Tutorial level up and interactive: slingshot loaded, pigs placed, score 0, drag hint | x86shim `bbcc34ee` | 25 | `emu_interactive_capture.sh` |
-| `PROOF_3_bird_launched.png` | Bird launched and connected — impact burst, score popups, debris, **score 8090** | x86shim `bbcc34ee` | 25 | `emu_interactive_capture.sh` |
-| `PROOF_4_debris_settle_score9660.png` | Physics settling after impact: structure collapsed, **score 8090 → 9660** | x86shim `bbcc34ee` | 25 | `emu_interactive_capture.sh` |
+| `PROOF_2_interactive_level.png` | Tutorial level up and interactive: slingshot loaded, pigs placed, score 0, drag hint | x86shim `59adfbbb` | 25 | `emu_interactive_capture.sh` |
+| `PROOF_3_bird_launched.png` | Bird launched and connected — impact burst, score popups, debris, a live scored hit | x86shim `59adfbbb` | 25 | `emu_interactive_capture.sh` |
+| `PROOF_4_debris_settle.png` | Physics settling after impact: structure collapsed, score climbing as debris falls | x86shim `59adfbbb` | 25 | `emu_interactive_capture.sh` |
 | `PROOF_5_destruction_score5820.png` | Structure destroyed, score 5820 | x86shim | 25 | `deeper_bird1` capture |
 | `PROOF_6_levelend_survived.png` | **The level-end transition survives** (the deepest bug) — win screen, `h_fatal=0` | x86shim | 25 | `emu_playthrough.sh` |
 | `PROOF_7_level2_progression.png` | Tapping NEXT loads a **fresh, distinct level 2** — score 0, new structures | x86shim-release | 25 | `emu_progress_release.sh` |
@@ -46,6 +46,14 @@ is given from the run that produced them and is marked `(by run, not hash)`.
 | `PROOF_15_win_on_reproducible_proxy.png` | Wins on the **bit-reproducible** proxy build | x86shim-release | 34 | `emu_modern_playthrough.sh` |
 | `PROOF_release_render.png` | The release-gated build renders | x86shim-release | 25 | `release_interim` capture |
 | `PROOF_release_bird_launched.png` | The release-gated build launches a bird | x86shim-release | 25 | `release_launch` capture |
+
+## Scores vary between runs — do not encode them here
+
+`PROOF_3`/`PROOF_4` are captured at fixed delays after the launch, but the physics settle at slightly
+different rates each run, so the score differs every time (8090 → 9660 on one run, 8100 → 13530 on
+the next). `PROOF_4` was briefly named `…_score9660.png`; regenerating it made that name wrong
+immediately. **Filenames describe what the image shows, never a run-specific value** — the same rule
+that renamed it away from `_flight.png`.
 
 ## Regenerating
 
