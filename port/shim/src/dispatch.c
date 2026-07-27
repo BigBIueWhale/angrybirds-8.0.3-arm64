@@ -167,6 +167,19 @@ static int pin_find_alloc(uint32_t ptr, uint32_t *req){
 void dispatch_pin_note_args(const uint32_t *a){ for(int i=0;i<4;i++) g_pin_cur_args[i]=a[i]; }
 static void heap_pin(dispatch_t*d, const char *when, const char *op){
     if (g_pin_done) return;
+    /* BOUND (2026-07-27): g_pin_done previously latched only on FAILURE. Once the corruption was
+     * actually fixed there was no failure, so this kept running two full heap walks per bridge
+     * call for the entire session — the run never got past boot and screenshotted a blank frame,
+     * which looks exactly like a rendering regression. Retire the probe after a budget of checks
+     * so a clean run costs a bounded amount. The failure has always appeared well inside this. */
+    {
+        static unsigned long budget = 0;
+        if (++budget > 200000UL){
+            g_pin_done = 1;
+            dbg_log("[HEAP-PINPOINT] no failure within %lu checks — probe retiring, heap looks clean", budget - 1);
+            return;
+        }
+    }
     uint32_t badchunk = 0;
     int rc = galloc_check_where(d->cpu->heap, &badchunk);
     uint32_t lr = 0; uc_reg_read(d->cpu->uc, UC_ARM_REG_LR, &lr);
