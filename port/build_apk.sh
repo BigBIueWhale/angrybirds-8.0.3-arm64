@@ -15,26 +15,10 @@ UNI="/opt/unicorn/b/libunicorn-static.a /opt/unicorn/b/libunicorn-common.a /opt/
 IN=/work/apks/com.rovio.angrybirds@8.0.3.apk
 ENGINE=/work/work803/libv7/libAngryBirdsClassic.so
 
-# The repo commits ONLY the xz-compressed input (the raw APK is ~100 MB). reproduce.sh
-# decompresses it in its step 0 — but build_apk.sh is *also* documented as a direct entry point
-# (port/REPRODUCE.md twice, and port/ONDEVICE.md for the audio variant), and from a fresh clone
-# those invocations died with a confusing "unzip: cannot find or open .../8.0.3.apk". Do the same
-# preparation here, with the same authenticity gate, so every documented command works standalone.
-if [ ! -f "$IN" ]; then
-  if [ ! -f "$IN.xz" ]; then echo "FATAL: neither $IN nor $IN.xz is present"; exit 1; fi
-  command -v xz >/dev/null 2>&1 || { echo "FATAL: xz not available to decompress $IN.xz"; exit 1; }
-  echo "   input APK not decompressed yet -> xz -dk $(basename "$IN").xz"
-  xz -dk "$IN.xz"
-fi
-echo "0580c3d3f79b21b344940bea65b8fadc22e8e5599c89dfe9b5e8a85004846b9a  $IN" | sha256sum -c - >/dev/null 2>&1 \
-  || { echo "FATAL: input APK sha256 mismatch — not the authentic 8.0.3"; exit 1; }
-
-# Same story for the engine the shim embeds: extracted from the APK above, not committed.
-if [ ! -f "$ENGINE" ]; then
-  echo "   engine not extracted yet -> unzip lib/armeabi-v7a/libAngryBirdsClassic.so"
-  mkdir -p "$(dirname "$ENGINE")"
-  unzip -o -j -q "$IN" lib/armeabi-v7a/libAngryBirdsClassic.so -d "$(dirname "$ENGINE")"
-fi
+# Inputs (decompressed APK + extracted engine) are not tracked in git; prepare them from the
+# committed .xz so every documented direct invocation works from a fresh clone.
+. /work/port/prepare_inputs.sh
+REPO=/work prepare_inputs || exit 1
 OUTDIR=/work/out; mkdir -p "$OUTDIR"
 WORK=/tmp/apkwork
 
@@ -42,7 +26,8 @@ WORK=/tmp/apkwork
 # -DABSHIM_AUDIO (the cont.121 nested-gt re-entrancy fix + nativeMixData enabled) and writes a
 # SEPARATE APK (…-arm64-audio.apk), so the default — silent, validated, bit-reproducible — is
 # completely untouched. (A specific hash used to be quoted here; it went stale two rebuilds ago.
-# The current one lives in RELEASE_NOTES.md, which is regenerated alongside the artifact.) With the env unset, AUDIO_FLAG expands to NO token (identical
+# The current one lives in RELEASE_NOTES.md, which is regenerated alongside the artifact.)
+# With the env unset, AUDIO_FLAG expands to NO token (identical
 # clang args) and OUT_APK is the default name => the default build stays BYTE-IDENTICAL.
 # The audio variant is EXPERIMENTAL: crash-free + full playthrough+win validated on the x86 proxy,
 # but continuous audio playback is only verifiable on real audio HW (the A56). See ONDEVICE.md.
