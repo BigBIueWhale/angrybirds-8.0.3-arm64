@@ -30,9 +30,9 @@ is given from the run that produced them and is marked `(by run, not hash)`.
 | Proof | What is visible | Build | API | Source |
 |---|---|---|---|---|
 | `PROOF_tutorial_render.png` | The engine renders — tutorial scene drawn under emulation | x86shim | 25 | `emu_fatal.sh` |
-| `PROOF_2_interactive_level.png` | Tutorial level up and interactive: slingshot loaded, pigs placed, score 0, drag hint | x86shim `6c5ecce5` | 25 | `emu_interactive_capture.sh` |
-| `PROOF_3_bird_launched.png` | Bird launched and connected — impact burst, score popups, debris, a live scored hit | x86shim `6c5ecce5` | 25 | `emu_interactive_capture.sh` |
-| `PROOF_4_debris_settle.png` | After the shot resolves: structure destroyed, score climbed, camera back at the slingshot with the remaining birds and the trajectory trail | x86shim `6c5ecce5` | 25 | `emu_interactive_capture.sh` |
+| `PROOF_2_interactive_level.png` | Tutorial level up and interactive: slingshot loaded, pigs placed, score 0, drag hint | x86shim `f40c0598` | 25 | `emu_interactive_capture.sh` |
+| `PROOF_3_bird_launched.png` | Bird launched and connected — impact burst, score popups, debris, a live scored hit | x86shim `f40c0598` | 25 | `emu_interactive_capture.sh` |
+| `PROOF_4_debris_settle.png` | The shot has resolved: structure collapsed, score well above zero, physics still settling. Exact framing varies per run (see the note below) | x86shim `f40c0598` | 25 | `emu_interactive_capture.sh` |
 | `PROOF_5_destruction_score5820.png` | Structure destroyed, score 5820 | x86shim | 25 | `deeper_bird1` capture |
 | `PROOF_6_levelend_survived.png` | **The level-end transition survives** (the deepest bug) — win screen, `h_fatal=0` | x86shim | 25 | `emu_playthrough.sh` |
 | `PROOF_7_level2_progression.png` | Tapping NEXT loads a **fresh, distinct level 2** — score 0, new structures | x86shim-release | 25 | `emu_progress_release.sh` |
@@ -49,11 +49,19 @@ is given from the run that produced them and is marked `(by run, not hash)`.
 
 ## Scores vary between runs — do not encode them here
 
-`PROOF_3`/`PROOF_4` are captured at fixed delays after the launch, but the physics settle at slightly
-different rates each run, so the score differs every time (8090 → 9660 on one run, 8100 → 13530 on
-the next). `PROOF_4` was briefly named `…_score9660.png`; regenerating it made that name wrong
-immediately. **Filenames describe what the image shows, never a run-specific value** — the same rule
-that renamed it away from `_flight.png`.
+`PROOF_3`/`PROOF_4` are captured at fixed delays after the launch, but the physics settle at
+slightly different rates each run — so both the score and the exact framing differ every time
+(8090→9660, then 8100→13530, then 8440→12950; sometimes the camera has already panned back to the
+slingshot by `PROOF_4`, sometimes not).
+
+Two rules follow, both learned by getting them wrong:
+
+1. **Filenames describe what the image shows, never a run-specific value.** `PROOF_4` was briefly
+   `…_score9660.png`; regenerating it made the name wrong immediately. Same reason it is no longer
+   `_flight.png`.
+2. **Descriptions state the invariant, not one run's framing.** The `PROOF_4` row was rewritten
+   twice to match a particular capture before it was written to describe what is true of *every*
+   capture: the shot resolved, the structure collapsed, the score well above zero.
 
 ## Regenerating
 

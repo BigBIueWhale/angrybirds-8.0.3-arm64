@@ -314,13 +314,54 @@ static uint64_t h_syscall(dispatch_t*d,mcur*c){ (void)d; uint32_t nr=W(d,c); if(
  * engine logs the *reason* right before it aborts). ABSHIM_LOG=1 also echoes to stderr (host). */
 static uint64_t h_log    (dispatch_t*d,mcur*c){ uint32_t pr=W(d,c); uint32_t tag=W(d,c); uint32_t fmt=W(d,c);
     char hb[512],tg[80]; uint32_t hl; fmt_to_host(M(d),hb,sizeof hb,fmt,*c,&hl); em_str(d->cpu,tag,tg,sizeof tg);
+#ifndef ABSHIM_RELEASE
+    /* ABSHIM_LOGDIAG=1: dump the raw ABI state for the first engine log calls. Added because a full
+     * unfiltered logcat showed 2046 'E Lua' lines that are not text but the LITERAL BYTES at the
+     * fmt address (decoded: a guest-heap pointer followed by an engine pointer), i.e. fmt points at
+     * a struct rather than a string. This prints r0-r3, SP, the first stacked words and the bytes
+     * at fmt so the actual call shape is measured instead of guessed. */
+    /* Always on in the NON-RELEASE build (which is what the x86shim diagnostic APK is): an env
+     * var cannot easily be delivered to an Android app process, and this is capped at 24 lines.
+     * ABSHIM_RELEASE gates the whole block out of the shipping APK. */
+    /* Fire ONLY when the formatted result is non-printable. A first pass burned its 24-line budget
+     * on healthy calls (tag='Lua'/'LocalNotifications' with r3 == r1+0x20, both decoding fine) and
+     * never reached the case under investigation - the 2046 garbage lines of the script-paths dump.
+     * Targeting the symptom directly makes the sample the interesting one. */
+    { static int dn=0; int nonprint=0;
+      for(uint32_t i=0;i<hl && i<48;i++){ unsigned char ch=(unsigned char)hb[i];
+          if(ch<0x20 && ch!='\n' && ch!='\t'){ nonprint=1; break; } if(ch>0x7e){ nonprint=1; break; } }
+      if(nonprint && dn++<24){
+        uint32_t r[4]={0,0,0,0}, sp=0, s0=0, s1=0;
+        uc_reg_read(d->cpu->uc,UC_ARM_REG_R0,&r[0]); uc_reg_read(d->cpu->uc,UC_ARM_REG_R1,&r[1]);
+        uc_reg_read(d->cpu->uc,UC_ARM_REG_R2,&r[2]); uc_reg_read(d->cpu->uc,UC_ARM_REG_R3,&r[3]);
+        uc_reg_read(d->cpu->uc,UC_ARM_REG_SP,&sp);
+        s0=gm_rd32(M(d),sp); s1=gm_rd32(M(d),sp+4);
+        uint8_t fb[12]; memset(fb,0,sizeof fb); M(d)->read(M(d),fb,fmt,sizeof fb);
+        char hex[40]; for(int i=0;i<12;i++) snprintf(hex+i*3,4,"%02x ",fb[i]);
+        static int (*rl2)(int,const char*,const char*,...)=0; static int t2=0;
+        if(!t2){t2=1; rl2=(int(*)(int,const char*,const char*,...))dlsym(RTLD_DEFAULT,"__android_log_print");}
+        if(rl2) rl2(6,"abshim","[logdiag] r0=%08x r1=%08x r2=%08x r3=%08x sp=%08x [sp]=%08x [sp+4]=%08x fmt=%08x fmtbytes=%s tag='%s'",
+                    r[0],r[1],r[2],r[3],sp,s0,s1,fmt,hex,tg);
+      } }
+#endif
     static int (*rl)(int,const char*,const char*,...)=0; static int tried=0;
     if(!tried){ tried=1; rl=(int(*)(int,const char*,const char*,...))dlsym(RTLD_DEFAULT,"__android_log_print"); }
     if(rl) rl((int)pr,tg,"%s",hb);
     static int on=-1; if(on<0) on=getenv("ABSHIM_LOG")?1:0;
     if(on) fprintf(stderr,"[engine:%s] %s\n",tg,hb);
     return 0; }
-static uint64_t h_logw   (dispatch_t*d,mcur*c){ (void)W(d,c);(void)W(d,c); uint32_t txt=W(d,c); char b[512]; em_str(d->cpu,txt,b,sizeof b); return 0; }
+/* __android_log_write(prio,tag,text). This used to read the text into a buffer and then DROP it:
+ * no forward to the real logger, unlike h_log right above. Every engine diagnostic sent through
+ * the non-printf logging entry point was therefore invisible in logcat - including, potentially,
+ * whatever the engine says right before it gives up. Forward it exactly as h_log does. */
+static uint64_t h_logw   (dispatch_t*d,mcur*c){ uint32_t pr=W(d,c); uint32_t tag=W(d,c); uint32_t txt=W(d,c);
+    char b[512],tg[80]; em_str(d->cpu,txt,b,sizeof b); em_str(d->cpu,tag,tg,sizeof tg);
+    static int (*rl)(int,const char*,const char*,...)=0; static int tried=0;
+    if(!tried){ tried=1; rl=(int(*)(int,const char*,const char*,...))dlsym(RTLD_DEFAULT,"__android_log_print"); }
+    if(rl) rl((int)pr,tg,"%s",b);
+    static int on=-1; if(on<0) on=getenv("ABSHIM_LOG")?1:0;
+    if(on) fprintf(stderr,"[engine:%s] %s\n",tg,b);
+    return 0; }
 static uint64_t h_fatal  (dispatch_t*d,mcur*c){ (void)c;
     uint32_t pc=0,lr=0; uc_reg_read(d->cpu->uc,UC_ARM_REG_PC,&pc); uc_reg_read(d->cpu->uc,UC_ARM_REG_LR,&lr);
     { static int (*rl)(int,const char*,const char*,...)=0; static int tr=0,n=0;   /* DIAG: pin the stack-smash site */
