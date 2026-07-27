@@ -68,11 +68,23 @@ echo "   injected assets/data/script_paths.json ($(wc -c < assets/data/script_pa
 echo "== 4/5 repack + align =="
 rm -f META-INF/*.RSA META-INF/*.SF META-INF/*.MF 2>/dev/null || true
 rm -f /tmp/uns_x86.apk /tmp/al_x86.apk
-(cd "$WORK" && zip -q -r -X /tmp/uns_x86.apk .)
+# Deterministic zip, matching build_apk.sh: normalise every entry mtime to the fixed zip epoch
+# (1980-01-01Z) so rebuilds are BYTE-identical. Without this the freshly-built lib/*.so carry
+# build-time mtimes and two builds of identical source differ — measured: the x86 proxy was NOT
+# reproducible, which matters because every play-validation runs on these proxies, so a PROOF
+# could not be tied to an exact binary. TZ=UTC pins the DOS-time conversion.
+find "$WORK" -exec touch -d @315532800 {} +
+(cd "$WORK" && TZ=UTC zip -q -r -X /tmp/uns_x86.apk .)
 zipalign -f -p 4 /tmp/uns_x86.apk /tmp/al_x86.apk
 
 echo "== 5/5 sign =="
-KS=/tmp/debug.ks
+# Use the SAME committed keystore as the arm64 build. /tmp/debug.ks was wiped by --rm every
+# run, so keytool minted a FRESH RANDOM KEY per build: two builds of identical source produced
+# different signatures and different hashes, i.e. the x86 proxies were not reproducible at all.
+# That matters because every play-validation runs on these, so a PROOF could not be pinned to a
+# specific binary. A fixed signer also lets a rebuilt proxy update-install over the previous one
+# in the emulator instead of forcing an uninstall.
+KS=/work/port/debug.ks
 [ -f "$KS" ] || keytool -genkeypair -keystore "$KS" -storepass android -keypass android \
   -alias d -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=AngryBirdsShim" >/dev/null 2>&1
 apksigner sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
