@@ -138,11 +138,19 @@ port/docker/Dockerfile.ab-port            the pinned toolchain image (NDK r26d +
 port/depermission.py, manifest_firebase_off.py   the de‑phone‑home surgery
 port/debug.ks                             the fixed throwaway signing key (reproducible signature)
 port/reproduce.sh, REPRODUCE.md, ONDEVICE.md      one‑command build, build guide, install/triage guide
+port/prepare_inputs.sh                    decompresses + sha256‑gates the input every build script needs
+port/validation/                          the emulator rig that produced every PROOF — scripts, README,
+                                          and the recorded reproducible proxy hashes
+port/validation/verify_claims.sh          re‑checks all 18 documented claims against the shipped bytes;
+                                          exits non‑zero if any is false (run by reproduce.sh step 3)
+port/shim/test/run_tests.sh               host test suite + the coverage hard‑gate (0 unbridged imports)
 reports/shots/PROOF_*.png                 screenshot evidence
 ```
 
-Build **outputs** (`out/…apk`) and large research artifacts are intentionally not tracked — the
-ready‑to‑install APK ships as a **release asset**, and everything else regenerates from `reproduce.sh`.
+Build **outputs** (`out/…apk`) and large research artifacts are intentionally not tracked —
+everything regenerates from `reproduce.sh`, byte‑for‑byte. (There is currently **no GitHub
+release**; `RELEASE_NOTES.md` is prepared and carries the publish commands plus the current
+SHA‑256s.)
 
 ## Optional: audio‑enabled variant
 
