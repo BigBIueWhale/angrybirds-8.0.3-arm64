@@ -144,6 +144,26 @@ static const char *g_pin_prev = "(none yet)";
 static uint32_t g_pin_prev_lr = 0;      /* guest LR at the last CLEAN allocator call */
 static uint32_t g_pin_args[4] = {0,0,0,0};   /* r0-r3 at the last CLEAN bridge entry */
 static uint32_t g_pin_cur_args[4] = {0,0,0,0}; /* r0-r3 of the bridge currently running */
+/* Recent allocations (returned payload ptr + requested size). At the failure we look up the
+ * block that immediately PRECEDES the corrupted chunk: that is the object being overflowed, and
+ * its requested size versus the distance to the clobbered header says whether the engine wrote
+ * past what it asked for (engine bug) or past what we gave it (shim sizing bug). */
+#define PIN_ALLOC_RING 256u
+static struct { uint32_t ptr, req; } g_pin_alloc[PIN_ALLOC_RING];
+static unsigned long g_pin_alloc_n = 0;
+static void pin_note_alloc(uint32_t ptr, uint32_t req){
+    if(!ptr) return;
+    unsigned i = (unsigned)(g_pin_alloc_n++ % PIN_ALLOC_RING);
+    g_pin_alloc[i].ptr = ptr; g_pin_alloc[i].req = req;
+}
+static int pin_find_alloc(uint32_t ptr, uint32_t *req){
+    unsigned long n = g_pin_alloc_n < PIN_ALLOC_RING ? g_pin_alloc_n : PIN_ALLOC_RING;
+    for(unsigned long j=1;j<=n;j++){
+        unsigned i=(unsigned)((g_pin_alloc_n-j)%PIN_ALLOC_RING);
+        if(g_pin_alloc[i].ptr==ptr){ if(req)*req=g_pin_alloc[i].req; return 1; }
+    }
+    return 0;
+}
 void dispatch_pin_note_args(const uint32_t *a){ for(int i=0;i<4;i++) g_pin_cur_args[i]=a[i]; }
 static void heap_pin(dispatch_t*d, const char *when, const char *op){
     if (g_pin_done) return;
@@ -164,6 +184,20 @@ static void heap_pin(dispatch_t*d, const char *when, const char *op){
     dbg_log("[HEAP-PINPOINT] last clean %s() args: r0=0x%08x r1=0x%08x r2=0x%08x r3=0x%08x (for memset/memcpy that is dest, value/src, n) — corrupted chunk was 0x%08x, its payload 0x%08x",
             g_pin_prev, g_pin_args[0], g_pin_args[1], g_pin_args[2], g_pin_args[3],
             badchunk, badchunk + 8u);
+    {   /* Which allocation sits immediately BEFORE the corrupted chunk? Walk back over the
+         * recent-allocation ring looking for a payload whose chunk+size lands exactly here. */
+        uint32_t req=0; int found=0;
+        for(uint32_t back=16; back<=256 && !found; back+=16){
+            uint32_t cand_chunk = badchunk - back;
+            if(pin_find_alloc(cand_chunk + 8u, &req)){
+                uint32_t chunksz = gm_rd32(&d->cpu->mem, cand_chunk+4) & ~3u;
+                dbg_log("[HEAP-PINPOINT] OVERFLOWED BLOCK: payload 0x%08x requested %u bytes -> chunk 0x%08x size %u (payload capacity %u); the clobbered head is at 0x%08x = payload offset %u",
+                        cand_chunk+8u, req, cand_chunk, chunksz, chunksz-8u, badchunk+4u, (badchunk+4u)-(cand_chunk+8u));
+                found=1;
+            }
+        }
+        if(!found) dbg_log("[HEAP-PINPOINT] (no recent allocation matches the block before 0x%08x)", badchunk);
+    }
     /* The LR alone is not enough: it lands inside _Znwj (operator new) at engine+0x85a620, which
      * merely forwards to malloc. The interesting frame is whoever called operator new. Scan the
      * guest stack for plausible return addresses — words pointing into the engine image with the
@@ -193,7 +227,11 @@ static void heap_pin(dispatch_t*d, const char *when, const char *op){
 #endif
 
 static uint64_t h_malloc (dispatch_t*d,mcur*c){ heap_ck(d); heap_pin(d,"before","malloc");
-    uint32_t n=W(d,c); uint64_t r=galloc_malloc(d->cpu->heap,n?n:1); heap_pin(d,"after","malloc"); return r; }
+    uint32_t n=W(d,c); uint64_t r=galloc_malloc(d->cpu->heap,n?n:1);
+#ifndef ABSHIM_RELEASE
+    pin_note_alloc((uint32_t)r, n);
+#endif
+    heap_pin(d,"after","malloc"); return r; }
 static uint64_t h_calloc (dispatch_t*d,mcur*c){ heap_pin(d,"before","calloc");
     uint32_t a=W(d,c),b=W(d,c); uint64_t r=galloc_calloc(d->cpu->heap,a,b); heap_pin(d,"after","calloc"); return r; }
 static uint64_t h_realloc(dispatch_t*d,mcur*c){ heap_pin(d,"before","realloc");
