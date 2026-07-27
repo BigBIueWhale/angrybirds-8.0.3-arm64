@@ -62,11 +62,33 @@ static uint64_t d_out(double x){ uint64_t b; memcpy(&b,&x,8); return b; }
  *     20k live chunks (2.4MB)  -> 1.288 ms      200k (22.5MB) -> 7.912 ms
  * against a 16.7 ms frame budget, on a phone whose cores are ~2-3x slower. Purely diagnostic,
  * so it must not ship. The non-release build keeps it, which is where heap triage belongs. */
+/* DIAG DETAIL (2026-07-27): the old logger capped at 8 lines, so every API-25 run reported
+ * exactly "8" and the true frequency was unknowable — 8 could have meant 8 events or 80,000.
+ * It also could not distinguish a heap that goes bad ONCE and stays bad from one that is
+ * transiently inconsistent mid-operation. Now we log STATE TRANSITIONS (OK<->BAD) plus a
+ * periodic census, which bounds log volume while answering both questions. Non-release only. */
 #ifndef ABSHIM_RELEASE
 static void heap_ck(dispatch_t*d){
-    static unsigned long ops=0;
-    if((++ops & 0x1fffUL)==0){ int rc=galloc_check(d->cpu->heap);
-        if(rc!=0){ static int n=0; if(n++<8) dbg_log("[GALLOC-CORRUPT] galloc_check=%d at ~%lu ops -> heap chunk/free-list inconsistent (THIS is the UAF root, not string logic)", rc, ops); } }
+    static unsigned long ops=0, checks=0, bad=0, first_bad_op=0;
+    static int last_rc=0, transitions=0, first_rc=0;
+    if((++ops & 0x1fffUL)!=0) return;
+    checks++;
+    int rc = galloc_check(d->cpu->heap);
+    if(rc) bad++;
+    if(rc && !first_bad_op){
+        first_bad_op = ops; first_rc = rc;
+        dbg_log("[GALLOC-CORRUPT] FIRST failure rc=%d at ~%lu ops (check #%lu) -> heap chunk/free-list inconsistent", rc, ops, checks);
+    }
+    if(rc != last_rc){
+        if(++transitions <= 64)
+            dbg_log("[GALLOC-CORRUPT] %s rc=%d at ~%lu ops (checks=%lu bad=%lu transitions=%d)",
+                    rc ? "OK->BAD" : "BAD->OK RECOVERED", rc, ops, checks, bad, transitions);
+        last_rc = rc;
+    }
+    if((checks % 64) == 0)
+        dbg_log("[GALLOC-STATS] checks=%lu bad=%lu (%lu%%) first_bad_op=%lu first_rc=%d transitions=%d cur_rc=%d inuse=%u",
+                checks, bad, checks ? (bad*100UL)/checks : 0UL, first_bad_op, first_rc, transitions, rc,
+                galloc_inuse_bytes(d->cpu->heap));
 }
 #else
 static inline void heap_ck(dispatch_t*d){ (void)d; }
