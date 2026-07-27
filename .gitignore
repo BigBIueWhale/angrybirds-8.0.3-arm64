@@ -27,6 +27,7 @@
 !/reports/shots/
 /reports/shots/*
 !/reports/shots/PROOF_*.png
+!/reports/shots/README.md
 
 # --- local scratch / downloaded tools / venv / crash dumps ---
 /venv/
