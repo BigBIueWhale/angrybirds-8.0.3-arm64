@@ -47,6 +47,9 @@ void     galloc_flush  (galloc *a);
  * Returns 0 if the heap is well-formed, else a negative error code (see .c).
  * Used by the host torture test after every operation. */
 int      galloc_check  (galloc *a);
+/* Same walk, but stores the offending chunk address in *bad (0 if the failure is not
+ * chunk-local). Used to aim a write-watchpoint at whatever is clobbering chunk headers. */
+int      galloc_check_where(galloc *a, uint32_t *bad);
 
 /* Test introspection: bytes currently handed out (sum of in-use payloads). */
 uint32_t galloc_inuse_bytes(galloc *a);

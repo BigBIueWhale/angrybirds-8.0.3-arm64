@@ -71,13 +71,28 @@ static uint64_t d_out(double x){ uint64_t b; memcpy(&b,&x,8); return b; }
 static void heap_ck(dispatch_t*d){
     static unsigned long ops=0, checks=0, bad=0, first_bad_op=0;
     static int last_rc=0, transitions=0, first_rc=0;
-    if((++ops & 0x1fffUL)!=0) return;
+    /* Sample densely early (every 256 ops for the first 64k) so the FIRST failure is pinned to a
+     * narrow window, then back off to every 8192 so the rest of the run stays affordable. The
+     * failure has been observed between op 8192 and 16384, which the coarse rate could not localise. */
+    unsigned long mask = (ops < 65536UL) ? 0xffUL : 0x1fffUL;
+    if((++ops & mask)!=0) return;
     checks++;
-    int rc = galloc_check(d->cpu->heap);
+    uint32_t badchunk = 0;
+    int rc = galloc_check_where(d->cpu->heap, &badchunk);
     if(rc) bad++;
     if(rc && !first_bad_op){
         first_bad_op = ops; first_rc = rc;
         dbg_log("[GALLOC-CORRUPT] FIRST failure rc=%d at ~%lu ops (check #%lu) -> heap chunk/free-list inconsistent", rc, ops, checks);
+        if(badchunk){
+            /* Dump the chunk and its neighbour so the shape of the damage is visible: for rc=-5
+             * the question is whether CINUSE(cur) or PINUSE(next) is the bit that moved. */
+            uint32_t h  = gm_rd32(&d->cpu->mem, badchunk);
+            uint32_t sz = h & ~7u;
+            uint32_t nx = badchunk + sz;
+            dbg_log("[GALLOC-CORRUPT] chunk=0x%08x hdr=0x%08x size=%u cinuse=%u | next=0x%08x hdr=0x%08x pinuse=%u",
+                    badchunk, h, sz, (h>>1)&1u, nx, gm_rd32(&d->cpu->mem, nx), gm_rd32(&d->cpu->mem, nx) & 1u);
+            dbg_log("[GALLOC-CORRUPT] WATCH THIS ADDRESS: 0x%08x (chunk header) — aim a write hook here to find the writer", nx);
+        }
     }
     if(rc != last_rc){
         if(++transitions <= 64)

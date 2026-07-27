@@ -423,45 +423,55 @@ uint32_t galloc_inuse_bytes(galloc*a){
     return sum;
 }
 
-int galloc_check(galloc*a){
-    if (!(H(a,a->c0) & PINUSE)) return -1;             /* left fencepost */
+/* galloc_check_where — same walk as galloc_check, but reports WHICH chunk failed.
+ * Added 2026-07-27: the live shim reports rc=-5 permanently from op 16384 and
+ * test_galloc_quarantine.c has cleared the allocator itself, so the writer is external.
+ * Finding it needs the address to put a Unicorn write-watchpoint on. `bad` receives the
+ * offending chunk (0 if the failure is not chunk-local, e.g. a free-list defect). */
+int galloc_check_where(galloc*a, uint32_t *bad){
+    if (bad) *bad = 0;
+#define BAD(c_) do{ if(bad) *bad=(c_); }while(0)
+    if (!(H(a,a->c0) & PINUSE)) { BAD(a->c0); return -1; }   /* left fencepost */
     uint32_t c = a->c0; int prev_free = 0; uint32_t walkfree = 0;
     while (c < a->rf){
-        if ((c & 0xF) != 8) return -2;                 /* mem must be 16-aligned */
+        if ((c & 0xF) != 8) { BAD(c); return -2; }      /* mem must be 16-aligned */
         uint32_t sz = SZ(a,c);
-        if (sz == 0) return -3;
-        if (sz < MIN_CHUNK && c != a->top) return -3;
-        if (c + sz > a->rf) return -4;                 /* overruns fencepost */
+        if (sz == 0) { BAD(c); return -3; }
+        if (sz < MIN_CHUNK && c != a->top) { BAD(c); return -3; }
+        if (c + sz > a->rf) { BAD(c); return -4; }      /* overruns fencepost */
         uint32_t nx = c + sz;
         int cin = CIN(a,c) ? 1 : 0;
         int npin = (H(a,nx) & PINUSE) ? 1 : 0;
-        if (cin != npin) return -5;                    /* PINUSE(next)==CINUSE(cur) */
+        if (cin != npin) { BAD(c); return -5; }         /* PINUSE(next)==CINUSE(cur) */
         if (c == a->top){
-            if (cin) return -6;                        /* top must be free */
-            if (sz != a->topsize) return -7;
-            if (prev_free) return -18;                 /* free chunk adjacent to top */
+            if (cin) { BAD(c); return -6; }             /* top must be free */
+            if (sz != a->topsize) { BAD(c); return -7; }
+            if (prev_free) { BAD(c); return -18; }      /* free chunk adjacent to top */
         } else if (!cin){
-            if (PF(a,nx) != sz) return -8;             /* footer must equal size */
-            if (prev_free) return -9;                  /* two adjacent free chunks */
+            if (PF(a,nx) != sz) { BAD(c); return -8; }  /* footer must equal size */
+            if (prev_free) { BAD(c); return -9; }       /* two adjacent free chunks */
             walkfree++; prev_free = 1;
         } else {
             prev_free = 0;
         }
         c = nx;
     }
-    if (c != a->rf) return -10;                        /* must land on fencepost */
+    if (c != a->rf) { BAD(c); return -10; }             /* must land on fencepost */
     /* free-list validity + count */
-    if (a->freelist && BK(a,a->freelist) != 0) return -11;
+    if (a->freelist && BK(a,a->freelist) != 0) { BAD(a->freelist); return -11; }
     uint32_t fl=0, x=a->freelist, guard=0;
     while (x){
-        if (x < a->c0 || x >= a->rf) return -12;
-        if (CIN(a,x)) return -13;
-        if (x == a->top) return -14;
+        if (x < a->c0 || x >= a->rf) { BAD(x); return -12; }
+        if (CIN(a,x)) { BAD(x); return -13; }
+        if (x == a->top) { BAD(x); return -14; }
         uint32_t f = FD(a,x);
-        if (f && BK(a,f) != x) return -15;
+        if (f && BK(a,f) != x) { BAD(x); return -15; }
         fl++; x=f;
-        if (++guard > 10000000u) return -16;
+        if (++guard > 10000000u) { BAD(x); return -16; }
     }
     if (fl != walkfree) return -17;
     return 0;
+#undef BAD
 }
+
+int galloc_check(galloc*a){ return galloc_check_where(a, 0); }
