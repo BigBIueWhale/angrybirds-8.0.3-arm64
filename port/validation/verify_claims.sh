@@ -136,6 +136,27 @@ else
   echo "  [skip] $AUDIO not built"
 fi
 
+echo "== CLAIM: every log marker ONDEVICE.md tells you to grep for is actually emitted =="
+# The on-device triage tree is only useful if the strings it names exist. It drifted once and
+# nobody noticed: it documented `call[1] nativeInit (VII) @0x...` and `render[N] GL draws=`, neither
+# of which the shim emits, and TWO diagnostic rows were keyed on the second one. Someone grepping
+# for them with the phone in hand would have found nothing and concluded the shim had stalled.
+MARKERS="empty-json-guard s-construct-null-guard cpu_create failed loader_load failed"
+MARKERS="$MARKERS init_array shim_call h_fatal abshim ready"
+MISSING=""
+for m in "empty-json-guard" "s-construct-null-guard" "cpu_create failed" "loader_load failed" \
+         "init_array" "shim_call" "h_fatal" "abshim ready" "GL draws="; do
+  grep -rqF "$m" port/shim/src/ 2>/dev/null || MISSING="$MISSING [$m]"
+done
+if [ -z "$MISSING" ]; then ok "all documented triage markers exist in the shim source"
+else bad "ONDEVICE.md names markers the shim never emits:$MISSING"; fi
+# and the two strings that were wrong must not come back
+for bogus in "call\[1\] nativeInit" "render\[N\] GL draws" "render\[1\] GL draws"; do
+  if grep -nE "$bogus" port/ONDEVICE.md 2>/dev/null | grep -qv "An earlier version\|neither of which\|not on a separate"; then
+    bad "ONDEVICE.md again documents a non-existent marker matching /$bogus/"
+  fi
+done
+
 [ "${CLEANUP_ORIG:-0}" = "1" ] && rm -f "$ORIG"
 echo
 [ "$FAIL" = "0" ] && echo "ALL CHECKED CLAIMS HOLD" || echo "SOME CLAIMS ARE FALSE — fix the artifact or the docs"
