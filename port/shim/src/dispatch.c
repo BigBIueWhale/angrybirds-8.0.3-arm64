@@ -157,10 +157,29 @@ static void heap_pin(dispatch_t*d, const char *when, const char *op){
      * span of guest code executed between two consecutive allocator entries. */
     dbg_log("[HEAP-PINPOINT] GUEST WINDOW: from engine+0x%x (return of the last clean %s) to engine+0x%x (caller of the failing %s) — the write happened in this span",
             RGE(g_pin_prev_lr), g_pin_prev, RGE(lr), op);
+    /* The LR alone is not enough: it lands inside _Znwj (operator new) at engine+0x85a620, which
+     * merely forwards to malloc. The interesting frame is whoever called operator new. Scan the
+     * guest stack for plausible return addresses — words pointing into the engine image with the
+     * Thumb bit set — to get a shallow backtrace. Crude (no unwind info, so some hits are stale
+     * slots) but enough to name the calling subsystem, and it costs only a few reads. */
+    {
+        uint32_t sp = 0; uc_reg_read(d->cpu->uc, UC_ARM_REG_SP, &sp);
+        dbg_log("[HEAP-PINPOINT] guest sp=0x%08x — scanning for engine return addresses:", sp);
+        int shown = 0;
+        for (uint32_t o = 0; o < 256u && shown < 12; o += 4){
+            uint32_t w = gm_rd32(&d->cpu->mem, sp + o);
+            if (w >= RG_ENGINE && w < RG_ENGINE + 0x1000000u && (w & 1u)){
+                dbg_log("[HEAP-PINPOINT]   sp+%3u -> engine+0x%x", o, RGE(w & ~1u));
+                shown++;
+            }
+        }
+        if (!shown) dbg_log("[HEAP-PINPOINT]   (no engine-range return addresses found in the first 256 bytes)");
+    }
     if (when[0]=='a')
         dbg_log("[HEAP-PINPOINT] VERDICT: %s() ITSELF broke the invariant (heap was clean on entry) -> the bug is INSIDE galloc", op);
     else
-        dbg_log("[HEAP-PINPOINT] VERDICT: heap was clean after %s() and is broken on entry to %s() -> NO galloc code ran in between, so GUEST code wrote the header", g_pin_prev, op);
+        dbg_log("[HEAP-PINPOINT] VERDICT: heap was clean after %s() and is broken on entry to %s() -> none of the INSTRUMENTED shim entry points (malloc/calloc/realloc/free + memcpy/memmove/memset/strcpy/strncpy/strcat/strdup) ran in between, so guest INSTRUCTIONS wrote the header",
+                g_pin_prev, op);
 }
 #else
 #define heap_pin(d,w,o) ((void)0)
@@ -177,11 +196,11 @@ static uint64_t h_free   (dispatch_t*d,mcur*c){ heap_ck(d);
     uint32_t lr=0; uc_reg_read(d->cpu->uc,UC_ARM_REG_LR,&lr); galloc_note_free_lr(RGE(lr));   /* WAF free-site diag (per-free) — non-release only; the leak fix uses only the canary */
 #endif
     heap_pin(d,"before","free"); galloc_free(d->cpu->heap,W(d,c)); heap_pin(d,"after","free"); return 0; }
-static uint64_t h_memcpy (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c),n=W(d,c); em_copy(d->cpu,a,b,n); return a; }
-static uint64_t h_memmove(dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c),n=W(d,c); em_move(d->cpu,a,b,n); return a; }
+static uint64_t h_memcpy (dispatch_t*d,mcur*c){ heap_pin(d,"before","memcpy"); uint32_t a=W(d,c),b=W(d,c),n=W(d,c); em_copy(d->cpu,a,b,n);  uint64_t _r_=a; heap_pin(d,"after","memcpy"); return _r_; }
+static uint64_t h_memmove(dispatch_t*d,mcur*c){ heap_pin(d,"before","memmove"); uint32_t a=W(d,c),b=W(d,c),n=W(d,c); em_move(d->cpu,a,b,n);  uint64_t _r_=a; heap_pin(d,"after","memmove"); return _r_; }
 static uint64_t h_ae_cpy (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c),n=W(d,c); em_copy(d->cpu,a,b,n); return 0; }
 static uint64_t h_ae_move(dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c),n=W(d,c); em_move(d->cpu,a,b,n); return 0; }
-static uint64_t h_memset (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),v=W(d,c),n=W(d,c); em_set(d->cpu,a,(int)(v&0xff),n); return a; }
+static uint64_t h_memset (dispatch_t*d,mcur*c){ heap_pin(d,"before","memset"); uint32_t a=W(d,c),v=W(d,c),n=W(d,c); em_set(d->cpu,a,(int)(v&0xff),n);  uint64_t _r_=a; heap_pin(d,"after","memset"); return _r_; }
 static uint64_t h_ae_set (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),n=W(d,c),v=W(d,c); em_set(d->cpu,a,(int)(v&0xff),n); return 0; } /* (dst,n,c) reversed L1 */
 static uint64_t h_ae_clr (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),n=W(d,c); em_set(d->cpu,a,0,n); return 0; }
 static uint64_t h_memcmp (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c),n=W(d,c); for(uint32_t i=0;i<n;i++){ uint8_t x,y; uc_mem_read(d->cpu->uc,a+i,&x,1); uc_mem_read(d->cpu->uc,b+i,&y,1); if(x!=y) return (uint32_t)((int)x-(int)y); } return 0; }
@@ -189,13 +208,13 @@ static uint64_t h_memchr (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),v=W(d,c),n=W(d
 static uint64_t h_strlen (dispatch_t*d,mcur*c){ char b[8192]; return em_str(d->cpu,W(d,c),b,sizeof b); }
 static uint64_t h_strcmp (dispatch_t*d,mcur*c){ char x[4096],y[4096]; em_str(d->cpu,W(d,c),x,sizeof x); em_str(d->cpu,W(d,c),y,sizeof y); return (uint32_t)strcmp(x,y); }
 static uint64_t h_strncmp(dispatch_t*d,mcur*c){ char x[4096],y[4096]; uint32_t a=W(d,c),b=W(d,c),n=W(d,c); em_str(d->cpu,a,x,sizeof x); em_str(d->cpu,b,y,sizeof y); return (uint32_t)(n?strncmp(x,y,n):0); }
-static uint64_t h_strcpy (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c); char t[8192]; int L=em_str(d->cpu,b,t,sizeof t); em_copy(d->cpu,a,b,L+1); return a; }
-static uint64_t h_strncpy(dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c),n=W(d,c); char t[8192]; int L=em_str(d->cpu,b,t,sizeof t); uint32_t k=((uint32_t)L<n)?(uint32_t)L:n; em_copy(d->cpu,a,b,k); if(k<n) em_set(d->cpu,a+k,0,n-k); return a; }
-static uint64_t h_strcat (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c); char dd[8192]; int dl=em_str(d->cpu,a,dd,sizeof dd); char s[8192]; int sl=em_str(d->cpu,b,s,sizeof s); em_copy(d->cpu,a+dl,b,sl+1); return a; }
+static uint64_t h_strcpy (dispatch_t*d,mcur*c){ heap_pin(d,"before","strcpy"); uint32_t a=W(d,c),b=W(d,c); char t[8192]; int L=em_str(d->cpu,b,t,sizeof t); em_copy(d->cpu,a,b,L+1);  uint64_t _r_=a; heap_pin(d,"after","strcpy"); return _r_; }
+static uint64_t h_strncpy(dispatch_t*d,mcur*c){ heap_pin(d,"before","strncpy"); uint32_t a=W(d,c),b=W(d,c),n=W(d,c); char t[8192]; int L=em_str(d->cpu,b,t,sizeof t); uint32_t k=((uint32_t)L<n)?(uint32_t)L:n; em_copy(d->cpu,a,b,k); if(k<n) em_set(d->cpu,a+k,0,n-k);  uint64_t _r_=a; heap_pin(d,"after","strncpy"); return _r_; }
+static uint64_t h_strcat (dispatch_t*d,mcur*c){ heap_pin(d,"before","strcat"); uint32_t a=W(d,c),b=W(d,c); char dd[8192]; int dl=em_str(d->cpu,a,dd,sizeof dd); char s[8192]; int sl=em_str(d->cpu,b,s,sizeof s); em_copy(d->cpu,a+dl,b,sl+1);  uint64_t _r_=a; heap_pin(d,"after","strcat"); return _r_; }
 static uint64_t h_strchr (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),ch=W(d,c); char b[8192]; em_str(d->cpu,a,b,sizeof b); char*p=strchr(b,(int)ch); return p?a+(uint32_t)(p-b):0; }
 static uint64_t h_strrchr(dispatch_t*d,mcur*c){ uint32_t a=W(d,c),ch=W(d,c); char b[8192]; em_str(d->cpu,a,b,sizeof b); char*p=strrchr(b,(int)ch); return p?a+(uint32_t)(p-b):0; }
 static uint64_t h_strstr (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c); char h[8192],q[1024]; em_str(d->cpu,a,h,sizeof h); em_str(d->cpu,b,q,sizeof q); char*p=strstr(h,q); return p?a+(uint32_t)(p-h):0; }
-static uint64_t h_strdup (dispatch_t*d,mcur*c){ uint32_t a=W(d,c); char b[8192]; int L=em_str(d->cpu,a,b,sizeof b); uint32_t p=galloc_malloc(d->cpu->heap,L+1); if(p) em_copy(d->cpu,p,a,L+1); return p; }
+static uint64_t h_strdup (dispatch_t*d,mcur*c){ heap_pin(d,"before","strdup"); uint32_t a=W(d,c); char b[8192]; int L=em_str(d->cpu,a,b,sizeof b); uint32_t p=galloc_malloc(d->cpu->heap,L+1); if(p) em_copy(d->cpu,p,a,L+1);  uint64_t _r_=p; heap_pin(d,"after","strdup"); return _r_; }
 static uint64_t h_zero   (dispatch_t*d,mcur*c){ (void)d;(void)c; return 0; }
 static uint64_t h_errno  (dispatch_t*d,mcur*c){ (void)c; return (d->sch && sched_current(d->sch)) ? sched_errno_addr(d->sch) : d->errno_slot; }
 static uint64_t h_setloc (dispatch_t*d,mcur*c){ (void)c; return d->c_locale; }
