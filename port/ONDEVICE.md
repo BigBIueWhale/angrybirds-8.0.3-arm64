@@ -26,7 +26,12 @@ unmodified, inside an ARM32→ARM64 emulation shim (Unicorn). targetSdk 26, self
   guest's allocation *sequence* is identical for at least the first 4913 requests, and both hosts
   run 125/125 constructors clean, so the emulation is faithful on both — but "both hosts work" is
   a weaker claim than "both hosts produce identical state", and only the former is evidenced.
-  The cause is still open.
+  **Cause identified:** it is exactly ONE allocation. 7792 of 7793 guest requests are
+  byte-identical across hosts; a single doubling container at `engine+0x938670` grows one step
+  further on x86 (65544) than on arm64 (32776), and that block accounts for the whole gap. So
+  it is a capacity difference in one container, not divergent execution — both hosts run the
+  same allocations and complete all 125 constructors clean. Why it needs the extra step on x86
+  is unresolved; the site is stripped static code.
 - **The arm64 ABI itself is validated** via qemu-user: the real engine loads, all 125 C++
   constructors run under emulation on aarch64, and every ABI-sensitive logic suite passes.
 - **The shim source is host-suite-green** (`Dockerfile.ab-hosttest` → `run_tests.sh` exits 0):

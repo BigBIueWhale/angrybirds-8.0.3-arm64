@@ -32,6 +32,20 @@ each host, present both before and after the allocator fix, and not attributable
 build (the pinned commit compiled for x86-linux reproduces the x86 figure exactly), to host page
 size (hardcoded 4096), or to nondeterminism (x86 repeats identically). Cause still open.
 
+**Cause identified (2026-07-27).** The divergence is not drift — it is exactly ONE allocation.
+Tracing the guest's full allocation sequence on both hosts (`ABSHIM_ALLOC_TRACE`) shows **7792 of
+7793 requests are byte-identical** in kind, size and order. The difference is a single doubling
+container at `engine+0x938670` — the only site in the whole run that allocates the `2^n + 8`
+series `1032, 2056, 4104, 8200, 16392, 32776 …` — which grows one step further on x86 (to 65544)
+than on arm64 (stops at 32776). That one block accounts for the entire gap: pre-fix
+`req2size(65544)=65552` → payload 65544 = the observed 65544; post-fix `align16(65544)+16=65568`
+→ payload 65560 = the observed 65560.
+
+So this is a **capacity** difference in one container, not divergent execution: both hosts run the
+same 7792 allocations and complete all 125 constructors clean. Why that container needs one more
+doubling on x86 is unresolved — `engine+0x938670` is stripped static code (nearest symbol is 629 KB
+earlier), so naming what it holds needs disassembly rather than symbol lookup.
+
 So: both architectures execute the engine correctly, but they do not reach identical guest state,
 and "x86 passed therefore arm64 behaves identically" does not follow. It is not the same as
 having run it. **`out/angrybirds-8.0.3-arm64.apk` has never been executed anywhere** —
