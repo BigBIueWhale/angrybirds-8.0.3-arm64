@@ -41,6 +41,23 @@ than on arm64 (stops at 32776). That one block accounts for the entire gap: pre-
 `req2size(65544)=65552` → payload 65544 = the observed 65544; post-fix `align16(65544)+16=65568`
 → payload 65560 = the observed 65560.
 
+Disassembling that site in **Thumb** mode (`reports/eng.dis` is ARM-mode and therefore garbage
+there) shows what it actually is:
+
+```
+938668: mov   r4, r0        ; r4 = requested size
+93866a: adds  r0, #0x8      ; +8
+93866c: blx   <plt>         ; -> malloc
+938670: cmp   r0, #0x0      ; <- the captured LR (return from malloc)
+938674: strne r4, [r0], #8  ; store the size in a cookie, return ptr+8
+```
+
+So `engine+0x938670` is **not the container** — it is inside a sized-allocation wrapper, almost
+certainly `operator new[]`, which writes an element-count cookie before the pointer it returns.
+That explains the `2^n + 8` shape exactly: the caller requests precisely a power of two and the
+wrapper adds the cookie. The doubling container is this wrapper's *caller*, one frame further up,
+which the captured LR does not reach.
+
 So this is a **capacity** difference in one container, not divergent execution: both hosts run the
 same 7792 allocations and complete all 125 constructors clean. Why that container needs one more
 doubling on x86 is unresolved — `engine+0x938670` is stripped static code (nearest symbol is 629 KB
