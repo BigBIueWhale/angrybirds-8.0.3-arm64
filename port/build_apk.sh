@@ -19,8 +19,9 @@ WORK=/tmp/apkwork
 
 # Optional AUDIO-enabled variant: `ABSHIM_AUDIO=1 bash build_apk.sh` compiles the shim with
 # -DABSHIM_AUDIO (the cont.121 nested-gt re-entrancy fix + nativeMixData enabled) and writes a
-# SEPARATE APK (…-arm64-audio.apk), so the default — silent, validated, bit-reproducible
-# 83be89e5 — is completely untouched. With the env unset, AUDIO_FLAG expands to NO token (identical
+# SEPARATE APK (…-arm64-audio.apk), so the default — silent, validated, bit-reproducible — is
+# completely untouched. (A specific hash used to be quoted here; it went stale two rebuilds ago.
+# The current one lives in RELEASE_NOTES.md, which is regenerated alongside the artifact.) With the env unset, AUDIO_FLAG expands to NO token (identical
 # clang args) and OUT_APK is the default name => the default build stays BYTE-IDENTICAL.
 # The audio variant is EXPERIMENTAL: crash-free + full playthrough+win validated on the x86 proxy,
 # but continuous audio playback is only verifiable on real audio HW (the A56). See ONDEVICE.md.
