@@ -28,11 +28,22 @@ bad(){ printf "  [FAIL] %s\n" "$1"; FAIL=1; }
 
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 
+# Extract the full arm64 payload set ONCE, unconditionally. This used to happen only inside the
+# "original APK present" branch below, so on a fresh clone $T/n held just the shim and the audio
+# comparison further down silently compared against missing files and reported DIFFERS - a false
+# failure driven by unrelated state.
+unzip -o -q "$APK" -d "$T/n" 'lib/arm64-v8a/*' 'classes.dex' 2>/dev/null
+
+# The repo commits only the xz-compressed original. Decompress it here rather than skipping the
+# check: a gate that quietly downgrades itself on a fresh clone is worse than one that fails.
+if [ ! -f "$ORIG" ] && [ -f "$ORIG.xz" ] && command -v xz >/dev/null 2>&1; then
+  echo "  (decompressing $ORIG.xz for the authenticity check)"
+  xz -dk "$ORIG.xz" && CLEANUP_ORIG=1
+fi
+
 echo "== CLAIM: engine/libjs/libadcolony/classes.dex are byte-for-byte Rovio's original 8.0.3 =="
 if [ -f "$ORIG" ]; then
-  (cd "$T" && mkdir -p o n && cd o && unzip -o -q "$OLDPWD/../$ORIG" 'lib/armeabi-v7a/*' 'classes.dex' 2>/dev/null)
   unzip -o -q "$ORIG" -d "$T/o" 'lib/armeabi-v7a/*' 'classes.dex' 2>/dev/null
-  unzip -o -q "$APK"  -d "$T/n" 'lib/arm64-v8a/*'   'classes.dex' 2>/dev/null
   for pair in "libAngryBirdsClassic.so:libengine32.so" "libjs.so:libjs32.so" "libadcolony.so:libadcolony32.so"; do
     o=${pair%%:*}; m=${pair##*:}
     a=$(sha256sum "$T/o/lib/armeabi-v7a/$o" 2>/dev/null | cut -d' ' -f1)
@@ -43,7 +54,7 @@ if [ -f "$ORIG" ]; then
   b=$(sha256sum "$T/n/classes.dex" 2>/dev/null | cut -d' ' -f1)
   [ -n "$a" ] && [ "$a" = "$b" ] && ok "classes.dex unmodified ($a)" || bad "classes.dex differs"
 else
-  echo "  [skip] $ORIG not present (it is xz-compressed in git; decompress to check)"
+  bad "cannot verify authenticity: neither $ORIG nor a usable $ORIG.xz is present"
 fi
 
 echo "== CLAIM: the shim ELF is 16 KB-page aligned (loads on 16 KB-page devices) =="
@@ -125,6 +136,7 @@ else
   echo "  [skip] $AUDIO not built"
 fi
 
+[ "${CLEANUP_ORIG:-0}" = "1" ] && rm -f "$ORIG"
 echo
 [ "$FAIL" = "0" ] && echo "ALL CHECKED CLAIMS HOLD" || echo "SOME CLAIMS ARE FALSE — fix the artifact or the docs"
 exit "$FAIL"
