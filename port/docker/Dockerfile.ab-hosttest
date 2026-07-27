@@ -1,0 +1,27 @@
+# Dockerfile.ab-hosttest — the reproducible HOST-TEST image for the shim's unit + boot suite.
+# Runs port/shim/test/run_tests.sh: the Phase-A logic tortures (galloc/marshal/format/utf/ctype/
+# handle_table/fdtable/jni_arg/elf32), the nativeInit boot-drive (real engine under Unicorn), AND
+# the coverage HARD GATE (coverage_check.py — every engine UND FUNC must resolve to a bridge).
+#
+# The shim compiles NATIVELY here (host gcc, not the NDK) — this is the x86 leg that, together with
+# the qemu-user arm64 run (task #31), proves the shim's ABI-sensitive logic on both host ABIs. The
+# ARM32 guest is emulated by the repo-vendored Unicorn 2.1.4 (port/shim/vendor/unicorn/, same commit
+# 7c5db94191... as the deliverable's arm64 build), so no Unicorn build is needed in the image.
+#
+# Build:  docker build -t ab-hosttest -f port/docker/Dockerfile.ab-hosttest .   (only network step)
+# Use:    docker run --rm --network none -v "$PWD":/work ab-hosttest bash /work/port/shim/test/run_tests.sh
+#         (fully OFFLINE; sources + vendored Unicorn + engine .so all come from the mounted repo)
+#
+# Security: outbound fetches only at image-build time (apt). Never listens on a port; the suite runs
+# under --network none. Always run WITHOUT -p and WITHOUT --network host.
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+# build-essential = gcc/g++/make/libc-dev (compiles the shim natively);
+# binutils = readelf (coverage_check.py enumerates the engine's UND FUNC imports; elf32 test);
+# python3  = runs the coverage HARD GATE (its absence previously made run_tests.sh exit 127).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential binutils python3 ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work

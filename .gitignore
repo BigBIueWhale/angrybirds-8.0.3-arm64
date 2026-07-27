@@ -1,0 +1,49 @@
+# =============================================================================
+#  Sovereign build — what is tracked and why
+#  Tracked: the compressed 8.0.3 input APK, the full shim source + build
+#  pipeline (Dockerfiles, scripts, fixed debug key), docs, and proof
+#  screenshots. Everything below is EXCLUDED because it is either a build
+#  OUTPUT (regenerable), a large research artifact, or local scratch.
+# =============================================================================
+
+# --- build OUTPUTS (regenerable by `reproduce.sh`; the ready-to-install APK
+#     ships as a GitHub *release asset*, not in the tree) ---
+/out/
+/work803/
+
+# --- input APKs: keep ONLY the compressed 8.0.3 sovereign source ---
+/apks/*
+!/apks/com.rovio.angrybirds@8.0.3.apk.xz
+
+# --- build artifacts / toolchain caches / prebuilt binaries ---
+/port/build/
+# prebuilt Unicorn (32 MB) for the host-test only; the MAIN build compiles Unicorn from the pinned commit
+/port/shim/vendor/
+/port/shim/abtest
+/port/shim/libABC-arm64.so
+
+# --- research artifacts (large; regenerable from the engine) ---
+/reports/*
+!/reports/shots/
+/reports/shots/*
+!/reports/shots/PROOF_*.png
+
+# --- local scratch / downloaded tools / venv / crash dumps ---
+/venv/
+/bin/
+/dl/
+/extracted/
+/analyze.py
+/offline_test.sh
+/androg_err.log
+/venv_err.log
+*.core
+*.log
+__pycache__/
+*.pyc
+*.pyo
+
+# --- editor / OS noise ---
+.claude/
+.DS_Store
+*.swp

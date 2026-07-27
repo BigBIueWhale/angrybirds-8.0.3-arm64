@@ -1,0 +1,13 @@
+# Audio-capture validation image: the x86 Android emulator (ab-emu) + a headless PulseAudio server.
+# The emulator's qemu binary is linked against libpulse, but a bare container has no PulseAudio
+# SERVER, so the guest's AudioTrack buffer never drains -> the mixer fills a few buffers then blocks
+# (the "mixData stops at 8" seen headless). Running a PulseAudio null sink here drains the buffer at
+# real time -> continuous mixing -> and its .monitor can be captured to a WAV to prove ACTUAL sound.
+# Build WITH network (apt, image-build-time fetch = allowed); RUN the capture test --network none
+# (PulseAudio uses a Unix socket under XDG_RUNTIME_DIR, never a network port).
+FROM ab-emu
+# pulseaudio's package creates the non-root `pulse` user (uid 104) — we run the daemon as that user
+# (root can't run pulseaudio in user mode; system mode is finicky in a container).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      pulseaudio pulseaudio-utils sox \
+    && rm -rf /var/lib/apt/lists/*

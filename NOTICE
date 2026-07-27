@@ -1,0 +1,42 @@
+Angry Birds Classic 8.0.3 → arm64 port
+======================================
+
+THE PORT (original work in this repository)
+-------------------------------------------
+The ARM32→ARM64 emulation shim (port/shim/), the reproducible build pipeline
+(port/build_apk.sh, port/docker/, port/reproduce.sh), the de-phone-home tooling
+(port/depermission.py, port/manifest_firebase_off.py), and all other original
+source code and documentation here are:
+
+    Copyright (c) 2026 Ronen Zyroff <rzyroff@gmail.com>
+    Licensed under the GNU General Public License, version 2 (see LICENSE).
+
+GPLv2 applies because the shim statically links the Unicorn Engine (GPLv2), so the
+built shim binary is a combined GPLv2 work. The complete corresponding source is
+this repository, and the reproducible build regenerates the binary byte-for-byte.
+
+THE GAME (bundled, unmodified third-party content)
+--------------------------------------------------
+"Angry Birds", "Angry Birds Classic", the game itself, and all of its native
+engine code, Java code (classes.dex), assets, and artwork — as bundled here in
+apks/com.rovio.angrybirds@8.0.3.apk.xz and reproduced inside the output APK — are:
+
+    Copyright (c) Rovio Entertainment Corporation. All rights reserved.
+
+They are included here UNMODIFIED, for personal archival and interoperability
+(running a legitimately-owned copy of a delisted game on hardware whose CPU can
+no longer execute its original 32-bit ARM code). The port neither modifies the
+game's code/assets nor circumvents any technical protection measure on them; it
+adds an emulation layer so the unaltered engine can run on an AArch64-only CPU,
+and neutralizes the app's network permissions.
+
+This project is NOT affiliated with, authorized by, sponsored by, or endorsed by
+Rovio Entertainment Corporation. "Angry Birds" and related marks are trademarks
+of Rovio Entertainment Corporation.
+
+THIRD-PARTY TOOLING
+-------------------
+The build fetches, at image-build time, the Android NDK (Google) and the Unicorn
+Engine (https://www.unicorn-engine.org/, GPLv2), each under its own license.
+Unicorn is statically linked into the shim; see its license for the terms that
+implies for redistribution of the built shim binary.

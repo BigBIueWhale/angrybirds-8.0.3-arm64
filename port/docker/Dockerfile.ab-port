@@ -1,0 +1,44 @@
+# Dockerfile.ab-port — the reproducible build image for the Angry Birds 8.0.3 -> arm64
+# conversion. Everything the pipeline needs, pinned, built from scratch:
+#   * Android NDK r26d (26.3.11579264)  — aarch64-linux-android24-clang for the arm64 shim
+#   * Unicorn 2.1.4 (commit 7c5db94191defc1e04a4f66f4eb1220903cba837), cross-compiled for
+#     arm64-v8a / android-24 with UNICORN_ARCH=arm (an ARM32 *guest* on an arm64 host)
+#   * apksigner + zipalign (debug-sign + align the output APK)
+#
+# Build:  docker build -t ab-port -f port/docker/Dockerfile.ab-port .   (only network step)
+# Use:    docker run --rm --network none -v "$PWD":/work ab-port bash /work/port/build_apk.sh
+#         (produces out/angrybirds-8.0.3-arm64.apk from apks/…8.0.3….apk — runs OFFLINE:
+#          every build tool is baked in below, so the conversion needs no network at all)
+#
+# Security: this image only makes OUTBOUND fetches at *image build* time (apt/NDK/git); it
+# never listens on a port, and the conversion itself runs under `--network none`. Always run
+# containers WITHOUT `-p` and WITHOUT `--network host`.
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential cmake pkg-config python3 python3-pip \
+      wget unzip zip git ca-certificates \
+      openjdk-17-jdk-headless apksigner zipalign \
+ && rm -rf /var/lib/apt/lists/*
+
+# --- Android NDK r26d ---
+RUN wget -q https://dl.google.com/android/repository/android-ndk-r26d-linux.zip -O /tmp/ndk.zip \
+ && unzip -q /tmp/ndk.zip -d /opt && rm /tmp/ndk.zip
+ENV ANDROID_NDK=/opt/android-ndk-r26d
+
+# --- Unicorn 2.1.4 cross-compiled for arm64-v8a android (guest arch = ARM32) ---
+# Produces /opt/unicorn/b/{libunicorn-static.a, libunicorn-common.a, libarm-softmmu.a}
+# (all three are needed at link time; they have circular deps -> --start-group).
+RUN git clone https://github.com/unicorn-engine/unicorn /opt/unicorn \
+ && git -C /opt/unicorn checkout 7c5db94191defc1e04a4f66f4eb1220903cba837 \
+ && cmake -S /opt/unicorn -B /opt/unicorn/b \
+      -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake \
+      -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
+      -DUNICORN_ARCH=arm -DBUILD_SHARED_LIBS=OFF -DUNICORN_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release \
+ && cmake --build /opt/unicorn/b -j"$(nproc)" \
+ && test -f /opt/unicorn/b/libunicorn-static.a \
+ && test -f /opt/unicorn/b/libunicorn-common.a \
+ && test -f /opt/unicorn/b/libarm-softmmu.a
+
+WORKDIR /work
