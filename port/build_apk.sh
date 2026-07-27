@@ -14,6 +14,27 @@ CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
 UNI="/opt/unicorn/b/libunicorn-static.a /opt/unicorn/b/libunicorn-common.a /opt/unicorn/b/libarm-softmmu.a"
 IN=/work/apks/com.rovio.angrybirds@8.0.3.apk
 ENGINE=/work/work803/libv7/libAngryBirdsClassic.so
+
+# The repo commits ONLY the xz-compressed input (the raw APK is ~100 MB). reproduce.sh
+# decompresses it in its step 0 — but build_apk.sh is *also* documented as a direct entry point
+# (port/REPRODUCE.md twice, and port/ONDEVICE.md for the audio variant), and from a fresh clone
+# those invocations died with a confusing "unzip: cannot find or open .../8.0.3.apk". Do the same
+# preparation here, with the same authenticity gate, so every documented command works standalone.
+if [ ! -f "$IN" ]; then
+  if [ ! -f "$IN.xz" ]; then echo "FATAL: neither $IN nor $IN.xz is present"; exit 1; fi
+  command -v xz >/dev/null 2>&1 || { echo "FATAL: xz not available to decompress $IN.xz"; exit 1; }
+  echo "   input APK not decompressed yet -> xz -dk $(basename "$IN").xz"
+  xz -dk "$IN.xz"
+fi
+echo "0580c3d3f79b21b344940bea65b8fadc22e8e5599c89dfe9b5e8a85004846b9a  $IN" | sha256sum -c - >/dev/null 2>&1 \
+  || { echo "FATAL: input APK sha256 mismatch — not the authentic 8.0.3"; exit 1; }
+
+# Same story for the engine the shim embeds: extracted from the APK above, not committed.
+if [ ! -f "$ENGINE" ]; then
+  echo "   engine not extracted yet -> unzip lib/armeabi-v7a/libAngryBirdsClassic.so"
+  mkdir -p "$(dirname "$ENGINE")"
+  unzip -o -j -q "$IN" lib/armeabi-v7a/libAngryBirdsClassic.so -d "$(dirname "$ENGINE")"
+fi
 OUTDIR=/work/out; mkdir -p "$OUTDIR"
 WORK=/tmp/apkwork
 
