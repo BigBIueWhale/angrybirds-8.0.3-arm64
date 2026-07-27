@@ -142,12 +142,16 @@ static inline void heap_ck(dispatch_t*d){ (void)d; }
 static int  g_pin_done = 0;
 static const char *g_pin_prev = "(none yet)";
 static uint32_t g_pin_prev_lr = 0;      /* guest LR at the last CLEAN allocator call */
+static uint32_t g_pin_args[4] = {0,0,0,0};   /* r0-r3 at the last CLEAN bridge entry */
+static uint32_t g_pin_cur_args[4] = {0,0,0,0}; /* r0-r3 of the bridge currently running */
+void dispatch_pin_note_args(const uint32_t *a){ for(int i=0;i<4;i++) g_pin_cur_args[i]=a[i]; }
 static void heap_pin(dispatch_t*d, const char *when, const char *op){
     if (g_pin_done) return;
     uint32_t badchunk = 0;
     int rc = galloc_check_where(d->cpu->heap, &badchunk);
     uint32_t lr = 0; uc_reg_read(d->cpu->uc, UC_ARM_REG_LR, &lr);
-    if (!rc){ if (when[0]=='a'){ g_pin_prev = op; g_pin_prev_lr = lr; } return; }  /* remember last clean op */
+    if (!rc){ if (when[0]=='a'){ g_pin_prev = op; g_pin_prev_lr = lr;
+                              for(int i=0;i<4;i++) g_pin_args[i]=g_pin_cur_args[i]; } return; }  /* remember last clean op */
     g_pin_done = 1;
     dbg_log("[HEAP-PINPOINT] FIRST failure rc=%d detected %s %s() — last clean point was after %s() — chunk=0x%08x",
             rc, when, op, g_pin_prev, badchunk);
@@ -157,6 +161,9 @@ static void heap_pin(dispatch_t*d, const char *when, const char *op){
      * span of guest code executed between two consecutive allocator entries. */
     dbg_log("[HEAP-PINPOINT] GUEST WINDOW: from engine+0x%x (return of the last clean %s) to engine+0x%x (caller of the failing %s) — the write happened in this span",
             RGE(g_pin_prev_lr), g_pin_prev, RGE(lr), op);
+    dbg_log("[HEAP-PINPOINT] last clean %s() args: r0=0x%08x r1=0x%08x r2=0x%08x r3=0x%08x (for memset/memcpy that is dest, value/src, n) — corrupted chunk was 0x%08x, its payload 0x%08x",
+            g_pin_prev, g_pin_args[0], g_pin_args[1], g_pin_args[2], g_pin_args[3],
+            badchunk, badchunk + 8u);
     /* The LR alone is not enough: it lands inside _Znwj (operator new) at engine+0x85a620, which
      * merely forwards to malloc. The interesting frame is whoever called operator new. Scan the
      * guest stack for plausible return addresses — words pointing into the engine image with the
@@ -395,6 +402,12 @@ static const bent BR[] = {
  * at the first failure and the failure happens early, so it is bounded. Non-release only. */
 #ifndef ABSHIM_RELEASE
 static uint64_t br_call_pinned(dispatch_t*d, const bent*b, mcur*cur){
+    {   /* AAPCS32: first four args live in r0-r3 on entry, before the cursor is pulled */
+        uint32_t a[4];
+        uc_reg_read(d->cpu->uc, UC_ARM_REG_R0, &a[0]); uc_reg_read(d->cpu->uc, UC_ARM_REG_R1, &a[1]);
+        uc_reg_read(d->cpu->uc, UC_ARM_REG_R2, &a[2]); uc_reg_read(d->cpu->uc, UC_ARM_REG_R3, &a[3]);
+        dispatch_pin_note_args(a);
+    }
     heap_pin(d, "before", b->name);
     uint64_t r = b->fn(d, cur);
     heap_pin(d, "after", b->name);
