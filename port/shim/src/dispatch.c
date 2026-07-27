@@ -50,12 +50,27 @@ static uint64_t d_out(double x){ uint64_t b; memcpy(&b,&x,8); return b; }
 /* DIAG (cont.78 track a): every 8192 malloc/free, validate the whole heap (boundary tags + free
  * list). galloc was 450k-op torture-tested clean, but if the ENGINE's churn hits an edge case that
  * corrupts a chunk header, the confirmed use-after-free would be a galloc bug, not the string logic.
- * The FIRST failure pins WHEN the heap goes bad (before any string/_Rep symptom). galloc_check: 0=OK. */
+ * The FIRST failure pins WHEN the heap goes bad (before any string/_Rep symptom). galloc_check: 0=OK.
+ *
+ * PERF (2026-07-27): this is now RELEASE-GATED, matching the WAF free-site diag in h_free
+ * below. It was shipping in the arm64 release build (the [GALLOC-CORRUPT] string was present
+ * in out/angrybirds-8.0.3-arm64.apk), on the hot h_malloc/h_free path. galloc_check walks
+ * EVERY chunk plus the whole free list, and in the real runtime each header field is its own
+ * 4-byte uc_mem_read (cpu.c:20) — not a memcpy. Measured on a Core Ultra 9 285K, Unicorn-
+ * backed (i.e. the production path):
+ *      5k live chunks (634KB)  -> 0.451 ms      100k (11.4MB) -> 4.134 ms
+ *     20k live chunks (2.4MB)  -> 1.288 ms      200k (22.5MB) -> 7.912 ms
+ * against a 16.7 ms frame budget, on a phone whose cores are ~2-3x slower. Purely diagnostic,
+ * so it must not ship. The non-release build keeps it, which is where heap triage belongs. */
+#ifndef ABSHIM_RELEASE
 static void heap_ck(dispatch_t*d){
     static unsigned long ops=0;
     if((++ops & 0x1fffUL)==0){ int rc=galloc_check(d->cpu->heap);
         if(rc!=0){ static int n=0; if(n++<8) dbg_log("[GALLOC-CORRUPT] galloc_check=%d at ~%lu ops -> heap chunk/free-list inconsistent (THIS is the UAF root, not string logic)", rc, ops); } }
 }
+#else
+static inline void heap_ck(dispatch_t*d){ (void)d; }
+#endif
 static uint64_t h_malloc (dispatch_t*d,mcur*c){ heap_ck(d); uint32_t n=W(d,c); return galloc_malloc(d->cpu->heap,n?n:1); }
 static uint64_t h_calloc (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c); return galloc_calloc(d->cpu->heap,a,b); }
 static uint64_t h_realloc(dispatch_t*d,mcur*c){ uint32_t p=W(d,c),n=W(d,c); return galloc_realloc(d->cpu->heap,p,n); }
