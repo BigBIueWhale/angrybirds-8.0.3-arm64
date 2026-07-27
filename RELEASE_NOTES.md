@@ -87,7 +87,9 @@ The authentic 8.0.3 input APK (SHA‑256 `0580c3d3…`), the full shim source, t
 
 - **Not yet run on real arm64 hardware** — see *Scope of validation*.
 - Real‑time frame‑rate under the emulation lock, and the real Mali/Xclipse GPU's shader‑compile path, can only be confirmed on the physical A56 (validation uses software SwiftShader, which is itself the dominant cost in emulator frame timings and so does not predict on‑device rates).
-- The engine's per‑frame allocation rate is not yet measured, so the total emulation overhead per frame is not yet bounded.
+- The engine performs roughly 900–1750 heap operations per frame in steady‑state play (measured),
+  but the per‑frame cost of the emulation itself has only been measured under software rendering,
+  where the rasteriser dominates. What a real GPU leaves for the emulator is still unknown.
 
 ---
 
