@@ -136,7 +136,7 @@ not `nativeInit`), and the draw counters live **on the `frame[N]` lines**, not o
 `render[N]` line. If you were grepping for the old strings you would find nothing and reasonably
 conclude the shim had stalled.
 
-`frame[N]`/`render[N]` climbing = the engine is rendering. Reaching `frame[601]+` with the
+`frame[N]` climbing, with `draws=` rising on those same lines, = the engine is rendering. Reaching `frame[601]+` with the
 tutorial card = **it booted and is interactive** — tap the screen and play. On the x86 proxy this
 whole sequence completes to a level win + the next level with `h_fatal=0`; the A56 should match,
 just on its own silicon.
@@ -151,8 +151,8 @@ just on its own silicon.
 | `init_array INCOMPLETE (N/125) last_unimpl='X'` | A C++ static ctor faulted needing unbridged symbol `X`. | Host + qemu-user both run 125/125, so this implies a device-only import; bridge `X` (coverage_check enforces 0). |
 | **`JNIEnv slot N UNHANDLED -> 0`** | The engine called a JNIEnv method not yet bridged (only genuinely-rare ones remain). | Look up slot `N` in NDK `JNINativeInterface` order, implement in `env_dispatch_real` (jni_entry.c). |
 | **`shim_call NAME emu=… fatal=1 pc=0x…`** | Native `NAME` aborted. `pc` `0x10000000+` = a bridge stub; `0x40000000+` = guest engine code. | `__stack_chk_fail` = memory corruption (report `NAME`); `abort` = engine error path (missing asset/config assertion). |
-| Boots, renders, but **black/blank screen** | GL state / shader compile / EGL surface — not fatal. | Read `render[N] GL draws=…`: `draws>0` → engine IS drawing, so `adb logcat` **without** `-s abshim` and grep `Mali`/`Xclipse`/`GLSL`/`shader` — a driver shader-compile error (GLSL ES version/precision) is the usual new-GPU culprit. `draws=0` → see next row. |
-| **`render[N] GL draws=0`** repeating | Booted but no scene loaded. | `build_apk.sh` injects `assets/data/script_paths.json` so this should NOT happen; if it does, enable the asset trace to see the missing file. |
+| Boots, renders, but **black/blank screen** | GL state / shader compile / EGL surface — not fatal. | Read the `draws=` counter on the `frame[N]` lines: `draws>0` → engine IS drawing, so `adb logcat` **without** `-s abshim` and grep `Mali`/`Xclipse`/`GLSL`/`shader` — a driver shader-compile error (GLSL ES version/precision) is the usual new-GPU culprit. `draws=0` → see next row. |
+| **`frame[N] GL draws=0`** repeating (counter never rises) | Booted but no scene loaded. | `build_apk.sh` injects `assets/data/script_paths.json` so this should NOT happen; if it does, enable the asset trace to see the missing file. |
 | Runs but **very slow / stutters** | Steady-state double-work (Unicorn ARM32 emulation). | Warms up after first-frame JIT (≈350 Minsn/s on x86; the A56's cores are the real test). Note any action that specifically stutters. |
 | **Loses save progress** between launches | File write path / data dir. | Saves go via real `fopen`/`fwrite` to the app private dir; `adb shell run-as com.rovio.angrybirds ls files/`. Note: a *rebuilt* APK signed with a different key can't update-install over an old one — `port/debug.ks` is fixed so rebuilds keep the same signer. |
 
