@@ -68,8 +68,10 @@ f099fc46f353f1671911f7d4e7c763efedc437db62c903b920e7975cdef85f6b  angrybirds-8.0
   but under the shim it landed on the next heap chunk's header. Traced by checking the heap
   before and after every allocator and bridge call: the guest heap went permanently
   inconsistent by ~16 000 allocations into every session (383 of 384 checks failing) and is now
-  clean for the whole run. Chunk sizing now matches the device's usable-size semantics,
-  costing about 3 % more memory.
+  clean for the whole run. Chunk sizing now matches the device's usable-size semantics.
+  Measured memory cost is 6–21 % more heap depending on allocation mix (highest where small
+  objects dominate, such as the constructor phase); an earlier 3 % figure came from a synthetic
+  mix and understated it. In absolute terms the heap is ~605 KB after startup, against a 512 MB arena.
 - **A diagnostic was removed from the release build.** `heap_ck()` ran a full guest‑heap + free‑list walk every 8192 malloc/free operations and was not gated out of release, unlike the sibling diagnostic beside it. Measured on the production path (real Unicorn backend, where every chunk header field is its own `uc_mem_read`), one check costs 0.45 ms at a minimal heap and 7.9 ms at 200k live chunks — against a 16.7 ms frame budget, on phone cores slower than the bench host. It is now release‑gated; the debug build keeps it. This is why the SHA‑256s differ from any earlier build.
 - Validation scripts corrected: a `levelComplete` metric that actually counted particle‑script asset preloads (constant at 8 in every run, including crashes) was removed, and a fixed‑duration wait that made playthrough tests flaky was replaced with a frame‑based one.
 

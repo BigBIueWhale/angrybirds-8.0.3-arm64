@@ -128,7 +128,10 @@ static void     SBK(galloc*a,uint32_t c,uint32_t v){ gm_wr32(a->m,c+12,v); }
  * source rather than tolerating it.
  *
  * chunk = align16(n) + 16  =>  payload = align16(n) + 8  >=  align16(n) = what the device gives.
- * Costs 16 bytes more per small allocation than the old formula; the arena is 512MB. */
+ * Costs 16 bytes more per small allocation than the old formula; the arena is 512MB.
+ * MEASURED overhead (2026-07-27): +21% on the constructor phase (499768 -> 605096 bytes),
+ * +11.7% and +6.5% at two later runtime samples. An earlier "+3.2%" note came from a
+ * synthetic size mix and understated it — small-object-heavy phases pay the most. */
 static uint32_t req2size(uint32_t n){
     uint32_t want = (n + (ALIGN-1)) & ~(ALIGN-1);     /* device-equivalent usable bytes */
     if (want < n) return 0;                           /* overflow guard (huge n) */
