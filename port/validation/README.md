@@ -162,6 +162,7 @@ PROOF mapping verified by md5 against the source screenshots, not by filename.
 
 | Script | AVD / API | APK under test | Produces |
 |---|---|---|---|
+| `emu_jni_exception_probe.sh` | abtest34 / 34 | x86shim-release | **the only script that captures UNFILTERED logcat.** Asserts (1) ART reports no pending JNI exception / CheckJNI error / abort, (2) the app's OWN pid does no name resolution or socket work — runtime de-phone-home proof, attributed by pid because the system's NetworkMonitor legitimately resolves names on a different pid, (3) FlurryAgent logs that ACCESS_NETWORK_STATE is missing. Exits non-zero on failure |
 | `emu_run.sh` | abtest / 25 | x86shim | first boot-through rig; `emu_screen.png`, `emu_abshim.txt`, `emu_engine.txt` |
 | `emu_fatal.sh` | abtest / 25 | x86shim | `emu_fatal_screen.png` → **PROOF_tutorial_render** |
 | `emu_fatal_release.sh` | abtest / 25 | x86shim-release | `emu_fatalR_*` — release-config fatal sweep |
