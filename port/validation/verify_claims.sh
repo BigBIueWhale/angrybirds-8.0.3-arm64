@@ -170,6 +170,34 @@ else
   skip "signing/alignment (no apksigner on PATH, no ab-port image)"
 fi
 
+echo "== CLAIM: every SHA-256 printed in the docs matches the artifact =="
+# RELEASE_NOTES.md tells a reader to verify their download against a SHA-256 block. Nothing checked
+# that those digests were true. On 2026-07-28 the audio variant's documented hash was
+# 19605324d475b342e718… while the build produces 196053244e92ac8c902f… — the same first EIGHT hex
+# characters and divergent after, which is not a collision (that would be ~1 in 4e9) but a hand
+# transcription that mangled the tail. Anyone verifying that download would have concluded their
+# file was corrupt, and the build was fine: rebuilt twice, byte-identical.
+#
+# The failure mode is specific to hashes copied into prose: they look authoritative, they are never
+# re-derived, and a single wrong character is invisible to a reader. So derive them.
+HASHBAD=""; HASHOK=0; HASHSKIP=0
+while read -r digest name; do
+    [ -n "$name" ] || continue
+    if [ ! -f "out/$name" ]; then HASHSKIP=$((HASHSKIP+1)); continue; fi   # variant not built here
+    actual=$(sha256sum "out/$name" 2>/dev/null | cut -d' ' -f1)
+    if [ "$actual" = "$digest" ]; then HASHOK=$((HASHOK+1))
+    else HASHBAD="$HASHBAD\n           - $name: docs say ${digest:0:16}…, artifact is ${actual:0:16}…"; fi
+done <<EOF
+$(grep -rhoE '^[0-9a-f]{64}  [A-Za-z0-9._-]+\.apk' --include='*.md' . 2>/dev/null | sort -u)
+EOF
+if [ -n "$HASHBAD" ]; then
+    bad "documented SHA-256 does not match the artifact:$(printf "$HASHBAD")"
+elif [ "$HASHOK" -gt 0 ]; then
+    ok "all $HASHOK documented SHA-256(s) match their artifact$([ "$HASHSKIP" -gt 0 ] && echo " ($HASHSKIP not built here)")"
+else
+    skip "documented SHA-256 check (no documented artifact is present to compare)"
+fi
+
 echo "== CLAIM: the shipped APK carries NO perf instrumentation =="
 # build_apk_x86_perf.sh compiles -DABSHIM_PERF to time the frame split. That build is a measurement
 # tool, never a deliverable, and its header used to say "verify_claims.sh checks that" — which was
