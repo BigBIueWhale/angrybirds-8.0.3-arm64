@@ -100,7 +100,9 @@ what it actually receives at `glTexImage2D` — a running maximum plus every dis
 logged only when one of them changes, so the dump stays bounded instead of emitting thousands of
 lines during the load phase it is measuring.
 
-Measured over a full run (boot → tutorial → win → level 2), `h_fatal=0`:
+Measured over a full run (boot → tutorial → win → level 2), `h_fatal=0`, and **reproduced exactly on
+an independent second run** (same 2000 × 1991, same zero compressed uploads, `h_fatal=0` across 8824
+shim log lines) — so the figure is a property of the workload, not of one capture:
 
 | | |
 |---|---|
