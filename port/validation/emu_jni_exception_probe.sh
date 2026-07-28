@@ -30,17 +30,21 @@
 #   docker run --rm --network none --device /dev/kvm --group-add "$(getent group kvm|cut -d: -f3)" \
 #       -v "$PWD":/work ab-emu-34 bash /work/port/validation/emu_jni_exception_probe.sh
 set +e
+# AVD and output prefix overridable so this also runs on the API 36 tier (the A56's actual OS).
+# Defaults reproduce the original behaviour exactly.
+AVD="${ABSHIM_AVD:-abtest34}"
+PFX="${ABSHIM_OUTPFX:-jniexc}"
 source "$(dirname "$0")/lib_settle.sh"
 ( sleep 2400; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"
-LOG="$OUT/jniexc_probe.txt"; : >"$LOG"
-FULL="$OUT/jniexc_full_logcat.txt"; : >"$FULL"
-ABLOG="$OUT/jniexc_abshim.txt"; : >"$ABLOG"
+LOG="$OUT/${PFX}_probe.txt"; : >"$LOG"
+FULL="$OUT/${PFX}_full_logcat.txt"; : >"$FULL"
+ABLOG="$OUT/${PFX}_abshim.txt"; : >"$ABLOG"
 say(){ echo "$@" | tee -a "$LOG"; }
 
 say "== boot API 34 =="
-emulator -avd abtest34 -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
+emulator -avd "$AVD" -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
          -gpu swiftshader_indirect -partition-size 6144 -wipe-data >/tmp/emu.log 2>&1 &
 adb wait-for-device
 for i in $(seq 1 200); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null|tr -d '\r')" = 1 ] && break; sleep 2; done
@@ -111,9 +115,16 @@ grep -aiq "No internet permissions granted for the app" "$FULL" \
 # GMS is ABSENT from this emulator ("Google Play Store is missing"), so de-phone-home layer 4 - the
 # Firebase/FCM auto-init kill-switch, which exists precisely for GMS-MEDIATED phone-homes - is NOT
 # exercised here. Say so rather than let a green run imply it was covered. See OPEN_FINDINGS.md.
-if grep -aiq "Google Play Store is missing\|Default FirebaseApp failed to initialize" "$FULL"; then
-  say "  [SCOPE] no Google Play Services on this emulator -> layer 4 (Firebase/FCM auto-init"
+# Ask the DEVICE whether GMS is installed, rather than inferring it from a log line. The first
+# version grepped for "Google Play Store is missing", which is emitted by google_apis images too -
+# they ship Google Play SERVICES without the Play STORE app - so it printed "no Google Play
+# Services" on an image that demonstrably has them (the layer-4 test measures "GMS present: 2" on
+# the same AVD). A scope disclaimer that is itself false is worse than none.
+if ! adb shell pm list packages 2>/dev/null | grep -q com.google.android.gms; then
+  say "  [SCOPE] no Google Play Services on this AVD -> layer 4 (Firebase/FCM auto-init"
   say "          kill-switch) is NOT exercised by this run. The A56 does have GMS."
+else
+  say "  [scope] GMS IS present on this AVD, so layer 4 is exercisable here - see emu_layer4_fcm_test.sh"
 fi
 
 say ""

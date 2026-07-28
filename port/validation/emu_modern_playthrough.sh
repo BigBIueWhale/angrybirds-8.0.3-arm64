@@ -4,7 +4,8 @@
 # first (tap OK), then runs the same proven tutorial play sequence (coords transfer: 640x320).
 set +e
 source "$(dirname "$0")/lib_settle.sh"
-source "$(dirname "$0")/lib_provenance.sh"   # frame-based settle (replaces flaky fixed sleeps)
+source "$(dirname "$0")/lib_provenance.sh"
+source "$(dirname "$0")/lib_dialogs.sh"   # frame-based settle (replaces flaky fixed sleeps)
 # watchdog raised 1450 -> 2100s: the frame-based settle below can add up to 300s over the old
 # fixed sleep, and boot-to-frame[601] has been observed at ~565s.
 ( sleep 2100; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
@@ -38,24 +39,8 @@ for s in $(seq 1 130); do sleep 5
 done
 sleep 4
 adb exec-out screencap -p > "$OUT/${PFX}_1_dialog.png" 2>/dev/null
-# TWO system dialogs can be stacked here, and the ORDER matters.
-#   API 25/34 : only "This app was built for an older version of Android"   [OK]
-#   API 36    : Android 16 ALSO shows "Viewing full screen - to exit, swipe
-#               down from the top of your screen"                           [Got it]
-#               and it sits ON TOP, so it must be dismissed FIRST. A first attempt tapped OK
-#               before "Got it" and achieved nothing: the frames climbed but every play tap was
-#               swallowed by the dialog, so no win was ever reached. Only visible by testing on
-#               the phone's actual OS version rather than assuming API 34 generalises.
-# Both dialogs are dismissed, top-down, twice - the extra taps are harmless where a dialog is
-# absent, and cheaper than trying to detect which OS put what on screen.
-say "== dismiss stacked system dialogs (Android 16 'Got it' first, then 'older Android' OK) =="
-for pass in 1 2; do
-  adb shell input tap 510 190 >/dev/null 2>&1; sleep 1     # "Got it"  (API 36 fullscreen notice)
-  adb shell input tap 468 236 >/dev/null 2>&1; sleep 1     # "OK"      (older-Android notice)
-  adb shell input tap 490 237 >/dev/null 2>&1; sleep 1     # "OK"      (API 34 position, kept)
-done
-sleep 2
-adb exec-out screencap -p > "$OUT/${PFX}_1b_afterdialogs.png" 2>/dev/null
+say "== dismiss stacked system dialogs (see lib_dialogs.sh) =="
+dismiss_system_dialogs "$OUT/${PFX}_1b_afterdialogs.png"
 adb exec-out screencap -p > "$OUT/${PFX}_2_afterdialog.png" 2>/dev/null
 say "== play: start card + 3 slingshot drags (proven API-25 sequence) =="
 adb shell input tap 390 266; sleep 4; adb shell input tap 390 266; sleep 12
