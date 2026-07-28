@@ -48,6 +48,36 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R14. The project's foundational numbers, re-derived from the binaries
+
+Every other finding quotes these, and none had been re-checked since it was first written. Audited
+against the hash-pinned input, after two "checked a sample, generalised to the set" errors turned up
+elsewhere in one day:
+
+| claim | measured | verdict |
+|---|---|---|
+| 72 JNI exports | 72 `Java_*` FUNC symbols | correct |
+| 343 UND FUNC imports | 343 | correct |
+| 1092 dynamic functions | 749 defined + 343 UND = **1092** | correct |
+| 125 `init_array` constructors | `.init_array` is 504 bytes = **126** slots, last one `0x0` | **correct — 125 callable** |
+| 3217 asset entries | 3521 assets / 4398 zip entries | **wrong scope — corrected** |
+
+Two are worth keeping written down, because each looks like an error until it is chased:
+
+- **125 vs 126.** `size / 4` gives 126. The final slot is a NULL terminator, so there are exactly 125
+  callable constructors. Anyone re-deriving this from the section size alone will get 126 and think
+  the docs are off by one.
+- **1092 vs 749.** Counting *defined* functions gives 749 and looks like a large discrepancy; the
+  figure counts every dynamic FUNC symbol, and 749 + 343 = 1092.
+
+The one real error was `3217`, which is the count under `assets/data/` and was written as "the APK's
+3217 asset entries" — language that reads as exhaustive while excluding 304 files, all 287 of
+`assets/files/` among them. That number underpins R10's premise that the shaders cannot be screened
+statically, so the search was redone across **all 4398 zip entries**: zero files with a shader
+extension, and zero of the previously-excluded 304 containing `gl_Position`/`gl_FragColor`/`varying`/
+`precision`. The conclusion was right; it had simply been resting on a narrower search than it
+claimed, and the wording is now what was actually done.
+
 ### R13. The one route out that no de-phone-home layer can block — and it stays shut on the play path
 
 The brief was "remove all phone-homes and annoying internet access of **any type**". The four layers
