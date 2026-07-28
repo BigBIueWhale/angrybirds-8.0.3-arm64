@@ -13,6 +13,7 @@
 #include <string.h>
 #include <time.h>
 #include <stdlib.h>
+#include <stdio.h>
 #ifdef __ANDROID__
 #include <android/log.h>   /* device-only: one-line note when the client-array path engages */
 #endif
@@ -274,6 +275,38 @@ DEF(h_glShaderSource){ REAL(void,(uint32_t,int,const char*const*,const int*),"gl
          * tolerates that is not something to assume. The shader simply is not sourced. */
         if(!hs[i]){ for(int j=0;j<i;j++) free(hs[j]); free(hs); free(hl); return 0; }
         RD(c,sp,hs[i],sl); hs[i][sl]=0; if(hl)hl[i]=(int)sl; }
+#ifndef ABSHIM_RELEASE
+    /* DIAG: dump the shader the guest is about to compile. The A56's Mali/Xclipse driver is the one
+     * surface no emulator here stands in for (OPEN_FINDINGS R9), and shader compilation is its most
+     * likely failure: SwiftShader is lenient, a real GLES driver is not. The source cannot be read
+     * statically — there is no .vsh/.fsh in the 3217 asset entries and no gl_Position/varying string
+     * in the engine or libjs, so it is assembled at runtime and this bridge is the only place the
+     * final text exists. Dumping it here is what makes a portability screen possible at all.
+     * Non-release only: the shipped APK is unchanged. */
+    /* CHUNKED. A first version logged %.700s and captured only the leading #define block — the
+     * shaders here are ONE part of 6000-9150 bytes, so the body (precision qualifiers, gl_FragColor,
+     * texture2D) fell outside the window. Screening that capture found zero of every construct,
+     * which reads like "no portability risks" and actually meant "no data". Emit the whole thing in
+     * pieces small enough that logcat cannot truncate them, tagged so they reassemble in order. */
+    { static int n=0;
+      if(n++ < 8){
+          for(int i=0;i<cnt && i<2;i++){
+              const char *t = hs[i] ? hs[i] : "";
+              int L = (int)strlen(t);
+              for(int off=0, k=0; off<L; off+=480, k++){
+                  char buf[512];
+                  int m = L-off; if(m>480) m=480;
+                  memcpy(buf,t+off,(size_t)m); buf[m]=0;
+                  for(int j=0;j<m;j++) if(buf[j]=='\n'||buf[j]=='\r') buf[j]=' ';  /* keep one logcat line */
+#ifdef __ANDROID__
+                  __android_log_print(4,"abshim","[shader-src] sh=%u p=%d c=%d len=%d :%s", sh, i, k, L, buf);
+#else
+                  fprintf(stderr,"[shader-src] sh=%u p=%d c=%d len=%d :%s\n", sh, i, k, L, buf);
+#endif
+              }
+          }
+      } }
+#endif
     f(sh,cnt,(const char*const*)hs,hl);
     for(int i=0;i<cnt;i++) free(hs[i]);
     free(hs); free(hl); return 0; }

@@ -32,6 +32,56 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R10. The shaders screened: every float declaration is precision-qualified, no extensions
+
+The GPU is one of only two genuinely device-first surfaces (R9), and shader compilation is its most
+likely failure: all validation runs on SwiftShader, which is lenient, while a conformant Mali/Xclipse
+driver is not. A shader that compiles here could be rejected there, and the symptom would be a black
+screen.
+
+**Static screening was impossible.** There is no `.vsh`/`.fsh`/`.glsl` among the 3217 asset entries,
+and no `gl_Position`/`varying`/`precision` string in the engine or `libjs.so` — the shaders are
+**assembled at runtime from a preprocessor-driven uber-shader**, variants selected by `#define`
+combinations (`ENABLE_ALPHA_BLENDING`, `ENABLE_PREMULT_ALPHA_BLENDING`, `ENABLE_TWOSIDED`,
+`NEEDS_VTEXCOORD0` …). The only point at which the final text exists is the shim's `glShaderSource`
+bridge, so a `#ifndef ABSHIM_RELEASE` dump was added there. **The shipped APK is unchanged** —
+rebuilt byte-identical, and `strings` confirms `[shader-src]` is present in the diagnostic shim and
+absent from the release one.
+
+Captured on API 34, four shaders, **each verified complete by byte count before being screened**
+(9150, 6008, 9132, 5990 — chunks reassembled to exactly the length the bridge reported):
+
+| shader | kind | float-typed declarations | **unqualified** | `#extension` |
+|---|---|---|---|---|
+| 1 | vertex | 44 | **0** | none |
+| 2 | fragment | 35 | **0** | none |
+| 4 | vertex | 44 | **0** | none |
+| 5 | fragment | 35 | **0** | none |
+
+There is **no global `precision mediump float;` statement** — and that is not a defect. GLES 2.0
+§4.5.3 gives fragment shaders no default float precision, so every float-typed declaration must carry
+one; here **every one does**, individually (`uniform highp mat4`, `uniform lowp vec4`,
+`uniform mediump vec4`, and all 43 locals per fragment shader). That satisfies the requirement the
+global statement exists to satisfy.
+
+Also absent across all four: `#version`, `#extension`, GLES3 `in`/`out`, `dFdx`/`dFdy`,
+`texture2DLod`, `gl_FragDepth`, `discard`, and dynamic loop bounds — the constructs that most often
+separate a lenient implementation from a conformant one. This is conservative GLSL ES 1.00, which is
+what one would expect from a title that shipped across thousands of Android GPUs.
+
+**This does not prove the shaders compile on the A56** — only the device can. But the specific,
+most-likely failure mode has been checked and is not present, which is a materially better position
+than "unknown".
+
+*Two wrong readings preceded this one, both worth recording.* The first screen reported **zero of
+every construct** — no `precision`, but also no `gl_FragColor`, no `texture2D` — which reads as "no
+risks found" and actually meant "no data": the dump used `%.700s` and the shaders are 6000–9150 bytes,
+so only the leading `#define` block was captured. A working renderer cannot contain zero
+`gl_FragColor`, and that impossibility was the tell. The second reported **zero declarations at all**,
+because the dump flattens newlines to keep each chunk on one logcat line, which leaves `//` comments
+unterminated — so stripping comments deleted the entire shader. Both were failures of the measuring
+apparatus that would have been quoted as facts about the game.
+
 ### R9. Every surface the phone touches, and whether the emulator actually stands in for it
 
 R6–R8 each traced one path. Collected, they answer the question that matters before a device run:
