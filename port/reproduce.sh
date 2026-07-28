@@ -34,5 +34,10 @@ bash port/validation/verify_claims.sh
 
 echo
 echo "DONE -> out/angrybirds-8.0.3-arm64.apk"
+echo
+echo "To run the rest of the offline validation (host suite + the same tests on AArch64, the"
+echo "phone's own ABI, + this claim check again):   bash port/validate_all.sh"
+echo "The emulator play/win tests are separate - they need /dev/kvm and their screenshots have to"
+echo "be looked at rather than scored. See port/validation/README.md."
 echo "Install: adb install -r out/angrybirds-8.0.3-arm64.apk"
 echo "Debug:   adb logcat -s abshim"

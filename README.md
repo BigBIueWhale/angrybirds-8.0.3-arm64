@@ -148,6 +148,8 @@ port/docker/Dockerfile.ab-port            the pinned toolchain image (NDK r26d +
 port/depermission.py, manifest_firebase_off.py   the de‑phone‑home surgery
 port/debug.ks                             the fixed throwaway signing key (reproducible signature)
 port/reproduce.sh, REPRODUCE.md, ONDEVICE.md      one‑command build, build guide, install/triage guide
+port/validate_all.sh                      one command for every offline check: host suite,
+                                          the same tests on AArch64, and the claim verifier
 port/prepare_inputs.sh                    decompresses + sha256‑gates the input every build script needs
 port/validation/                          the emulator rig that produced every PROOF — scripts, README,
                                           and the recorded reproducible proxy hashes
