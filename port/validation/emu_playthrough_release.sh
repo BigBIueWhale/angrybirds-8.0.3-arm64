@@ -7,6 +7,7 @@ set +e
 source "$(dirname "$0")/lib_settle.sh"
 source "$(dirname "$0")/lib_provenance.sh"
 source "$(dirname "$0")/lib_metrics.sh"   # frame-based settle (replaces flaky fixed sleeps)
+source "$(dirname "$0")/lib_wincheck.sh"
 ( sleep 1300; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/playthroughR.txt"; : >"$LOG"
@@ -41,17 +42,8 @@ adb shell input swipe 207 118 118 136 700
 settle_frames "$ABLOG" 120 300
 adb exec-out screencap -p > "$OUT/playthroughR_end.png" 2>/dev/null
 
-# WIN CHECK (scored, not eyeballed). Nothing in the log distinguishes a win — levelCompleteStars and
-# once-complete are identical in winning and non-winning runs because they are asset preloads — so
-# this is decided from the pixels by win_detect.py. Reported rather than fatal: these scripts have
-# other jobs (audio, provenance) and a level that ends one bird short is a timing miss, not a broken
-# build. The verdict is printed either way, with the reason when it is not a win.
-if python3 /work/port/validation/win_detect.py "$OUT/playthroughR_end.png" > /tmp/win_$$.txt 2>&1; then
-    say "  win check:  WIN CONFIRMED from pixels"
-else
-    say "  win check:  not a win screen — reasons below"
-fi
-while IFS= read -r _wl; do say "              $_wl"; done < /tmp/win_$$.txt; rm -f /tmp/win_$$.txt
+# see lib_wincheck.sh: three outcomes, and a missing interpreter is not a verdict
+win_check "$OUT/playthroughR_end.png"
 
 echo "== RESULT: logic_error capture ==" | tee -a "$LOG"
 grep -aE 'levelComplete|THROW #1[5-9]|THROW #2[0-9]|logicerr-msg|logicerr-bt|\[h_fatal\]' "$ABLOG" 2>/dev/null | tail -30 | tee -a "$LOG"

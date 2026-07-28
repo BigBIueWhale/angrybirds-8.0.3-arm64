@@ -8,6 +8,7 @@ source "$(dirname "$0")/lib_provenance.sh"
 source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_dialogs.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_install.sh"
+source "$(dirname "$0")/lib_wincheck.sh"
 # watchdog raised 1450 -> 2100s: the frame-based settle below can add up to 300s over the old
 # fixed sleep, and boot-to-frame[601] has been observed at ~565s.
 ( sleep 2100; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
@@ -73,21 +74,8 @@ say "  install:           ok"
 # log lines per file, emitted BEFORE frame[1] — not level wins. It read "8" identically in
 # runs that won and runs that never cleared a pig, so it never measured anything. No abshim
 # log marker distinguishes a win; the END SCREENSHOT is the only authority.
-# WIN CHECK — now SCORED, not "look at the picture". Nothing in the log distinguishes a win (a
-# winning and a non-winning run produce identical levelCompleteStars/once-complete counts — those
-# are preloads), so this used to be the one result a human had to eyeball, which is why
-# validate_all.sh excludes the play tests. win_detect.py decides it from the pixels: the level-end
-# modal dims the scene (dark 0.52 vs <=0.045 for gameplay, luminance 58 vs >=187) and shows gold
-# stars. The star floor is what stops a BLACK/crashed screen — which is dark and dim and would
-# otherwise satisfy both dimming criteria — from scoring as a win. Validated on 9 labelled wins and
-# 6 non-wins including a synthetic black frame. The screenshot is still written, so the picture
-# remains available; it is no longer the only evidence.
-if python3 /work/port/validation/win_detect.py "$OUT/${PFX}_3_end.png" > /tmp/win.txt 2>&1; then
-    say "  win check:         WIN CONFIRMED from pixels -> ${PFX}_3_end.png"
-else
-    say "  win check:         NOT a win screen (see reasons) -> ${PFX}_3_end.png"
-fi
-while IFS= read -r _l; do say "                     $_l"; done < /tmp/win.txt; rm -f /tmp/win.txt
+# see lib_wincheck.sh: three outcomes — a missing interpreter is NOT a verdict on the game
+win_check "$OUT/${PFX}_3_end.png"
 say "  levelCompleteStars asset preloads (NOT a win signal): $(marker_report "$ABLOG" 'levelCompleteStars')"
 say "  h_fatal:           $(h_fatal_report "$ABLOG")"
 say "  s-construct-guard: $(marker_report "$ABLOG" 's-construct-null-guard')  (level-end fix firing)"
