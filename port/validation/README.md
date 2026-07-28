@@ -470,6 +470,91 @@ LEVEL CLEARED with 3 stars and 43700. And running it over the stored end screens
 scripts actually finish on a win (`audiomod`, `audioplay`, `playthroughR`, `playthrough`) and which
 end mid-level by design (`audio_end`, `deeper_end`), so the check was added only to the former.
 
+## Every script, by full path
+
+This index exists for two reasons. A reader tracing a claim — *"which script produced this
+screenshot?"*, *"what generates that asset?"* — should not have to grep the tree. And
+`verify_claims.sh`'s tracked-in-git check only sees files written as `port/...` **paths**, so a
+script mentioned anywhere by bare name alone sits outside the net that catches a doc pointing at a
+file no longer in the repo. Listing every script by path puts all of them inside it.
+
+Generated from each script's own header comment, so a description that drifts from its file is a
+drift a reader can see.
+
+
+### Build pipeline (13)
+
+| script | purpose |
+|---|---|
+| `port/build_apk.sh` | Reproducible conversion: 32-bit Angry Birds 8.0.3 APK  ->  arm64-v8a APK (emulation shim). |
+| `port/build_apk_x86.sh` | Build an x86_64 variant of the emulation-shim APK — SAME shim source + SAME Unicorn commit, |
+| `port/build_apk_x86_audio.sh` | Build an x86_64 variant of the emulation-shim APK — SAME shim source + SAME Unicorn commit, |
+| `port/build_apk_x86_perf.sh` | a MEASUREMENT-ONLY variant: release configuration plus the perf timers. |
+| `port/build_apk_x86_release.sh` | Build an x86_64 variant of the emulation-shim APK — SAME shim source + SAME Unicorn commit, |
+| `port/build_offline_apk.sh` | Reproducible: produce a FULLY-OFFLINE, no-phone-home Angry Birds 8.0.3 APK |
+| `port/depermission.py` | Strip network / tracking permissions from a binary AndroidManifest.xml (AXML) by |
+| `port/gen_script_paths.py` | Generate data/script_paths.json — the level-script VFS manifest the Fusion engine's scene loader |
+| `port/manifest_firebase_off.py` | De-phone-home (SDK-collection): inject boolean <meta-data> flags into <application> that disable |
+| `port/poc_load.py` | Stage-3 PoC (host, any arch): load ARM32 libAngryBirdsClassic.so into Unicorn, |
+| `port/prepare_inputs.sh` | make the build inputs present, from what git actually tracks. |
+| `port/reproduce.sh` | one command: build the pinned toolchain image, convert the 8.0.3 APK to |
+| `port/validate_all.sh` | run every validation that does NOT need an emulator, in one command. |
+
+### Validation rig (43)
+
+| script | purpose |
+|---|---|
+| `port/validation/alloc_trace_compare.sh` | diff the guest's allocation sequence between x86 and AArch64. |
+| `port/validation/arm64_cross_test.sh` | the arm64 ABI validation, CROSS-compiled on x86 and executed under qemu-user. |
+| `port/validation/arm64_unicorn_test.sh` | Build Unicorn 2.1.4 (same commit as the APK) for arm64-Linux + run the shim's engine-load |
+| `port/validation/axml_sdk.py` | read minSdkVersion / targetSdkVersion straight out of a binary AndroidManifest.xml. |
+| `port/validation/capture_stock.sh` | Boot ab-emu, install the ORIGINAL unmodified ARM APK (runs via houdini), let it render a level |
+| `port/validation/emu_arm64_real_artifact.sh` | run THE ACTUAL DELIVERABLE on a real ARM64 Android runtime. |
+| `port/validation/emu_audio_capture.sh` | CONTINUOUS-AUDIO CAPTURE (headless): the emulator's qemu links libpulse but a bare container has |
+| `port/validation/emu_audio_modern.sh` | AUDIO on MODERN Android (API 34 = Android 14, the A56's W^X + install regime) — de-risk the |
+| `port/validation/emu_audio_playthrough.sh` | AUDIO PLAYTHROUGH (longer window): the cont.121 nested-gt fix eliminated the __stack_chk_fail |
+| `port/validation/emu_audio_test.sh` | AUDIO TEST: run the -DABSHIM_AUDIO proxy WITH emulator audio ENABLED (no -no-audio; QEMU null |
+| `port/validation/emu_fatal.sh` | Boot ab-emu, install the CURRENT x86 shim APK, launch, and watch the game AUTO-navigate |
+| `port/validation/emu_fatal_release.sh` | Boot ab-emu, install the CURRENT x86 shim APK, launch, and watch the game AUTO-navigate |
+| `port/validation/emu_install_commands.sh` | verify the install commands the DOCS give the user actually work. |
+| `port/validation/emu_interactive.sh` | Persistent emulator: boot + install + launch the x86 shim APK, then STAY ALIVE (sleep) so the |
+| `port/validation/emu_interactive_capture.sh` | regenerate the INTERACTIVE proofs (PROOF_2/3/4) unattended. |
+| `port/validation/emu_jni_exception_probe.sh` | capture UNFILTERED logcat and look for ART complaining about |
+| `port/validation/emu_layer4_fcm_test.sh` | the DIFFERENTIAL test for de-phone-home layer 4, on a GMS emulator. |
+| `port/validation/emu_modern_playthrough.sh` | FULL PLAYTHROUGH on MODERN Android (API 34 = Android 14, the A56's regime) — confirm the game |
+| `port/validation/emu_modern_progress.sh` | FINAL modern-Android completeness: confirm MULTI-LEVEL PROGRESSION on API 34 (Android 14) — the |
+| `port/validation/emu_modern_test.sh` | Validate the deliverable-config (x86 proxy) on MODERN Android (API 34 = Android 14, the first |
+| `port/validation/emu_perf_split.sh` | where does a frame's time actually go? Reproducibly. |
+| `port/validation/emu_playthrough.sh` | Boot + install the x86 shim, auto-play the tutorial to WIN, and CAPTURE the St11logic_error |
+| `port/validation/emu_playthrough_release.sh` | Boot + install the x86 shim, auto-play the tutorial to WIN, and CAPTURE the St11logic_error |
+| `port/validation/emu_progress_release.sh` | DEEPER PROGRESSION test on the EXACT shipping RELEASE config (x86 proxy): |
+| `port/validation/emu_run.sh` | Boot ab-emu, install the (fixed) x86 shim APK, launch the game, capture boot behavior: |
+| `port/validation/emu_save_test.sh` | Validate SAVE PERSISTENCE on modern Android (API 34): does the game WRITE progress to its private |
+| `port/validation/hunt_heap_writer.sh` | find what clears PINUSE on a chunk head word. |
+| `port/validation/lib_dialogs.sh` | dismiss the system dialogs that sit on top of the game, in the right order. |
+| `port/validation/lib_install.sh` | install the APK only once the package service can actually accept it. |
+| `port/validation/lib_metrics.sh` | report emulator metrics without letting "nothing was measured" read as "clean". |
+| `port/validation/lib_provenance.sh` | record WHICH BUILD a screenshot was captured on, at capture time. |
+| `port/validation/lib_selfhash.sh` | make "this script was edited while it ran" a LOUD failure instead of an invisible one. |
+| `port/validation/lib_settle.sh` | shared frame-based settle for the emulator playthrough scripts. |
+| `port/validation/lib_wincheck.sh` | score the level-end screen, and NEVER confuse "cannot check" with "not a win". |
+| `port/validation/mutation_test.sh` | prove the claim gate can actually FAIL, one guarantee at a time. |
+| `port/validation/pa_init_test.sh` | *(no header description)* |
+| `port/validation/run_ctor.sh` | Fresh render-harness run focused on the ctor 0x6f370 non-return: full [mark]/[pc]/SCHED_DBG. |
+| `port/validation/run_render.sh` | build + run the scheduler-faithful render harness inside ab-render (mesa GLES2, surfaceless). |
+| `port/validation/stage_pull.sh` | Boot x86 emu offline, run the de-phone-homed APK so real Android Java staging runs, then |
+| `port/validation/verify_claims.sh` | check the DOCUMENTED claims against the actual artifact. |
+| `port/validation/win_detect.py` | decide whether a screenshot shows the LEVEL CLEARED screen, so the play test |
+| `port/validation/x86shim_emu_test.sh` | Install the x86_64 SHIM apk in the x86 Android emulator (REAL ART + lifecycle) and watch it |
+| `port/validation/x86shim_gobj.sh` | Run the x86 diagnostic shim (with the [g+0x80] watchpoint) in the emulator and capture whether |
+
+### Shim test suite (2)
+
+| script | purpose |
+|---|---|
+| `port/shim/test/mutation_modules.sh` | prove the MODULE suite can fail, one module at a time. |
+| `port/shim/test/run_tests.sh` | host unit tests for the mode-agnostic core (Audit 09 blueprint). |
+
 ### The four scripts nothing documented
 
 `verify_claims.sh` now reports scripts no `.md` mentions at all. On 2026-07-28 it found four, and two
