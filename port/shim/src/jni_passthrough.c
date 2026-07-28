@@ -27,7 +27,10 @@ static uint32_t scratch_alloc(jni_state*J,uint32_t n){ n=(n+7)&~7u; if(J->scratc
 
 /* host-fake string round-trip: map a jstring token -> its C value */
 static const char* fstr_get(jni_state*J,uint32_t tok){ for(int i=0;i<J->nfstr;i++) if(J->fstr[i].tok==tok) return J->fstr[i].val; return NULL; }
-static uint32_t fstr_put(jni_state*J,uint32_t tok,const char*val){ if(J->nfstr<128){ J->fstr[J->nfstr].tok=tok; J->fstr[J->nfstr].val=strdup(val?val:""); J->nfstr++; } return tok; }
+static uint32_t fstr_put(jni_state*J,uint32_t tok,const char*val){ if(J->nfstr<128){ char *d=strdup(val?val:"");
+        /* strdup was unchecked and the slot counter advanced regardless, burning one of the 128
+         * entries on a NULL value. Only commit the slot if the copy succeeded. */
+        if(d){ J->fstr[J->nfstr].tok=tok; J->fstr[J->nfstr].val=d; J->nfstr++; } } return tok; }
 uint32_t jni_fake_intern_string(jni_state*J,const char*val){ uint32_t tok=ht_new_ref(J->ht,HK_LOCAL,fakeptr(J)); return fstr_put(J,tok,val); }
 
 /* env-vtable slot dispatch (host-fake backend; device overrides via J->disp_env) */

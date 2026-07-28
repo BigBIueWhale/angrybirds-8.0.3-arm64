@@ -77,9 +77,14 @@ static void idmap_put_raw(handle_table *t, void *key, uint32_t tok){
 }
 static void idmap_grow(handle_table *t){
     uint32_t oldcap = t->idmap_cap; hent *old = t->idmap;
-    t->idmap_cap = oldcap ? oldcap*2 : 64;
-    t->idmap = (hent*)calloc(t->idmap_cap, sizeof(hent));
-    t->idmap_len = 0;
+    uint32_t newcap = oldcap ? oldcap*2 : 64;
+    hent *nm = (hent*)calloc(newcap, sizeof(hent));
+    /* Unchecked before: t->idmap was assigned straight from calloc, then idmap_put_raw wrote into
+     * it on the next line and the OLD table was freed regardless - so an OOM here both dereferenced
+     * NULL and destroyed the only copy of the map. Keep the old table intact and simply do not
+     * grow: the map still works, just more densely, which is the correct degradation. */
+    if (!nm) return;
+    t->idmap = nm; t->idmap_cap = newcap; t->idmap_len = 0;
     for (uint32_t j = 0; j < oldcap; j++) if (old[j].key) idmap_put_raw(t, old[j].key, old[j].tok);
     free(old);
 }

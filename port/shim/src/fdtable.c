@@ -12,6 +12,9 @@ fdtable *fdt_create(void){
     if (!t) return NULL;
     t->cap = 8; t->n = 3;                      /* fds 0,1,2 reserved */
     t->v = (fdslot*)calloc(t->cap, sizeof(fdslot));
+    /* Unchecked before: with t->v NULL the table looked valid (cap=8, n=3) and the first
+     * fdt_alloc wrote t->v[3] straight into it. Fail construction instead. */
+    if (!t->v){ free(t); return NULL; }
     return t;
 }
 void fdt_destroy(fdtable *t){ if (t){ free(t->v); free(t); } }

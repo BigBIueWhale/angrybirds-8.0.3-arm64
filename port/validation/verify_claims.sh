@@ -304,6 +304,39 @@ done
 [ -z "$BADLBL" ] && ok "every parameterised capture script labels its provenance with \$PFX" \
                  || bad "these take \$PFX but record a FIXED provenance label:$BADLBL"
 
+echo "== CLAIM: no shim allocation is used without a NULL check =="
+# Three separate iterations each found one more instance of the same bug: an allocation whose
+# result is dereferenced on the next line (handle_table's pools, sched's getobj, then fdt_create
+# and idmap_grow). Finding one per pass is not convergence, so the pattern is checked mechanically
+# and the class is closed. Guarded means the variable is tested within three lines of the call.
+UNCHECKED=$(python3 - <<'PYEOF'
+import re, glob
+# Capture the FULL lvalue (t->v, e->data, L->sym_addr), not just the trailing identifier - the
+# first version captured "data" from "e->data" and so never matched "if(e->data)". Window is 10
+# lines with comment lines skipped, because the guard often sits under an explanatory comment.
+bad=[]
+ALLOC=re.compile(r'([A-Za-z_][\w.>\[\]-]*)\s*=\s*\(?[\w\s*]*\)?\s*(?:malloc|calloc|realloc|strdup)\s*\(')
+for p in sorted(glob.glob('port/shim/src/*.c')):
+    lines=open(p,encoding='utf-8').read().split('\n')
+    for i,l in enumerate(lines):
+        if 'galloc_' in l: continue           # guest address; 0 means failure and the guest checks
+        m=ALLOC.search(l)
+        if not m: continue
+        v=m.group(1)
+        code=[x for x in lines[i:i+10] if not x.lstrip().startswith(('*','/*','//'))]
+        w='\n'.join(code)
+        pat=re.escape(v)
+        # no word-boundary after the lvalue: it can end in ']' or '.', where \b never matches
+        if re.search(r'!\s*'+pat+r'(?![\w.\[>-])', w): continue
+        if re.search(r'if\s*\(\s*'+pat+r'\s*[\)&]', w): continue  # if(v) / if(v && ...)
+        if re.search(pat+r'\s*(==|!=)\s*(NULL|0)', w): continue
+        bad.append(f"{p.split('/')[-1]}:{i+1}({v})")
+print(' '.join(bad))
+PYEOF
+)
+[ -z "$UNCHECKED" ] && ok "every shim allocation is NULL-checked before use" \
+                    || bad "shim allocations used without a NULL check:$UNCHECKED"
+
 echo "== CLAIM: every script and Dockerfile the docs reference is actually in the repo =="
 # Checked against `git ls-files`, NOT the working tree. The distinction is the whole point: the docs
 # once described `apks/…8.0.3.apk` and `work803/…/libAngryBirdsClassic.so` as "committed in this

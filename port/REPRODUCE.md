@@ -16,22 +16,22 @@ rebuilt with `docker build --no-cache`, forcing a real NDK download and a fresh 
 Unicorn from the pinned commit, and the resulting image produced the **byte-identical APK**:
 
 ```
-from-scratch toolchain : 0f5ecfe85803d272d77fc7ad712f21b1db05952bb761f4dd97ba7a0b9d22c48b
-cached toolchain       : 0f5ecfe85803d272d77fc7ad712f21b1db05952bb761f4dd97ba7a0b9d22c48b
+from-scratch toolchain : 176c7534761e25a33f8fa75f1d57ddb6e6fb1dda1cb54276129389d4d1e21401
+cached toolchain       : 176c7534761e25a33f8fa75f1d57ddb6e6fb1dda1cb54276129389d4d1e21401
 ```
 
 **Verified from a genuine fresh clone.** On 2026-07-28 the repo was cloned to a scratch directory —
 committed content only, so no decompressed input, no extracted engine, no `out/` — and
 `bash port/reproduce.sh` was run there with nothing pre-staged. It decompressed the input, gated
 its sha256, extracted the engine, built the image, converted offline and verified the result,
-producing `0f5ecfe85803d272d77fc7ad712f21b1db05952bb761f4dd97ba7a0b9d22c48b` — byte-identical to
+producing `176c7534761e25a33f8fa75f1d57ddb6e6fb1dda1cb54276129389d4d1e21401` — byte-identical to
 the artifact built here. That is the claim that actually matters to a reader, and it is the one
 this repo previously got wrong: several entry points read files that exist only after a build.
 
 **And the documented path itself is run, not assumed.** On 2026-07-28 `bash port/reproduce.sh`
 was executed exactly as published — inputs prepared and sha256-gated, image built, conversion run
 offline, artifact verified — and produced
-`0f5ecfe85803d272d77fc7ad712f21b1db05952bb761f4dd97ba7a0b9d22c48b`, the same hash recorded here,
+`176c7534761e25a33f8fa75f1d57ddb6e6fb1dda1cb54276129389d4d1e21401`, the same hash recorded here,
 with all 13 claim sections holding. Worth doing periodically rather than trusting: the entry point
 the docs lead with is the one most likely to rot unnoticed, because everyday work calls the inner
 scripts directly. That is exactly how its step 0 came to reference files that a fresh clone does
