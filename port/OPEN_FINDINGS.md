@@ -32,6 +32,26 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R6. The payload lookup depends on `extractNativeLibs` defaulting to true
+
+`load_engine_bytes()` finds the 32-bit engine by calling `dladdr()` on one of its own functions,
+taking the directory of the shim's own `.so`, and `open()`ing `libengine32.so` beside it. That is
+only valid because Android **extracts** native libraries to `nativeLibraryDir`.
+
+With `android:extractNativeLibs="false"` the libs stay compressed inside the APK and `dli_fname`
+becomes a path of the form `/data/app/…/base.apk!/lib/arm64-v8a/libAngryBirdsClassic.so`. `open()`
+cannot resolve that, so the shim would load successfully and then fail to find its engine — dying at
+`JNI_OnLoad` with no obvious cause on a build that otherwise looks correct.
+
+The attribute is **absent** from this manifest and its default is `true`, which is why it works on
+API 25, 34 and 36 alike. It is now asserted by `verify_claims.sh`, because the dangerous version of
+this is not a bug someone writes — it is a *future rebuild* adding the attribute, or a targetSdk bump
+where build tooling sets it, in which case nothing else in the pipeline would object.
+
+Worth knowing if the loader is ever changed: reading the payload from inside the APK would need an
+`AAssetManager`/zip path rather than `open()`, and is the alternative if extraction ever stops being
+the default.
+
 ### R5. What the shipped APK can actually do — the full permission set, before and after
 
 Measured from both manifests rather than described, because "no phone-home" is a claim about what is

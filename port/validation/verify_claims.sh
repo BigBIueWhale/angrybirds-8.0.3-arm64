@@ -190,6 +190,27 @@ else
   skip "signing/alignment (no apksigner on PATH, no ab-port image)"
 fi
 
+echo "== CLAIM: native libs are EXTRACTED to disk (the shim finds its payload by path) =="
+# load_engine_bytes() locates the 32-bit engine by calling dladdr() on one of its own functions,
+# taking the directory of the shim's own .so, and open()ing "libengine32.so" beside it. That only
+# works if Android has EXTRACTED the native libs to nativeLibraryDir.
+#
+# With android:extractNativeLibs="false" the libs stay inside the APK and dli_fname becomes a path of
+# the form ".../base.apk!/lib/arm64-v8a/...", which open() cannot resolve — the shim would load, then
+# fail to find its engine, and the app would die at JNI_OnLoad with no obvious cause. The attribute
+# is absent here and its default is true, which is why this works today; but a future rebuild that
+# adds it, or a targetSdk bump combined with build tooling that sets it, would break the payload
+# lookup silently. Asserted so that change cannot pass unnoticed.
+unzip -p "$APK" AndroidManifest.xml > "$T/am_enl.bin" 2>/dev/null
+if have "$T/am_enl.bin" "extractNativeLibs check"; then
+  if strings -a "$T/am_enl.bin" | grep -qx "extractNativeLibs"; then
+    bad "the manifest sets extractNativeLibs — if false, the shim cannot open libengine32.so beside itself"
+  else
+    ok "extractNativeLibs not set (defaults to true) — libs are extracted, so the payload lookup by path works"
+  fi
+fi
+
+
 echo "== CLAIM: only arm64-v8a native libs ship (the other ABIs were stripped) =="
 # build_apk.sh removes lib/armeabi-v7a, lib/x86, lib/armeabi and lib/arm64-v8a before installing the
 # shim + payloads, and nothing verified the removal actually happened. A surviving lib/armeabi-v7a
