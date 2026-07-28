@@ -32,6 +32,51 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R13. The one route out that no de-phone-home layer can block — and it stays shut on the play path
+
+The brief was "remove all phone-homes and annoying internet access of **any type**". The four layers
+deliver that for everything the app does *itself*, and every existing test measures that same thing:
+`emu_jni_exception_probe.sh` asserts the app's own pid performs zero name resolution and zero socket
+work. None of it touches a different route out — the app asking **Android** to open something:
+
+```java
+startActivity(new Intent(ACTION_VIEW, Uri.parse("market://details?id=…")))
+```
+
+That is not a socket in this process. It is an IPC to the system, which then hands the URL to Play or
+a browser. No permission is required, and **no layer here intercepts it**. Worth stating plainly
+because the four-layer claim is otherwise easy to read as total.
+
+The capability is definitely present, and by design: `classes.dex` is byte-for-byte Rovio's, and it
+contains `market://details?id=`, `android.intent.action.VIEW` and `http://www.rovio.com/eula`. The
+game is not merely carrying that code, either — it **loads the rater**: `AppRater.lua` is opened 24
+times and `TEXTS_APPRATER.dat` 72 times in a single playthrough. A "rate this app" prompt that sends
+the user to the Play Store is precisely the *annoying* half of the brief.
+
+Whether it fires cannot be read statically — the Lua assets are encrypted (magic `e393b813`, no
+readable strings; the same encryption behind R1). So it is watched for instead, by
+`emu_intent_probe.sh`, which captures **unfiltered** logcat (activity starts are a system tag; the
+`-s abshim` capture every other script uses cannot see them at all):
+
+| | |
+|---|---|
+| activity starts naming this app | 1 — its own `ACTION_MAIN`/`LAUNCHER` |
+| outbound `VIEW` / `market://` / `http` intents | **0**, across a full playthrough including a level end |
+| `h_fatal` | 0, over 7827 shim log lines |
+
+The positive control is built in and is the reason the zero means anything: the game's own launch is
+an activity start, so at least one line naming the app **must** appear. If none did, the probe would
+be blind and it fails outright rather than printing a clean result.
+
+**What this does and does not settle.** It bounds the risk to "not on the path a player takes from
+launch through a level end", which is where a rater would most plausibly appear. It does **not**
+prove the prompt can never fire: raters typically gate on session count or elapsed days, and one
+automated playthrough is not a long-term user. The capability could not be removed without editing
+`classes.dex`, which would forfeit the byte-for-byte authenticity that is itself a stated property of
+this port — so it is recorded rather than patched. If it ever does fire on the phone, the failure
+mode is bounded too: the Play app opens a page for a game that is no longer listed, which is an
+annoyance, not an exfiltration.
+
 ### R12. The premise, reproduced: the original APK genuinely cannot install on 64-bit-only Android
 
 This project exists because Angry Birds Classic 8.0.3 "cannot be installed anymore". That was taken

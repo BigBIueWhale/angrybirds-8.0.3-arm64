@@ -521,6 +521,7 @@ drift a reader can see.
 | `port/validation/emu_gpu_capture.sh` | capture the whole GPU-facing surface in one run, reproducibly. |
 | `port/validation/emu_signature_clash.sh` | prove the install-triage row for INSTALL_FAILED_UPDATE_INCOMPATIBLE is right, by actually causing it. |
 | `port/validation/emu_premise.sh` | the problem and the fix, on ONE device, in ONE run. |
+| `port/validation/emu_intent_probe.sh` | the one kind of "internet access" the four de-phone-home layers cannot block. |
 | `port/validation/lib_install_test.sh` | pin `install_classify()` against REAL `pm install` outputs. No emulator needed. |
 | `port/validation/emu_install_commands.sh` | verify the install commands the DOCS give the user actually work. |
 | `port/validation/emu_interactive.sh` | Persistent emulator: boot + install + launch the x86 shim APK, then STAY ALIVE (sleep) so the |
