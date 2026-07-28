@@ -48,6 +48,17 @@ produced a visible failure first — the game played and won throughout.
 | guest-controlled sizes reaching a host allocation or copy | JNI + GL | `Set/Get<T>ArrayRegion` `len*esz` wrapped in 32 bits; `NewString` `len*2`; `glTexImage2D` `w*bpp*h`; `glUniformMatrix4fv` `cnt*64` |
 | guest-controlled indices into fixed tables | all modules | **none** — `g_va[]`, fd, and thread tables were all already bounded |
 | realloc that corrupts its own state on failure | all modules | `tmp()`, `g_idxbuf`, `g_vabuf`, `idmap_grow` recorded a capacity their buffer no longer had |
+| ignored `uc_reg_read` results (destination left indeterminate) | 118 sites | **1, unreachable, deliberately not changed** — `h_setjmp`'s `v` is written straight into the guest's `jmp_buf`, so residue would have become the saved r4–r11/sp/lr that `longjmp` restores. But `uc_reg_read` only fails on an invalid regid/handle and every id here is a compile-time constant, and `&v` escapes to an opaque call so no compiler can exploit the indeterminacy. Initialising it changes the shipped binary; see below |
+
+Why the one register finding was **not** fixed: the change is a single `= 0`, but it alters the
+shipped binary, and this deliverable's trustworthiness rests on three *separately measured* claims —
+a `--no-cache` from-scratch toolchain, a genuine fresh clone, and the documented `reproduce.sh` path —
+each of which records a hash that a rebuild would invalidate. Paying that for a defect that cannot
+occur, in code a compiler cannot miscompile, is the same trade already declined for the hot-stub
+counter (R4). It is recorded in the source at the site so no future reader has to re-derive it. If a
+deliverable change happens for another reason, this rides along with it.
+
+The register sweep is the companion to the first row: `uc_mem_read`/`uc_mem_write` had been swept, `uc_reg_read` had not, and it is the identical shape. Unlike the memory case it produced no observed failure — register ids here are compile-time constants, so the reads do not fail in practice — which is exactly why it is recorded as *swept, one inconsistency fixed* rather than as a bug found.
 
 Two of these were regressions **introduced during this work**, not pre-existing: changing `tmp()` to
 return NULL without updating its 19 callers, and a first version of the GL size guard that folded

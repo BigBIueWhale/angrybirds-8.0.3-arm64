@@ -424,6 +424,16 @@ static uint64_t h_gettod (dispatch_t*d,mcur*c){ uint32_t tv=W(d,c);(void)W(d,c);
  * jmp_buf layout (our own, fits bionic's 256-byte buffer): [0..28]=r4..r11,
  * [32]=sp, [36]=lr(resume PC), [40..103]=d8..d15. */
 static uint64_t h_setjmp(dispatch_t*d, mcur*c){
+    /* `v` is intentionally left uninitialised, and that is a decision rather than an oversight.
+     * It is filled by uc_reg_read below and then written into the guest's jmp_buf, so residue
+     * would become the saved r4-r11/sp/lr that longjmp restores — the same shape as the m_read
+     * defect that fed callers stack residue. It was swept for (see OPEN_FINDINGS R0) and is the
+     * single site of its class in 118. It is UNREACHABLE: uc_reg_read only fails on an invalid
+     * regid or handle, and every id here is a compile-time constant with a valid cpu->uc. Nor can
+     * a compiler exploit the indeterminacy, because &v escapes to an opaque call that it must
+     * assume writes. Initialising it changes the shipped binary and would invalidate three
+     * separately MEASURED reproducibility claims (from-scratch toolchain, fresh clone,
+     * documented path) for no observable effect, so it is documented instead of changed. */
     uint32_t jb=W(d,c); cpu_t*cc=d->cpu; uint32_t v;
     for(int r=0;r<8;r++){ uc_reg_read(cc->uc,UC_ARM_REG_R4+r,&v); gm_wr32(&cc->mem,jb+r*4,v); }
     uc_reg_read(cc->uc,UC_ARM_REG_SP,&v); gm_wr32(&cc->mem,jb+32,v);

@@ -9,6 +9,7 @@
 set +e
 source "$(dirname "$0")/lib_settle.sh"
 source "$(dirname "$0")/lib_metrics.sh"   # frame-based settle (replaces flaky fixed sleeps)
+source "$(dirname "$0")/lib_install.sh"
 ( sleep 1400; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-audio.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/audio.txt"; : >"$LOG"
@@ -23,8 +24,14 @@ adb wait-for-device
 for i in $(seq 1 150); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null|tr -d '\r')" = 1 ] && break; sleep 2; done
 sleep 8
 adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
-adb push "$APK" /data/local/tmp/ab.apk >/dev/null 2>&1
-adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | grep -q Success && say "install=ok" || { say "install FAIL"; say DONE; adb emu kill; exit 0; }
+# see lib_install.sh: boot_completed=1 does not mean the package service can accept a ~98MB APK.
+# Observed "Failure calling service package: Broken pipe (32)", which reads exactly like a broken
+# build. install_apk waits for the service, retries transient errors, and reports a real rejection
+# differently. NOT read through a pipe — $? would be tee's, the defect that once made a check print
+# [FAIL] and exit 0.
+install_apk "$APK" 4 > /tmp/inst.$$ 2>&1; irc=$?
+while IFS= read -r _l; do say "$_l"; done < /tmp/inst.$$; rm -f /tmp/inst.$$
+[ "$irc" -eq 0 ] || { say "install FAIL"; say DONE; adb emu kill; exit 1; }
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
 adb shell monkey -p com.rovio.angrybirds -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
