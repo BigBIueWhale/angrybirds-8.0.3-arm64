@@ -243,8 +243,21 @@ of?* Traced from the code and the run logs, not from the design intent.
 
 This row was **missing** from the first version of the table. It was not found by re-reading the
 table — a table cannot show its own omissions — but by asking what an Android game touches that the
-eight rows did not mention. Two other candidates raised the same way (input/screen geometry, and
-RAM-derived quality settings) are covered by rows already here; this one was not.
+eight rows did not mention.
+
+Two other candidates were raised the same way, and this note first dismissed both as "covered by
+rows already here". That was an assertion, and checking it turned out to be worth the effort in
+both cases — which is the more useful lesson than the answers themselves:
+
+- **Screen geometry** does not merely fall under an existing row. The assets *are* resolution-tiered,
+  so the mechanism for the phone to load unexercised art exists; it is closed only because there is
+  exactly **one** gameplay tier and every run loads it (R11).
+- **RAM-derived settings** likewise: the engine really does carry `/proc/meminfo` + `MemTotal:`, so
+  memory size really could have been a second host-derived input. It is closed only because that
+  path is **measured never to execute** (R8).
+
+Neither was covered by an existing row. Both are closed by measurement, which is a different and
+stronger statement than the one this note originally made.
 
 So of nine surfaces, **six are host-independent by construction, by assertion, or (R11) by
 measurement**, one differs in the phone's favour, and **two — the GPU's driver behaviour and audio —
