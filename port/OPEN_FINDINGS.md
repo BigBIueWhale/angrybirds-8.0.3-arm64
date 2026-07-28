@@ -8,7 +8,42 @@ below, with the evidence, so the same question is not re-investigated from scrat
 
 ## Open
 
-### 1. Not verifiable from this machine
+### 2. Where per-frame time actually goes is still only half-measured
+
+**Status:** partially resolved. One half is now measured; the other cannot be split with the
+instrumentation that exists.
+
+The release notes used to say the per-frame cost had "only been measured under software rendering,
+where the rasteriser dominates" — an assumption, not a measurement. Measured properly (non-release
+builds only, timer at `gl_try`'s single dispatch point):
+
+```
+frames=600  wall=17066ms  GLbridge=47ms (0%)  non-GL=17019ms (99%)  glcalls=97956
+frames=900  wall=16936ms  GLbridge=34ms (0%)  non-GL=16901ms (99%)  glcalls=66265
+```
+
+**The GL bridge — our argument marshalling plus the driver calls we forward — is ~0.3% of wall
+time.** That rules out the bridge as a bottleneck, which is worth knowing: it is the part of the
+render path this port is responsible for.
+
+**What it does NOT establish** is that emulation dominates the other 99.7%. `eglSwapBuffers` does
+not appear anywhere in the shim: the Java side owns the EGL surface and the swap via GLSurfaceView,
+so SwiftShader's actual rasterisation happens outside the measured window, on the ART side. The
+remaining time is ARM32 emulation *plus* the Java-side swap, and this instrumentation cannot
+separate them.
+
+A first attempt got this wrong in a more interesting way. Timing `uc_emu_start` looked like the
+obvious way to measure emulation, and it reported a constant call count across samples while frames
+advanced — because **after boot the guest's entire render loop runs inside one long-lived
+`uc_emu_start`**, with the bridges invoked from hooks during it. A timer around it measures the
+whole run. That architectural fact is why the measurement had to be inverted to time the bridge
+instead.
+
+Splitting the remaining 99.7% would need a timer on the Java side of the swap, which is where a
+real GPU would change the answer — and is therefore best done on the device rather than under
+SwiftShader.
+
+### 3. Not verifiable from this machine
 
 Not defects — limits of the environment. Stated so they are never implied to be covered.
 

@@ -11,6 +11,7 @@
 #include "galloc.h"
 #include <dlfcn.h>
 #include <string.h>
+#include <time.h>
 #include <stdlib.h>
 #ifdef __ANDROID__
 #include <android/log.h>   /* device-only: one-line note when the client-array path engages */
@@ -362,10 +363,31 @@ static const struct { const char*n; glh h; } GLT[] = {
 };
 
 /* Handle a gl* call if known: pulls args, forwards, sets r0. Returns 1 if handled. */
+#ifndef ABSHIM_RELEASE
+/* Time spent INSIDE the GL bridge, i.e. in the real driver plus our marshalling - everything that
+ * is NOT emulating ARM32. Measuring the emulation directly does not work: after boot the guest's
+ * whole render loop runs inside ONE long-lived uc_emu_start, and the bridges are called from hooks
+ * during it, so a timer around uc_emu_start reports the entire run. This is the complement, and it
+ * is the number that matters: under SwiftShader it is dominated by software rasterisation, so
+ * subtracting it is what separates the rasteriser's cost from the port's own. */
+static uint64_t g_gl_ns = 0, g_gl_n = 0;
+uint64_t gl_bridge_ns(void){ return g_gl_ns; }
+uint64_t gl_bridge_calls(void){ return g_gl_n; }
+static uint64_t gl_now_ns(void){
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+    return (uint64_t)ts.tv_sec*1000000000ull + (uint64_t)ts.tv_nsec;
+}
+#endif
 int gl_try(cpu_t *c, const char *name, mcur *cur){
     (void)h_1u; (void)h_glBind2;
     for(int i=0; GLT[i].n; i++) if(!strcmp(GLT[i].n,name)){
+#ifndef ABSHIM_RELEASE
+        uint64_t _g0 = gl_now_ns();
+#endif
         uint64_t r = GLT[i].h(c, cur);
+#ifndef ABSHIM_RELEASE
+        g_gl_ns += gl_now_ns() - _g0; g_gl_n++;
+#endif
         uint32_t lo=(uint32_t)r; uc_reg_write(c->uc, UC_ARM_REG_R0, &lo);
         return 1;
     }

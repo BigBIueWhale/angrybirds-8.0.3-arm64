@@ -18,6 +18,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -534,6 +535,27 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
     { size_t ln=strlen(name);
       int isframe = ln>=12 && (!strcmp(name+ln-12,"nativeRender") || !strcmp(name+ln-12,"nativeUpdate"));
       if(isframe){ static unsigned rf; static unsigned long d0;
+#ifndef ABSHIM_RELEASE
+        /* Emulation share of wall time, sampled with the frame log. Separates the port's own cost
+         * from the rasteriser's, which is what SwiftShader-based numbers cannot do. */
+        { extern uint64_t gl_bridge_ns(void); extern uint64_t gl_bridge_calls(void);
+          static uint64_t w0=0, g0=0, c0=0; static int prim=0;
+          struct timespec _ts; clock_gettime(CLOCK_MONOTONIC,&_ts);
+          uint64_t wn=(uint64_t)_ts.tv_sec*1000000000ull+(uint64_t)_ts.tv_nsec;
+          uint64_t gn=gl_bridge_ns(), cn=gl_bridge_calls();
+          if(!prim){ prim=1; w0=wn; g0=gn; c0=cn; }
+          else if((rf % 300u)==0u && wn>w0){
+              uint64_t dw=wn-w0, dg=gn-g0;
+              /* dw - dg is everything that is NOT the GL bridge: ARM32 emulation, the other
+               * bridges, and the scheduler. Under SwiftShader dg is mostly software rasterisation,
+               * which a real GPU would not charge us for. */
+              LOG("[perf] frames=%u  wall=%llums  GLbridge=%llums (%llu%%)  non-GL=%llums (%llu%%)  glcalls=%llu",
+                  rf, (unsigned long long)(dw/1000000ull), (unsigned long long)(dg/1000000ull),
+                  (unsigned long long)(dg*100ull/dw), (unsigned long long)((dw-dg)/1000000ull),
+                  (unsigned long long)((dw-dg)*100ull/dw), (unsigned long long)(cn-c0));
+              w0=wn; g0=gn; c0=cn;
+          } }
+#endif
         if((++rf % 300u)==1u){ LOG("frame[%u] GL draws=%lu (+%lu since last) clears=%lu useProgram=%lu",
             rf, g_gl_draws, g_gl_draws-d0, g_gl_clears, g_gl_useprog); d0=g_gl_draws; } } }
     /* convert return per shorty[0] */

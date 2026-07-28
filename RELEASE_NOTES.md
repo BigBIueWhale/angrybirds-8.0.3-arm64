@@ -94,9 +94,13 @@ The authentic 8.0.3 input APK (SHA‑256 `0580c3d3…`), the full shim source, t
   AArch64 under qemu-user — 20/20, including the engine load and all 125 C++ constructors — plus
   a byte-identical guest allocation sequence between x86 and AArch64 at two depths.
 - Real‑time frame‑rate under the emulation lock, and the real Mali/Xclipse GPU's shader‑compile path, can only be confirmed on the physical A56 (validation uses software SwiftShader, which is itself the dominant cost in emulator frame timings and so does not predict on‑device rates).
-- The engine performs roughly 900–1750 heap operations per frame in steady‑state play (measured),
-  but the per‑frame cost of the emulation itself has only been measured under software rendering,
-  where the rasteriser dominates. What a real GPU leaves for the emulator is still unknown.
+- The engine performs roughly 900–1750 heap operations per frame in steady‑state play (measured).
+  The **GL bridge** — this port's own marshalling plus the driver calls it forwards — is now measured
+  at **~0.3 % of wall time**, so it is not a bottleneck. The remaining ~99.7 % is ARM32 emulation
+  *plus* the Java‑side `eglSwapBuffers`, and those two **cannot be separated** by the shim: the swap
+  is owned by GLSurfaceView on the ART side, outside anything the shim sees. Splitting them needs the
+  physical device, which is also where a real GPU would change the answer. See
+  `port/OPEN_FINDINGS.md`.
 
 ---
 

@@ -5,6 +5,7 @@
 #include <dlfcn.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <time.h>
 static void clog(const char*fmt,...){ static int(*rl)(int,const char*,const char*,...)=0; static int t=0;
     if(!t){t=1; rl=(int(*)(int,const char*,const char*,...))dlsym(RTLD_DEFAULT,"__android_log_print");}
     char b[200]; va_list ap; va_start(ap,fmt); vsnprintf(b,sizeof b,fmt,ap); va_end(ap); if(rl) rl(4,"abshim","%s",b); }
