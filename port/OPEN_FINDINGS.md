@@ -48,6 +48,18 @@ bridge, so a `#ifndef ABSHIM_RELEASE` dump was added there. **The shipped APK is
 rebuilt byte-identical, and `strings` confirms `[shader-src]` is present in the diagnostic shim and
 absent from the release one.
 
+**The set is CLOSED, verified by playing a level.** The third capture ran a full playthrough on the
+release-speed build — boot, menu, level load, dialog dismissal, three slingshot shots, through to
+frame 1801, ending on a scored win (`[ WIN ] gold=0.0571 dark=0.5247 lum=58.0`). It compiled
+**exactly the same 22 programs**: gameplay adds no variant that loading does not already produce, and
+the 4 boot-time shaders are a strict subset. Three captures, two build configurations, one shader set:
+
+| capture | build | shaders |
+|---|---|---|
+| boot only | full diagnostic | 4 |
+| boot + load | full diagnostic | **22** |
+| **full playthrough to a win** | release-speed `-DABSHIM_SHADERDUMP` | **22** (identical set) |
+
 **The set is reproducible, which is the strongest completeness evidence available without the
 device.** Two independent captures — one from the full diagnostic build, one from a release-speed
 build carrying only `-DABSHIM_SHADERDUMP` — produced **the same 22 unique shader programs with
