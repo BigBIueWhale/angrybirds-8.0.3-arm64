@@ -217,7 +217,8 @@ the very few A56 attributes this host can genuinely reproduce — so `emu_a56_sc
 
 | | |
 |---|---|
-| renders | yes — frame[1801], `h_fatal=0` over 7685 shim log lines |
+| plays and **wins** | "LEVEL CLEARED", 3 stars, **39830** — frame[2401], `h_fatal=0` over 8928 shim log lines (`PROOF_21`) |
+| touch mapping | **validated by that win.** Touch events reach the engine through the shim's JNI path, and nothing had exercised that mapping above 640x320. A slingshot drag that scores at 1080x2340 *is* the test |
 | letterboxing | **none.** The capture is 2340 × 1080 — a landscape game on a portrait panel, so the transposition is the correct result — and the art is full-bleed to every edge (`PROOF_21`) |
 | largest texture upload | **still 2000 × 1991**, unchanged by a 3.7× larger framebuffer |
 | splash tier chosen | **still `1024x600_splash`** (20 opens) |

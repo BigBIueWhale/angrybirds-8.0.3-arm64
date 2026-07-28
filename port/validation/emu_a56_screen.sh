@@ -29,6 +29,7 @@ source "$(dirname "$0")/lib_dialogs.sh"
 source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_install.sh"
 source "$(dirname "$0")/lib_selfhash.sh"
+source "$(dirname "$0")/lib_wincheck.sh"
 
 APK=/work/out/angrybirds-8.0.3-x86shim-shaders.apk     # the dumps build: needed for [tex-dim]
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/a56screen.txt"; : >"$LOG"
@@ -85,11 +86,35 @@ for s in $(seq 1 130); do sleep 5
     [ -n "$fn" ] && [ "$fn" -ge 601 ] && { say "  rendering at ~$((s*5))s frame[$fn]"; break; }
 done
 dismiss_system_dialogs
-# Taps are in DEVICE pixels, so they must be scaled to this screen — the usual 390,266 is meaningless
-# at 1080x2340. Centre-ish tap to dismiss cards, then drags in the lower-left where the slingshot is.
-adb shell input tap $((W/2)) $((H/2)); sleep 4
-adb shell input tap $((W/2)) $((H/2)); sleep 12
-for i in 1 2 3; do adb shell input swipe $((W/3)) $((H*55/100)) $((W/5)) $((H*62/100)) 700; sleep 8; done
+# Taps are in DEVICE pixels, so the usual 390,266 is meaningless here. The game runs LANDSCAPE on a
+# portrait panel, so the touch surface is W_l x H_l = H x W (2340x1080) — getting that backwards
+# sends every tap to the wrong half of the screen.
+#
+# Driving it to a WIN at this geometry is the point, not decoration: touch events reach the engine
+# through the shim's JNI path, and nothing had ever exercised that mapping at anything other than
+# 640x320. A successful slingshot drag here IS the test of it.
+#
+# Fractions read off PROOF_21 rather than guessed: the tutorial card's confirm button sits at
+# ~(0.526, 0.657) of the landscape frame, and the slingshot in the level behind it is left-of-centre
+# and low.
+WL=$H; HL=$W                                     # landscape touch surface
+tapf(){ adb shell input tap $(awk -v a="$1" -v b="$WL" 'BEGIN{printf "%d", a*b}') \
+                            $(awk -v a="$2" -v b="$HL" 'BEGIN{printf "%d", a*b}') >/dev/null 2>&1; }
+dragf(){ adb shell input swipe $(awk -v a="$1" -v b="$WL" 'BEGIN{printf "%d", a*b}') \
+                               $(awk -v a="$2" -v b="$HL" 'BEGIN{printf "%d", a*b}') \
+                               $(awk -v a="$3" -v b="$WL" 'BEGIN{printf "%d", a*b}') \
+                               $(awk -v a="$4" -v b="$HL" 'BEGIN{printf "%d", a*b}') 700 >/dev/null 2>&1; }
+say "  touch surface: ${WL}x${HL} (landscape)"
+# Fractions taken from the coordinates that RELIABLY win on the 640x320 rig, not estimated off a
+# screenshot. The first attempt eyeballed them from PROOF_21 and put the drag at y=0.58 when the
+# working rig drags at y=0.369 — far too low, so it grabbed nothing and the run never scored.
+#   tap  (390,266)/640x320 -> (0.609, 0.831)
+#   drag (207,118)->(110,150) -> (0.323,0.369) -> (0.172,0.469)
+# Card timing also differs at this resolution (everything is slower), so the confirm tap is repeated
+# rather than fired twice and hoped for.
+for i in 1 2 3 4 5; do tapf 0.609 0.831; sleep 5; done
+dismiss_system_dialogs                           # the fullscreen notice can reappear after a card
+for i in 1 2 3 4; do dragf 0.323 0.369 0.172 0.469; sleep 9; done
 settle_frames "$ABLOG" 300 300
 
 say
@@ -167,6 +192,14 @@ say "  splash tier opened (1024x768_splash is the one no 640x320 run ever loaded
 grep -aoE '1024x[0-9]+_splash' "$ABLOG" | sort | uniq -c | sed 's/^/    /' | tee -a "$LOG"
 
 say
+say "== did the touch mapping actually work at this geometry? =="
+win_check "$OUT/a56_screen.png"; WC=$?
+case $WC in
+  0) say "  [ OK ] WIN at 1080x2340 — slingshot drags reached the engine through the shim" ;;
+  1) say "  (no win screen; the run still proves render+geometry, not input mapping)" ;;
+  *) say "  (win check could not run — reported as unknown, not as a pass)" ;;
+esac
+
 say "  NOTE: geometry only. The driver here is still SwiftShader, not the A56's Mali/Xclipse."
 selfhash_verify
 say "DONE (FAIL=$FAIL)"
