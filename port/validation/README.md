@@ -470,6 +470,29 @@ LEVEL CLEARED with 3 stars and 43700. And running it over the stored end screens
 scripts actually finish on a win (`audiomod`, `audioplay`, `playthroughR`, `playthrough`) and which
 end mid-level by design (`audio_end`, `deeper_end`), so the check was added only to the former.
 
+### The four scripts nothing documented
+
+`verify_claims.sh` now reports scripts no `.md` mentions at all. On 2026-07-28 it found four, and two
+of them are load-bearing parts of the pipeline rather than helpers:
+
+- **`port/build_apk_x86.sh`** — builds the x86_64 variant of the shim APK from the *same* shim source
+  and the *same* pinned Unicorn commit, just compiled for `x86_64-android`. **Every play-validation
+  screenshot in this repo was produced by its output**, because an arm64 AVD cannot run on an x86_64
+  host. It is invoked by `build_apk_x86_release.sh` and `build_apk_x86_audio.sh`. A reader tracing
+  "where did this win screenshot come from" had no documented path to it.
+- **`port/gen_script_paths.py`** — synthesises `data/script_paths.json`, the level-script VFS manifest
+  the Fusion engine's scene loader opens through `AAssetManager_open`. It is not bundled in the APK
+  (normally runtime-staged), so it is generated from the APK's own scripts. Without it the open
+  fails → `io::IOException` → no script maps → JSON ParseError → **the game hangs at boot**. It runs
+  inside `build_apk.sh` and all three x86 build scripts.
+- **`port/validation/axml_sdk.py`** — reads `minSdk`/`targetSdk` straight out of the binary AXML;
+  used by `verify_claims.sh` for the "minSdk 16 / targetSdk 26" claim without needing androguard.
+- **`port/validation/hunt_heap_writer.sh`** — a diagnostic hunt for what clears `PINUSE` on a chunk
+  head word. An investigation tool, not part of any gate.
+
+They were not broken and not untracked — simply undiscoverable, which is its own defect in a repo
+whose whole argument is that a reader can check the claims.
+
 ### Shared libraries
 
 One implementation each, sourced by the scripts — because a fix pasted into eight scripts is a fix

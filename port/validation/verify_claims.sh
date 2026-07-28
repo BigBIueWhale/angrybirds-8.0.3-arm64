@@ -399,6 +399,43 @@ NREF=$(printf '%s\n' "$DOCREF" | grep -c .)
 if [ -n "$DOCREF" ]; then
   [ -z "$UNTRACKED" ] && ok "all $NREF doc-referenced scripts/Dockerfiles are tracked in git" \
                       || bad "docs reference files that are NOT in the repo:$UNTRACKED"
+
+  # THE OTHER DIRECTION. The check above asks "does everything the docs mention exist?". It cannot
+  # ask "is everything that exists mentioned?", and that blind spot is silent: four files added on
+  # 2026-07-28 sat outside the net for hours while the count simply stopped growing, 26 to 26.
+  #
+  # TWO DISTINCT CASES, and conflating them makes this check lie. The first version of this block
+  # reported 31 scripts as "referenced by no doc" — but arm64_cross_test.sh is discussed in TWO docs,
+  # and manifest_firebase_off.py in two more. They are documented; they are just not written as a
+  # `port/...` PATH, which is what the regex above collects. Saying otherwise puts a false statement
+  # in the gate's own output.
+  #
+  #   PATHLESS  mentioned by bare filename only -> documented, but invisible to the tracked-in-git
+  #             check above. Fixed by writing the full path once in the doc.
+  #   UNDOC     not mentioned in any .md at all -> a reader cannot discover it.
+  #
+  # Both are reported, neither fails: a script can legitimately be internal, and a red gate over an
+  # undocumented helper is how a gate gets ignored. The numbers are what matter — a jump in either
+  # is visible where a silent blind spot was not.
+  PATHLESS=""; UNDOC=""; NALL=0
+  for f in port/validation/*.sh port/validation/*.py port/shim/test/*.sh port/*.sh port/*.py; do
+    [ -e "$f" ] || continue
+    NALL=$((NALL+1))
+    printf '%s\n' "$DOCREF" | grep -qxF "$f" && continue          # already covered by full path
+    if grep -rqF "$(basename "$f")" --include='*.md' . 2>/dev/null; then
+      PATHLESS="$PATHLESS $(basename "$f")"
+    else
+      UNDOC="$UNDOC $(basename "$f")"
+    fi
+  done
+  NP=$(printf '%s' "$PATHLESS" | wc -w); NU=$(printf '%s' "$UNDOC" | wc -w)
+  if [ "$NP" -eq 0 ] && [ "$NU" -eq 0 ]; then
+    ok "every script in port/ is referenced by full path in a doc ($NALL scanned)"
+  else
+    printf "  [note] of %s scripts: %s documented by NAME only (outside the tracked-in-git check),\n" "$NALL" "$NP"
+    printf "         %s mentioned in no doc at all.\n" "$NU"
+    [ "$NU" -gt 0 ] && printf "         undocumented:%s\n" "$UNDOC"
+  fi
 fi
 
 echo "== CLAIM: the screenshots were captured on builds that still exist =="
