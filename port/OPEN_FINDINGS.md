@@ -151,7 +151,7 @@ uncompressed, so no GPU-specific compressed format ships at all:
 |---|---|---|
 | `.pvr` (PVR v3) | 56 | uncompressed — 32 `rgb`, 24 `rgba` (channel-name pixel format, not a compressed id) |
 | `.pvr` (PVR v2 legacy) | 1 | uncompressed RGBA4444 — proven arithmetically: 203 × 86 × 2 = 34 916 = the header's recorded `dataLength` |
-| `.7z` → `.zstream` sprite sheets | 26 | uncompressed, ASCII tag `RGBA4444` at offset 0x20 (the 40-byte header ends exactly where the tag does) |
+| `.7z` → `.zstream` sprite sheets | 26 | uncompressed — **23 tagged `RGBA4444`, 3 tagged `RGBA8888`** (ASCII tag at offset 0x20; the 40-byte header, read **big-endian**, ends exactly where the tag does) |
 
 So `ETC1` being advertised changes nothing for the shipped data, and `glCompressedTexImage2D` — which
 *is* bridged, so it would work — has nothing to upload.
@@ -199,9 +199,13 @@ keeps having to make, and here it is settled in the favourable direction.
 
 Scope, stated rather than glossed: 2000 × 1991 is the largest upload *this run touched*, and a run
 covers the tutorial and level 2, not every episode's art. Anything larger would have to come from a
-`.zstream` sheet, since the zip-stored set is statically bounded at 2048 — and the largest sheet is
-4 011 824 bytes at 2 bytes/px, so it holds at most 2 005 892 pixels and could exceed 2048 on one axis
-only by being an extreme strip (4096 × 489 would fit that budget). Not excluded; not observed.
+`.zstream` sheet, since the zip-stored set is statically bounded at 2048 — and no sheet is anywhere
+near large enough to hold one. Bounding that needs the **per-file** format rather than an assumed
+one: the biggest *file* is `INGAME_DINOS_DECOS_1` at 4 011 824 bytes, but it is `RGBA8888`, so it
+carries only 1 002 946 pixels; the biggest by *pixel count* is `INGAME_BIRDS_1` at 1 114 153. Nothing
+exceeds that, so a 4096-wide texture would need its other axis ≤ 272 px, and a 2048 × 2048
+(4 194 304 px) cannot fit in any sheet at all — a far tighter bound than the uniform-format estimate
+this paragraph previously carried.
 
 **The phone's much larger screen cannot select an asset tier the rig never used, because there is
 only one.** This was worth checking rather than assuming: the rig renders at 640 × 320 and the A56 is
