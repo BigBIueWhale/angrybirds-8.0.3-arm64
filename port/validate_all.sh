@@ -71,8 +71,24 @@ stage "3/4 guest allocation sequence: x86 vs AArch64"
 if docker image inspect ab-hosttest >/dev/null 2>&1 && docker image inspect ab-arm64x >/dev/null 2>&1; then
   OUT=$(bash port/validation/alloc_trace_compare.sh 2>&1)
   echo "$OUT" | grep -E "^  \[ OK \]|^  \[FAIL\]|^  \[DIFF\]" | sed 's/^/  /'
-  echo "$OUT" | grep -q "\[FAIL\]\|\[DIFF\]" && fail "allocation sequence differs between hosts" \
-                                                 || pass "allocation sequence identical on both hosts"
+  # POSITIVE EVIDENCE REQUIRED. This used to pass whenever [FAIL]/[DIFF] were ABSENT from the
+  # output — so an empty run passed. If docker failed to start, the image was wrong, or the script
+  # died before comparing anything, nothing matched and this printed
+  # "[ PASS ] allocation sequence identical on both hosts" having compared nothing at all. Every
+  # other stage here greps for a SUCCESS marker and so fails closed; this one was inverted and
+  # failed open. It is the project's most repeated defect — a zero from a measurement that never
+  # happened — sitting in the top-level validator.
+  #
+  # alloc_trace_compare.sh runs two phases (ctors, native_init) and prints one "[ OK ]" per phase,
+  # so require BOTH, and still reject any [FAIL]/[DIFF].
+  NOK=$(printf '%s' "$OUT" | grep -c '\[ OK \]')
+  if printf '%s' "$OUT" | grep -q "\[FAIL\]\|\[DIFF\]"; then
+    fail "allocation sequence differs between hosts"
+  elif [ "$NOK" -lt 2 ]; then
+    fail "allocation comparison produced $NOK/2 phase results — it did not run, so nothing was compared"
+  else
+    pass "allocation sequence identical on both hosts ($NOK/2 phases compared)"
+  fi
 else
   echo "    needs both ab-hosttest and ab-arm64x"; fail "allocation comparison (image missing)"
 fi

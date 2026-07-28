@@ -371,6 +371,33 @@ just as much: *is this a gap, or an equivalent mutant?*
   mutant**, not missing coverage. "The suite did not notice" and "the suite does not cover it" are
   different claims and only the second is a gap. Retargeted at the detector itself, it is caught.
 
+### The top-level validator had a stage that failed OPEN
+
+`port/validate_all.sh` decides each stage by grepping the sub-run's output. Stages 1, 2 and 4 grep
+for a **success** marker (`ALL MODULE TESTS PASSED`, `ARM64 CROSS TEST PASSED`, `ALL CHECKED CLAIMS
+HOLD`), so an empty or failed run matches nothing and the stage fails — correct. Stage 3 was
+inverted:
+
+```sh
+grep -q "\[FAIL\]\|\[DIFF\]" && fail "…differs…" || pass "…identical on both hosts"
+```
+
+With no output — docker failing to start, the wrong image, the script dying before it compared
+anything — nothing matched and it printed **`[ PASS ] allocation sequence identical on both hosts`**
+having compared nothing at all. The project's most repeated defect, a zero from a measurement that
+never happened, sitting in the validator a reader is told to run first.
+
+Fixed to require positive evidence: `alloc_trace_compare.sh` runs two phases and prints one `[ OK ]`
+each, so both must be present *and* no `[FAIL]`/`[DIFF]`. Verified against four inputs — empty output
+and a partial one-phase run now fail (the old logic passed both), a real divergence fails, and a
+genuine two-phase run passes.
+
+A sweep for the same inversion elsewhere found none — but only after the sweep itself was fixed. Its
+first version used a 5-line window, missed the very instance it was written to find (the `pass` sat
+one line beyond the window), and reported the class clean. It now carries a **positive control**:
+if it cannot see the known instance, it says the scan is broken instead of reporting zero. A detector
+must be shown to fire before its silence counts as evidence.
+
 ### `mutation_test.sh` — proving the gate can fail
 
 `verify_claims.sh` is the file every claim in this repo leans on, and a gate nobody has watched fail
