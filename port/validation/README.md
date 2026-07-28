@@ -311,10 +311,17 @@ API-25 script to learn the true count and first-failure point.
   overwritten. The x86_64 host/ABI is certain; whether it used the release or non-release
   x86 build is inferred from a `[jsonparse]` diagnostic line that only the non-release build
   emits.
-- **Frame rates here are not predictive.** The emulator renders via SwiftShader (software).
-  Measured from the logs, playthroughs ran ~2–16 fps, but when `GL draws=0` the same loop
-  held ~16 ms/frame (≈60 fps) — so the cost is software rasterization, not emulation. Real
-  GPU behaviour and real frame pacing are among the things only the A56 can settle.
+- **Frame rates here are not predictive** — but the *reason* given here used to be wrong, and the
+  wrong reason was load-bearing. This said: playthroughs ran ~2–16 fps, yet with `GL draws=0` the
+  same loop held ~16 ms/frame (≈60 fps), "so the cost is software rasterization, not emulation".
+  That inference does not hold. A frame that draws nothing is not a frame that emulates the same
+  work — with no draws the guest is idling or loading, so the comparison never isolated the
+  rasteriser. Measured directly (`emu_perf_split.sh`, release configuration, real gameplay):
+  **73–75 % of frame time is the emulator, 16–18 % the native bridges, and only 5–7 % is outside
+  the shim** — `eglSwapBuffers`, rasterisation and vsync together. So the cost is emulation, not
+  rasterisation, and a real GPU replaces only that 5–7 % slice. Frame rates here still are not
+  predictive, for the opposite reason: the A56's **CPU**, not its GPU, will set the rate. Real GPU
+  behaviour and frame pacing remain things only the A56 can settle. See `port/OPEN_FINDINGS.md` R4.
 
 ### Not copied from the scratchpad, deliberately
 

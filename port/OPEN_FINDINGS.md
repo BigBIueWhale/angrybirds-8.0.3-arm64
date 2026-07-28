@@ -48,7 +48,19 @@ produced a visible failure first — the game played and won throughout.
 | guest-controlled sizes reaching a host allocation or copy | JNI + GL | `Set/Get<T>ArrayRegion` `len*esz` wrapped in 32 bits; `NewString` `len*2`; `glTexImage2D` `w*bpp*h`; `glUniformMatrix4fv` `cnt*64` |
 | guest-controlled indices into fixed tables | all modules | **none** — `g_va[]`, fd, and thread tables were all already bounded |
 | realloc that corrupts its own state on failure | all modules | `tmp()`, `g_idxbuf`, `g_vabuf`, `idmap_grow` recorded a capacity their buffer no longer had |
+| ignored `uc_hook_add` results (a hook that never installs) | 39 sites | **33 ignored, 8 of them load-bearing** — `neut_s_construct_null`, `guard_empty_json`, `neut_gamelua_getter`×3, `neut_vfs_invalid_scheme`, `neut_rcs_login`, `h_svc`. These are *fixes*, so a silent install failure resurrects the bug they fix — including the level-end crash — with no diagnostic. Unreachable short of OOM at init, and empirically covered: see below |
 | ignored `uc_reg_read` results (destination left indeterminate) | 118 sites | **1, unreachable, deliberately not changed** — `h_setjmp`'s `v` is written straight into the guest's `jmp_buf`, so residue would have become the saved r4–r11/sp/lr that `longjmp` restores. But `uc_reg_read` only fails on an invalid regid/handle and every id here is a compile-time constant, and `&v` escapes to an opaque call so no compiler can exploit the indeterminacy. Initialising it changes the shipped binary; see below |
+
+Why the `uc_hook_add` finding is recorded rather than fixed, and what covers it meanwhile: the call
+allocates, so it can only fail under OOM during init, at which point the app is already failing. More
+usefully, the failure mode is **not** silent in practice — each guard logs a marker when it *fires*
+(`[s-construct-null-guard]`, `[empty-json-guard]`), the playthrough scripts report those markers, and
+a missing guard also shows up as the level-end crash returning and `h_fatal` going non-zero. So a
+hook that failed to install would be caught by the existing play validation rather than by an inline
+check. One wording defect was found in passing and is worth knowing: the install-time
+`LOG("... hooking JSON parse 0x69814c")` is emitted *before* `uc_hook_add` and is conditional on the
+guard's malloc, not on the hook succeeding — it reports an action it has not yet performed and never
+verifies. It is a log line, not a check, but it should not be read as evidence the hook exists.
 
 Why the one register finding was **not** fixed: the change is a single `= 0`, but it alters the
 shipped binary, and this deliverable's trustworthiness rests on three *separately measured* claims —

@@ -2063,6 +2063,14 @@ From A07/A08 + synthesis. **Ordered by how likely they are to break first play:*
   Box2D sim + render as **TCG-interpreted ARM32** under one BEL on the A56, then real GL. 60 fps ⇒ ~16 ms
   of emulated ARM/frame. Emulation throughput is un-boundable by construction; jank/slow-motion is the
   most probable first symptom. Single-threaded emulation (one `uc`) serializes all guest threads.
+  **MEASURED (2026-07-28) — this prediction was right.** The frame-time split
+  (`port/validation/emu_perf_split.sh`, release configuration, real gameplay) puts **73–75 % of frame
+  time in the emulator**, 16–18 % in the native bridges, and only 5–7 % outside the shim. Other docs
+  had assumed software rasterisation was the dominant cost; it is not, and a real GPU on the A56
+  replaces only that 5–7 % slice. SR1 is therefore not merely still open — it is the *confirmed*
+  determinant of on-device frame rate, bounded by the phone's CPU single-thread performance rather
+  than by anything this port can optimise away. See `port/OPEN_FINDINGS.md` R4, which also records
+  the one quantified bridge optimisation (un-bridging `floor`, ~3–4 %) declined as a physics risk.
 - **SR2 — ANR / watchdog.** A `nativeUpdate` or first `nativeInit`/asset-load exceeding ~5 s under
   emulation, or a main-thread thunk starving on the BEL, trips Android's ANR killer.
 - **SR3 — audio latency/underrun under BEL scheduling (S10).** `nativeMixData` under the BEL; a long game
