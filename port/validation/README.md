@@ -555,6 +555,24 @@ drift a reader can see.
 | `port/shim/test/mutation_modules.sh` | prove the MODULE suite can fail, one module at a time. |
 | `port/shim/test/run_tests.sh` | host unit tests for the mode-agnostic core (Audit 09 blueprint). |
 
+### Why "125 constructors" and "126 init_array entries" are both correct
+
+`test_elf32` prints `init_array: 126 ctors`, while every playthrough and the ctor test report
+`125/125 constructors ran CLEAN`. They are not in conflict and neither is stale:
+
+- **126** is the raw length of the engine's `.init_array` — what `elf32_init_array()` finds.
+- **125** is how many of those slots hold a real function. `dispatch_run_init_array()` skips
+  `fn == 0` and `fn == 0xffffffff`, the standard empty/sentinel slots, and counts only what it
+  actually calls. One of the 126 is such a slot.
+
+Checked because a documented number that nothing re-derives is exactly how the audio APK's SHA-256
+came to be wrong. This one is right; the discrepancy is two different true measurements, and it is
+written down here so the next reader who notices it does not have to re-derive the answer from
+`dispatch.c`.
+
+Also re-derived from the binary the same day, all correct: **72** `Java_com_rovio_*` exports,
+**343** `UND FUNC` imports, and ~**11 MB** of engine (11 248 680 bytes).
+
 ### The four scripts nothing documented
 
 `verify_claims.sh` now reports scripts no `.md` mentions at all. On 2026-07-28 it found four, and two
