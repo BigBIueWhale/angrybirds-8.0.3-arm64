@@ -17,6 +17,30 @@
 # false one cannot survive silently again. It does not check the claims that need a running
 # emulator (those are the emu_*.sh scripts) or the phone (nothing here can).
 #
+# ---------------------------------------------------------------------------
+# THESE CHECKS HAVE BEEN DELIBERATELY BROKEN (2026-07-28)
+# ---------------------------------------------------------------------------
+# A check nobody has seen fail is not a check. Each of these was made to fail on purpose, against a
+# tampered copy of the real artifact, and the pristine APK was restored and re-hashed afterwards:
+#
+#   engine authenticity      appended a byte to libengine32.so         -> caught
+#   16 KB page alignment     relinked the shim without max-page-size   -> caught (LOAD align = 0x1000)
+#   libm in DT_NEEDED        relinked the shim without -lm             -> caught
+#   no diagnostics in release injected "GALLOC-CORRUPT" into the shim  -> caught
+#   signature v1+v2+v3       added a file to the APK after signing     -> caught
+#   no live network perm     swapped in the ORIGINAL un-stripped manifest -> caught
+#   firebase kill-switch     corrupted the meta-data name             -> caught
+#   layer 2 socket hard-fail erased "hard-fail (de-phone-home)"        -> caught
+#   provenance staleness     hand-built manifest w/ wrong + missing rows -> caught
+#   provenance label lint    reintroduced a fixed record_build label   -> caught
+#   proof index consistency  added an unlisted proof / a phantom entry -> caught
+#
+# One attempt reported a MISS that was not one: the test grepped for the SUCCESS message, so when
+# the check correctly failed the pattern matched nothing. Reading the check's source settled it.
+# Worth remembering — a failed negative test can mean the test is wrong, not the check.
+#
+# Not yet broken on purpose: the audio-variant sameness comparison and the log-marker check.
+#
 # Usage — runs anywhere; it uses apksigner/zipalign from PATH when present (as inside ab-port,
 # which is how REPRODUCE.md step 3 invokes it) and otherwise shells out to the ab-port image.
 # Only minSdk/targetSdk needs ab-analyze; everything else, including the whole permission /
