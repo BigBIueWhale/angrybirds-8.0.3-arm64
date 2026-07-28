@@ -210,6 +210,32 @@ tier, and it is nearly the same data: 5 of its 9 files are byte-identical to the
 successfully. So even if the A56's aspect ratio selects the other splash sheet, it is one image of a
 size the pipeline has demonstrably handled.
 
+**Run at the phone's actual screen, the argument above becomes a measurement.** Everything so far was
+reasoned from a 640 × 320 rig. The emulator accepts an arbitrary skin, and screen geometry is one of
+the very few A56 attributes this host can genuinely reproduce — so `emu_a56_screen.sh` runs at
+**1080 × 2340**, confirmed from the device (`Physical size: 1080x2340`) rather than assumed:
+
+| | |
+|---|---|
+| renders | yes — frame[1801], `h_fatal=0` over 7685 shim log lines |
+| letterboxing | **none.** The capture is 2340 × 1080 — a landscape game on a portrait panel, so the transposition is the correct result — and the art is full-bleed to every edge (`PROOF_21`) |
+| largest texture upload | **still 2000 × 1991**, unchanged by a 3.7× larger framebuffer |
+| splash tier chosen | **still `1024x600_splash`** (20 opens) |
+
+That last row settles the one loose end above: the alternate `1024x768_splash` set is *still* not
+selected at the A56's 2.167 aspect, so the never-loaded tier stays never-loaded on the phone's own
+geometry rather than merely on the rig's.
+
+The no-letterboxing result is worth having measured rather than derived. The manifest declares
+`resizeableActivity="false"` (Rovio's, unmodified — verified by decoding the binary XML, not by
+grepping for the attribute name, which appears either way). Apps targeting below API 26 get a 1.86
+max-aspect cap; this APK targets 26 specifically so that cap does not apply. The screenshot is what
+turns that from a reading of the platform rules into a fact.
+
+Two honest limits: the density is the AVD's 160, not the A56's ~420 — a skin sets resolution, not
+density — and it is Android's UI scaling rather than the game's GL viewport. And the driver is still
+SwiftShader (R9/R11); this run says nothing about Mali/Xclipse.
+
 **Locale does not route the engine to different files either.** The same question, asked of the other
 setting that varies per device: the rig runs `en-US`, the phone may not. There *are* per-locale
 assets — `ML_LEAGUE_ASSETS_LEAGUE_LOCALIZED_<locale>` ships for 11 locales (`de_DE`, `en_EN`,
