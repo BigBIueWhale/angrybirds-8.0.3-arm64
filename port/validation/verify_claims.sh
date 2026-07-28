@@ -8,6 +8,11 @@
 # 539536 after the 125 constructors). That claim had been repeated for days because nothing
 # re-checked it — it was written once and then cited.
 #
+# The sequel makes the point better than the original: on 2026-07-28 the *correction* stopped being
+# true too. Both architectures now measure 605096 (x86 via run_tests.sh, AArch64 via
+# arm64_cross_test.sh, and again without -DRTLD_DEFAULT=0). A number is only as good as its last
+# measurement — which is the entire reason this script exists.
+#
 # This script mechanically re-checks the claims that CAN be checked from the artifact, so a
 # false one cannot survive silently again. It does not check the claims that need a running
 # emulator (those are the emu_*.sh scripts) or the phone (nothing here can).

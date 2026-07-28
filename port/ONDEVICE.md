@@ -49,6 +49,16 @@ unmodified, inside an ARM32→ARM64 emulation shim (Unicorn). targetSdk 26, self
   too (the guest engine is emulated in Unicorn's own address space; Unicorn adapts to the host page
   size), so no 4 KB assumption leaks through. Harmless on a 4 KB A56, essential if it's 16 KB.
 
+  **Update (2026-07-28): the ~64 KB gap is NO LONGER REPRODUCIBLE — both architectures now
+  report `605096`.** Measured fresh on the same day: x86 via `run_tests.sh` = `605096`; AArch64 via
+  the cross-compiled `arm64_cross_test.sh` = `605096`, and again `605096` when rebuilt without
+  `-DRTLD_DEFAULT=0` (so the flag difference between the two suites, a plausible confound, is ruled
+  out). The earlier arm64 figure of `539536` cannot be obtained now. The one variable not eliminated
+  is how the AArch64 binary is produced — the old number came from a build made *inside* an emulated
+  arm64 container, the new ones from a cross toolchain — and re-running that path costs hours of
+  emulated compilation. So: treat the guest heap as **measured identical across architectures
+  today**, while noting the figure has moved before and is worth re-measuring rather than cited.
+
 **On first launch you'll see a "This app was built for an older version of Android" dialog** — that
 is normal for a targetSdk=26 app; tap through it (the game still runs). **What only the A56 itself
 can settle:** real-hardware frame-rate under the emulation lock, and the real Mali/Xclipse GPU's

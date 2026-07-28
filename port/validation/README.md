@@ -32,6 +32,16 @@ each host, present both before and after the allocator fix, and not attributable
 build (the pinned commit compiled for x86-linux reproduces the x86 figure exactly), to host page
 size (hardcoded 4096), or to nondeterminism (x86 repeats identically).
 
+**Update (2026-07-28): the ~64 KB gap is NO LONGER REPRODUCIBLE — both architectures now
+report `605096`.** Measured fresh on the same day: x86 via `run_tests.sh` = `605096`; AArch64 via
+the cross-compiled `arm64_cross_test.sh` = `605096`, and again `605096` when rebuilt without
+`-DRTLD_DEFAULT=0` (so the flag difference between the two suites, a plausible confound, is ruled
+out). The earlier arm64 figure of `539536` cannot be obtained now. The one variable not eliminated
+is how the AArch64 binary is produced — the old number came from a build made *inside* an emulated
+arm64 container, the new ones from a cross toolchain — and re-running that path costs hours of
+emulated compilation. So: treat the guest heap as **measured identical across architectures
+today**, while noting the figure has moved before and is worth re-measuring rather than cited.
+
 **Cause identified (2026-07-27).** The divergence is not drift — it is exactly ONE allocation.
 Tracing the guest's full allocation sequence on both hosts (`ABSHIM_ALLOC_TRACE`) shows **7792 of
 7793 requests are byte-identical** in kind, size and order. The difference is a single doubling
@@ -212,7 +222,8 @@ PROOF mapping verified by md5 against the source screenshots, not by filename.
 | `stage_pull.sh` | abtest / 25 | offline | pulls app data dir for save inspection |
 | `run_render.sh` | — (`ab-render`) | — | host render harness, mesa llvmpipe |
 | `run_ctor.sh` | — | — | host constructor-execution harness |
-| `arm64_unicorn_test.sh` | — (qemu-user) | — | **the only arm64 validation**: engine load + 125 ctors on AArch64 |
+| `arm64_cross_test.sh` | — (cross + qemu-user) | — | **the practical arm64 validation**: same engine load + 125 ctors on AArch64, but CROSS-compiled on x86 in the `ab-arm64x` image, so it runs in minutes and fully offline instead of taking hours of emulated compilation. Asserts the binaries really are AArch64 and that 125/125 ctors run clean |
+| `arm64_unicorn_test.sh` | — (qemu-user) | — | the original arm64 validation, built *inside* an emulated arm64 container. Superseded by `arm64_cross_test.sh` for routine use; kept because it is the one path that does **not** depend on a cross toolchain |
 
 ### Corrections made 2026-07-27 (read before trusting any older run output)
 

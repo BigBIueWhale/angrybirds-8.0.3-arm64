@@ -1,0 +1,77 @@
+# ab-arm64x — CROSS-compile the arm64 ABI validation, instead of building it under emulation.
+#
+# WHY THIS EXISTS
+# ---------------
+# `arm64_unicorn_test.sh` is the only arm64 *execution* in this repo: it loads the real 32-bit
+# engine and runs its 125 C++ static constructors on AArch64, validating the ABI the A56 will use.
+# It builds Unicorn 2.1.4 and two test binaries **inside** a qemu-user arm64 container — i.e. the
+# compiler itself runs emulated. That takes hours and needs network, so in practice the test was
+# almost never run, its `/scratch/uni-arm64` cache went away, and the arm64 side silently drifted
+# behind a session's worth of shim changes.
+#
+# Nothing about the target requires an emulated *compiler*. The target is arm64 **Linux**, so a
+# cross toolchain on x86 produces the same binaries in minutes; only the resulting executables need
+# qemu, and qemu-user is good at exactly that. This image is that toolchain.
+#
+#   docker build -f port/docker/Dockerfile.ab-arm64x -t ab-arm64x port/docker
+#   docker run --rm --network none -v "$PWD":/work -w /work ab-arm64x \
+#       bash /work/port/validation/arm64_cross_test.sh
+#
+# ---------------------------------------------------------------------------
+# NETWORK POLICY
+# ---------------------------------------------------------------------------
+# The Unicorn source is fetched at BUILD time and pinned to the same commit the APK is built
+# against, so the test run itself is fully offline (`--network none`) — unlike the emulated script,
+# whose first run always needed network. Treat the build host as internet-reachable: never
+# `-p`/`--publish`, never `--network host`.
+#
+# ---------------------------------------------------------------------------
+# PINNING
+# ---------------------------------------------------------------------------
+# Unicorn is pinned to 7c5db94191defc1e04a4f66f4eb1220903cba837 — the SAME commit
+# port/docker/Dockerfile.ab-port uses for the shipped shim. If those two ever diverge, this test
+# stops validating the thing that ships, so the commit is asserted at build time below.
+
+FROM ubuntu:22.04
+
+ARG UNICORN_COMMIT=7c5db94191defc1e04a4f66f4eb1220903cba837
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross \
+        qemu-user-static cmake make git ca-certificates pkg-config file \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build Unicorn (ARM guest only, static) for aarch64-linux-gnu, on x86, via the cross toolchain.
+RUN git clone -q https://github.com/unicorn-engine/unicorn /opt/unicorn-src && \
+    git -C /opt/unicorn-src checkout -q ${UNICORN_COMMIT} && \
+    printf '%s\n' \
+      'set(CMAKE_SYSTEM_NAME Linux)' \
+      'set(CMAKE_SYSTEM_PROCESSOR aarch64)' \
+      'set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)' \
+      'set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)' \
+      'set(CMAKE_FIND_ROOT_PATH /usr/aarch64-linux-gnu)' \
+      'set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' \
+      'set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)' \
+      'set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)' \
+      > /opt/aarch64.cmake && \
+    cmake -S /opt/unicorn-src -B /opt/unicorn-b \
+          -DCMAKE_TOOLCHAIN_FILE=/opt/aarch64.cmake \
+          -DUNICORN_ARCH=arm -DBUILD_SHARED_LIBS=OFF -DUNICORN_BUILD_TESTS=OFF \
+          -DCMAKE_BUILD_TYPE=Release >/tmp/ucfg.log 2>&1 && \
+    cmake --build /opt/unicorn-b -j"$(nproc)" >/tmp/ubuild.log 2>&1 || \
+      { echo "UNICORN CROSS-BUILD FAILED"; tail -30 /tmp/ubuild.log; exit 1; }
+
+# Fail the build rather than ship a toolchain that silently validates the wrong thing.
+RUN set -e; \
+    A=$(ls /opt/unicorn-b/libunicorn*.a 2>/dev/null | head -1); \
+    test -n "$A" || { echo "FATAL: no static unicorn library produced"; exit 1; }; \
+    file "$A" | grep -qi "ar archive" || { echo "FATAL: unexpected artifact: $(file "$A")"; exit 1; }; \
+    O=$(ls /opt/unicorn-b/CMakeFiles/*.dir/*.o 2>/dev/null | head -1); \
+    if [ -n "$O" ]; then file "$O" | grep -qi "ARM aarch64" || { echo "FATAL: objects are not AArch64: $(file "$O")"; exit 1; }; fi; \
+    echo "unicorn-commit ${UNICORN_COMMIT}" > /IMAGE_VERSIONS; \
+    echo -n "unicorn-libs   " >> /IMAGE_VERSIONS; ls /opt/unicorn-b/libunicorn*.a | tr '\n' ' ' >> /IMAGE_VERSIONS; echo >> /IMAGE_VERSIONS; \
+    cat /IMAGE_VERSIONS
+
+ENV UNICORN_BUILD=/opt/unicorn-b
+ENV UNICORN_SRC=/opt/unicorn-src
+CMD ["/bin/bash"]

@@ -242,6 +242,11 @@ static void heap_pin(dispatch_t*d, const char *when, const char *op){
 /* ALLOC TRACE (env-gated, non-release): dump the guest's allocation SEQUENCE so two hosts can be
  * diffed against each other. The x86 and arm64 guest heaps differ by a near-constant ~64KB after
  * the 125 ctors (605096 vs 539536), deterministically on each host — so some allocation differs in
+ * [2026-07-28: this gap is NO LONGER REPRODUCIBLE. Fresh measurements put BOTH at 605096 —
+ *  x86 via run_tests.sh, AArch64 via the cross-compiled arm64_cross_test.sh, and again 605096
+ *  without -DRTLD_DEFAULT=0, ruling out the flag difference between the two suites. The old
+ *  539536 came from a build made inside an emulated arm64 container; that path has not been
+ *  re-run (hours of emulated compilation), so it is the one variable left unexamined.]
  * size or presence. Sizes alone, in order, localise it to the first divergent request. */
 #ifndef ABSHIM_RELEASE
 static FILE *g_atr = NULL; static int g_atr_init = 0;
