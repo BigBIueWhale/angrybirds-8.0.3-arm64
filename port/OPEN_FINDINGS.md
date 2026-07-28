@@ -249,9 +249,23 @@ grepping for the attribute name, which appears either way). Apps targeting below
 max-aspect cap; this APK targets 26 specifically so that cap does not apply. The screenshot is what
 turns that from a reading of the platform rules into a fact.
 
-Two honest limits: the density is the AVD's 160, not the A56's ~420 — a skin sets resolution, not
-density — and it is Android's UI scaling rather than the game's GL viewport. And the driver is still
-SwiftShader (R9/R11); this run says nothing about Mali/Xclipse.
+**The density was not cosmetic, and the first version of this run got it wrong.** A skin sets
+resolution but not density, so that run left the AVD's 160 — and at 1080 × 2340 a density of 160
+makes `smallestWidth` **1080dp**, which Android classifies as an **xlarge tablet**. This APK ships
+`res/drawable-large-*` and `res/drawable-xlarge-*` buckets, so the run silently exercised the
+**tablet** resource path, not the phone path the A56 takes. "Ran at the A56's geometry" was true of
+the pixels and false of the configuration — the exact shape of error this file exists to catch.
+
+Re-run at **420dpi** (the bucket for the A56's ~385ppi), confirmed from the device
+(`Override density: 420`, `smallestWidth 411dp` → phone bucket), and every result above survives
+unchanged: the win, `h_fatal=0` over 8934 lines, no letterboxing, the same 2000 × 1991 texture
+maximum, and the same `1024x600_splash` tier. That last one now means something it did not before —
+the splash selection is a **phone-class** result, so the never-loaded `1024x768_splash` stays
+unloaded in the configuration the A56 will actually be in. The script now asserts the density and
+fails if it is not what the A56 uses.
+
+The remaining limit is the driver: still SwiftShader (R9/R11), so this says nothing about
+Mali/Xclipse.
 
 **Locale does not route the engine to different files either.** The same question, asked of the other
 setting that varies per device: the rig runs `en-US`, the phone may not. There *are* per-locale

@@ -60,8 +60,30 @@ SZ=""; for i in $(seq 1 30); do
     case "$SZ" in *"${W}x${H}"*) break ;; esac
     sleep 2
 done
-DN=$(adb shell wm density 2>/dev/null | tr -d '\r')
+# DENSITY IS NOT COSMETIC HERE. The first version of this script left the AVD's 160, and at
+# 1080x2340 that makes smallestWidth 1080dp — which Android classifies as an XLARGE TABLET. This APK
+# ships res/drawable-large-* and res/drawable-xlarge-* buckets, so that run silently exercised the
+# TABLET resource path, not the phone path the A56 takes. "Ran at the A56's geometry" was true of the
+# pixels and false of the configuration. At 420 (the bucket for the A56's ~385ppi) smallestWidth is
+# 411dp — a normal phone.
+#
+# Set it AFTER the resolution has settled and poll until it takes: doing this at boot, together with
+# a wm size, is what previously stopped the app from launching at all.
+adb shell wm density "$DPI" >/dev/null 2>&1
+DN=""; for i in $(seq 1 30); do
+    DN=$(adb shell wm density 2>/dev/null | tr -d '\r')
+    case "$DN" in *"Override density: $DPI"*|*"Physical density: $DPI"*) break ;; esac
+    sleep 2
+done
+sleep 5                                            # let the reconfiguration finish before installing
 say "  ${SZ:-<wm size returned nothing>}"; say "  ${DN:-<wm density returned nothing>}"
+SWDP=$(awk -v w="$W" -v d="$DPI" 'BEGIN{printf "%d", w/(d/160)}')
+say "  smallestWidth ${SWDP}dp -> $([ "$SWDP" -ge 600 ] && echo 'TABLET resource bucket (WRONG for the A56)' || echo 'phone resource bucket (what the A56 uses)')"
+case "$DN" in
+    *"$DPI"*) say "  [ OK ] density is $DPI, so the phone resource bucket is the one being exercised" ;;
+    *) say "  [FAIL] density never became $DPI — this would test the tablet configuration instead"
+       FAIL=1 ;;
+esac
 case "$SZ" in
     *"${W}x${H}"*) say "  [ OK ] the device really is at the A56's resolution" ;;
     *) say "  [FAIL] the display never settled at ${W}x${H} — everything below would describe the"
