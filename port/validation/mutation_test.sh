@@ -202,6 +202,35 @@ mut_signer() {
     return "$ok"
 }
 
+
+# Rename the package inside the manifest with a SAME-LENGTH substitution — exactly the shape a
+# targeting bug in depermission.py would produce, since that script rewrites manifest strings in
+# place and length-preserving is its whole technique. An APK declaring a different package installs
+# as a separate app instead of an update.
+mut_identity() {
+    # Two statements, NOT `local tree="$1" apk="$tree/..."`. In a single `local` the right-hand sides
+    # are expanded before the assignments take effect, so $tree is still empty and apk becomes
+    # "/out/angrybirds-8.0.3-arm64.apk". mut_manifest had this exact bug, it was fixed and commented
+    # there, and I reproduced it here anyway — which is why the comment now lives at both sites.
+    local tree="$1"
+    local apk="$tree/out/angrybirds-8.0.3-arm64.apk"
+    local tmp; tmp=$(mktemp -d)
+    ( cd "$tmp" && unzip -o -q "$apk" AndroidManifest.xml ) || { rm -rf "$tmp"; return 1; }
+    python3 - "$tmp/AndroidManifest.xml" <<'PYEOF' || { rm -rf "$tmp"; return 1; }
+import sys
+p=sys.argv[1]; d=open(p,'rb').read()
+for enc in ('utf-8','utf-16-le'):
+    a='com.rovio.angrybirds'.encode(enc); b='com.rovio.angrybirdX'.encode(enc)
+    if a in d:
+        open(p,'wb').write(d.replace(a,b)); sys.exit(0)
+sys.exit(1)
+PYEOF
+    rm -f "$apk.new"; cp "$apk" "$apk.new"
+    ( cd "$tmp" && zip -q "$apk.new" AndroidManifest.xml ) || { rm -rf "$tmp"; return 1; }
+    rm -f "$apk"; mv "$apk.new" "$apk"
+    rm -rf "$tmp"; return 0
+}
+
 echo "== mutation test: break each guarantee, confirm the gate says so =="
 case_run diagnostics   "diagnostic string(s) leaked into release"       mut_diagnostics
 case_run perf          "contains perf instrumentation"                  mut_perf
@@ -213,6 +242,7 @@ case_run stale         "capture(s) are from builds that are no longer current" m
 case_run missing_proof "the index names proofs that do not exist"     mut_missing_proof
 case_run extra_proof   "proofs exist that the index never describes"    mut_extra_proof
 
+case_run identity      "identity CHANGED by the conversion"           mut_identity
 case_run doc_hash      "documented SHA-256 does not match the artifact"  mut_dochash
 case_run signer        "signed by an UNEXPECTED key"                     mut_signer
 
