@@ -140,8 +140,11 @@ across a full playthrough including a level end, with a built‑in positive cont
 measurement rather than a blind spot. That bounds it to the path a player actually takes; it is not a
 proof the prompt can never appear. See `port/OPEN_FINDINGS.md` R13.
 
-Native Flurry / Rovio‑BI still gather data **locally**, but it is **sendless** — layer 1 denies every
-socket, so nothing collected can ever leave the device. (What you actually see in `logcat` is the bundled SDK's own resolver reading `/etc/hosts`
+Native Flurry, Rovio‑BI, **HockeyApp telemetry** and a Bluetooth‑beacon SDK still gather data
+**locally**, but it is **sendless** — layer 1 denies every socket, so nothing collected can ever
+leave the device (measured: the app's uid owns **0** rows in `/proc/net/tcp`, 0 established, while
+it runs). The full measured list of the 13 paths it writes is in `port/ONDEVICE.md`; HockeyApp and
+the beacon SDK were missing from this sentence until a save-persistence run enumerated them. (What you actually see in `logcat` is the bundled SDK's own resolver reading `/etc/hosts`
 over and over — 1851 times in one measured playthrough — plus `[net] l_socket -> hard-fail
 (de-phone-home)` when it tries to open a socket. The `UnknownHostException` lines in a full
 `logcat` belong to the **system's** NetworkMonitor on a different pid, not to this app: a

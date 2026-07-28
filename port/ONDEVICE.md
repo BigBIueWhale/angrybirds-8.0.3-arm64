@@ -318,6 +318,30 @@ adb shell dumpsys package com.rovio.angrybirds | grep -i "permission\." | grep -
    `com.facebook.sdk.AutoLogAppEventsEnabled=false` (stops Facebook's local event collection).
    Native Flurry / Rovio-BI still gather locally but it's **sendless** (layer 1 denies every socket).
 
+**What the app actually writes, measured** (`emu_save_test.sh` on API 36, 48 files across 13 distinct
+paths). This replaces a shorter list that named only Flurry and Rovio-BI — enumerating it from a run
+rather than from memory turned up two collectors the summary had omitted:
+
+| path under `/data/data/com.rovio.angrybirds/` | what it is |
+|---|---|
+| `files/settings.lua`, `files/highscores.lua`, `files/fusion.registry` | **your game data** — the files that must survive a reinstall |
+| `files/bi_data.lua` | Rovio BI analytics, local |
+| `files/.yflurrydatasenderblock.*`, `files/.YFlurrySenderIndex.*` | Flurry analytics, local |
+| `files/net.hockeyapp.android/telemetry/<uuid>`, `shared_prefs/HOCKEY_APP_TELEMETRY_CONTEXT.xml` | **HockeyApp telemetry** — omitted from this list until it showed up in a measured run |
+| `shared_prefs/beacon.xml` | a Bluetooth-beacon SDK (`IBEACON_PREFIX`/`isAltBeacon` in the dex) |
+| `shared_prefs/com.facebook.sdk.appEventPreferences.xml` | Facebook SDK bookkeeping — **not** event data, see below |
+| `files/cacert.pem` | a CA bundle, unusable with no socket capability |
+| `shared_prefs/WebViewChromiumPrefs.xml` | WebView |
+
+All of it is **sendless**: layer 1 denies every socket, and `emu_doc_verify.sh` measures the app's uid
+owning **0** rows in `/proc/net/tcp` — 0 established — while it runs.
+
+That same run is positive evidence for layer 4's Facebook half rather than just an assertion:
+`AppEventsLogger.persistedevents`, `attributionTracking.xml` and any `AppEventsLogger` file appear
+**zero** times among the 48. The kill-switch stops the event collection; what remains is a
+preferences file the SDK creates regardless.
+
+
 **Saves persist, and not for the reason this document used to give.** It said "storage permission
 is kept, so saves persist". `WRITE_EXTERNAL_STORAGE` *is* kept, but that is not why: measured on
 Android 16, all 48 files the game writes land in **app-private internal storage**
