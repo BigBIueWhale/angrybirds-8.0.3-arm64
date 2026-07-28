@@ -32,6 +32,66 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R11. The other half of the GPU surface: the engine's one capability query, and what it decides
+
+R10 screened what the engine asks the driver to **compile**. This screens what the driver **tells the
+engine about itself**, because the engine branches on it — and a rig and a device that answer
+differently run different code. It was not in R9's table at all, which is the point: the table listed
+eight surfaces and this was a ninth, found by asking what an Android game touches that the list did
+not mention.
+
+`libAngryBirdsClassic.so` imports `glGetString` and `glCompressedTexImage2D`, and contains exactly
+three GL extension name strings — the signature of "read `GL_EXTENSIONS`, look for these, pick a
+texture/geometry path":
+
+    GL_OES_compressed_ETC1_RGB8_texture
+    GL_OES_texture_npot
+    GL_OES_vertex_buffer_object
+
+**Measured** (`emu_gpu_capture.sh` → `gl_caps.py`, API 34, `-gpu swiftshader_indirect`): the engine
+issues exactly **one** `glGetString` call in an entire run — `GL_EXTENSIONS` (0x1F03). It never asks
+`VENDOR`, `RENDERER` or `VERSION`. The driver returns **51 extensions, 1488 bytes**; `ETC1` and
+`texture_npot` are advertised, `vertex_buffer_object` is not. The full list is recorded at
+`reports/gl_extensions_rig.txt` so a device capture can be **diffed** against it rather than
+eyeballed.
+
+**Why grepping the driver binary would have been the wrong test — demonstrated, not asserted.** The
+first attempt read the extension names out of the emulator's `libGLESv2.so`. The string the engine
+actually receives is the emulator's GLES **translator** list (`ANDROID_EMU_has_shared_slots_host_memory_allocator`,
+`GL_EXT_debug_marker`, `ANDROID_EMU_gles_max_version_3_0` …), not SwiftShader's own — so the grep
+screens a set the engine never sees. A string present in a binary is what a driver *could* say; only
+the returned value is what it *did* say. That is the whole reason the dump exists.
+
+**The compressed-texture branch has no shipped assets to act on.** Every texture in the APK is
+uncompressed, so no GPU-specific compressed format ships at all:
+
+| container | count | format |
+|---|---|---|
+| `.pvr` (PVR v3) | 56 | uncompressed — 32 `rgb`, 24 `rgba` (channel-name pixel format, not a compressed id) |
+| `.pvr` (PVR v2 legacy) | 1 | uncompressed RGBA4444 — proven arithmetically: 203 × 86 × 2 = 34 916 = the header's recorded `dataLength` |
+| `.7z` → `.zstream` sprite sheets | 26 | uncompressed, ASCII tag `RGBA4444` at offset 0x20 (the 40-byte header ends exactly where the tag does) |
+
+So `ETC1` being advertised changes nothing for the shipped data, and `glCompressedTexImage2D` — which
+*is* bridged, so it would work — has nothing to upload.
+
+**What this does and does not establish.** The rig answers the engine's query with `ETC1` and
+`texture_npot` present; a GLES 3.2 device answers with those present too, so the engine reaches the
+same capability state and takes the same branch. The one place rig and device could genuinely differ
+is `GL_OES_vertex_buffer_object`: it is a GLES1-era name whose functionality is **core** in GLES2, so
+no GLES2 driver is expected to advertise it and the rig does not — but if the A56's driver does, the
+engine would take a VBO path nothing here has executed. That is the residual, and it is one `diff`
+away from being settled on hardware (`ONDEVICE.md`).
+
+**Not yet bounded: the largest texture actually uploaded.** Of the 1087 textures stored as plain zip
+entries (`.png`/`.pvr`/`.webp`), the largest dimension is exactly **2048** and none exceeds it — well
+inside any plausible `GL_MAX_TEXTURE_SIZE`. The 26 `.zstream` sprite sheets are *not* covered by that
+number: their container header yields a format tag and a 40-byte header size but no dimensions that
+reconcile with the payload length, and file size bounds only **area**, not a single axis (the largest,
+4 011 824 bytes at 2 bytes/px, permits ≤ 2 005 892 px — which a 4096 × 489 strip would satisfy). The
+honest statement is therefore that the *zip-stored* textures are bounded at 2048 and the *streamed*
+sheets are unmeasured. Guessing at a proprietary container is the wrong tool when the shim sees the
+real `glTexImage2D` width and height; that measurement is the next step, not an assumption.
+
 ### R10. The shaders screened: every float declaration is precision-qualified, no extensions
 
 The GPU is one of only two genuinely device-first surfaces (R9), and shader compilation is its most
@@ -118,9 +178,16 @@ of?* Traced from the code and the run logs, not from the design intent.
 | **CPU / ABI** | Unicorn emulates ARM32 on the host CPU | **Partially** — allocation sequences are byte-identical on x86 and AArch64, and the whole suite passes on AArch64 under qemu, but the A56's cores are the first real AArch64 host |
 | **GPU** | GL calls forwarded to the system driver | **No** — SwiftShader here, Mali/Xclipse there. Shader compilation is the main residual risk |
 | **Audio** | mixer no-op in the shipped build; separate audio variant | **No** — the emulator's audio backend cannot init headless |
+| **GL capabilities** | the engine reads `GL_EXTENSIONS` **once** and branches on three names (R11) | **Yes for the branch taken** — the rig advertises `ETC1` and `texture_npot`, as a GLES 3.2 device does, and `vertex_buffer_object` is absent on both. All shipped textures are uncompressed, so the ETC1 branch has nothing to act on. Baseline saved for a device diff |
 
-So of eight surfaces, **five are host-independent by construction or by assertion**, one differs in
-the phone's favour, and **two — the GPU and audio — are genuinely device-first**. That is a narrower
+This row was **missing** from the first version of the table. It was not found by re-reading the
+table — a table cannot show its own omissions — but by asking what an Android game touches that the
+eight rows did not mention. Two other candidates raised the same way (input/screen geometry, and
+RAM-derived quality settings) are covered by rows already here; this one was not.
+
+So of nine surfaces, **six are host-independent by construction, by assertion, or (R11) by
+measurement**, one differs in the phone's favour, and **two — the GPU's driver behaviour and audio —
+are genuinely device-first**. That is a narrower
 statement than "validated on a proxy", and a more useful one: it says exactly where to look if
 something goes wrong, which is why `ONDEVICE.md` now leads with a pid-scoped `logcat` rather than a
 tag filter (the driver reports shader errors under the engine's own tag).

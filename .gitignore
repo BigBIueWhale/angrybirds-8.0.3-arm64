@@ -24,6 +24,10 @@
 
 # --- research artifacts (large; regenerable from the engine) ---
 /reports/*
+# ...except the GL capability baseline: it is small, and it is the file a DEVICE capture gets
+# diffed against (OPEN_FINDINGS R11). Excluding it would make the docs' offer to compare against
+# it hollow for anyone who clones — the claim would reference a file the repo does not contain.
+!/reports/gl_extensions_rig.txt
 !/reports/shots/
 /reports/shots/*
 !/reports/shots/PROOF_*.png

@@ -371,7 +371,33 @@ DEF(h_glGetUniformfv){ REAL(void,(uint32_t,int,float*),"glGetUniformfv");
 static uint32_t g_strcache[16]; static uint32_t g_strkey[16]; static int g_nstr;
 DEF(h_glGetString){ REAL(const char*,(uint32_t),"glGetString"); uint32_t name=W;
     for(int i=0;i<g_nstr;i++) if(g_strkey[i]==name) return g_strcache[i];
-    const char*s=f(name); if(!s) return 0; uint32_t L=strlen(s); uint32_t g=galloc_malloc(c->heap,L+1);
+    const char*s=f(name); if(!s) return 0; uint32_t L=strlen(s);
+#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_SHADERDUMP)
+    /* GL CAPABILITY DUMP — same gate, and the same reason, as the shader dump above (R9: the GPU is
+     * one of only two surfaces no emulator here stands in for). The engine imports glGetString and
+     * contains exactly three GL extension name strings — GL_OES_compressed_ETC1_RGB8_texture,
+     * GL_OES_texture_npot, GL_OES_vertex_buffer_object — so it selects a texture/geometry path from
+     * what the driver advertises. If the rig's GL advertises a different set than the A56's
+     * Mali/Xclipse, the phone takes a branch nothing here has ever executed.
+     * Grepping those names out of SwiftShader's libGLESv2.so is NOT the same test: a string present
+     * in a binary need not appear in the string glGetString(GL_EXTENSIONS) actually returns (it may
+     * be an internal table, or gated by context version). Only the returned value settles it, and
+     * this bridge is the one place that value exists. Chunked for the same reason as the shaders —
+     * logcat truncates a long line, and a truncated capability list reads exactly like a short one. */
+    { const char *nm = name==0x1F00?"VENDOR":name==0x1F01?"RENDERER":
+                       name==0x1F02?"VERSION":name==0x1F03?"EXTENSIONS":"other";
+      for(uint32_t off=0,k=0; off<L || off==0; off+=480,k++){
+          char buf[512]; uint32_t m=L-off; if(m>480) m=480;
+          memcpy(buf,s+off,m); buf[m]=0;
+#ifdef __ANDROID__
+          __android_log_print(4,"abshim","[gl-str] name=0x%04x(%s) c=%u len=%u :%s",name,nm,k,L,buf);
+#else
+          fprintf(stderr,"[gl-str] name=0x%04x(%s) c=%u len=%u :%s\n",name,nm,k,L,buf);
+#endif
+          if(off+480>=L) break;
+      } }
+#endif
+    uint32_t g=galloc_malloc(c->heap,L+1);
     if(g){ WR(c,g,s,L); uint8_t z=0; WR(c,g+L,&z,1); if(g_nstr<16){ g_strkey[g_nstr]=name; g_strcache[g_nstr]=g; g_nstr++; } }
     return g; }
 

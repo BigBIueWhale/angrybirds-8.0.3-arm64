@@ -230,6 +230,7 @@ PROOF mapping verified by md5 against the source screenshots, not by filename.
 | `emu_modern_playthrough.sh` | abtest34 / 34 | x86shim-release | `modplay_3_end.png` → **PROOF_8** *(original source overwritten)*; re-run 2026-07-27 → **PROOF_11** (win, 44500) |
 | `emu_modern_progress.sh` | abtest34 / 34 | x86shim-release | `modprog_2_level2.png` → **PROOF_9** |
 | `emu_save_test.sh` | abtest34 / 34, or **ab36 / 36** via `ABSHIM_AVD=ab36 ABSHIM_OUTPFX=save36` | x86shim-release | save/relaunch persistence. On API 36 it also established that all writes are app-PRIVATE (no external storage), so scoped-storage changes cannot break saves |
+| `emu_gpu_capture.sh` | abtest34 / 34, or **ab36 / 36** via `ABSHIM_AVD=ab36` | **x86shim-shaders** (`-DABSHIM_RELEASE -DABSHIM_SHADERDUMP`) | both halves of the GPU surface in ONE run, so the shader set and the capability set are never screened from captures that did not coexist: `gpucap_abshim.txt` → `shader_screen.py` (22 programs) + `gl_caps.py` (51 extensions) → `reports/gl_extensions_rig.txt`. Replaces the ad-hoc adb sequences that produced R10 |
 | `emu_audio_test.sh` | abtest / 25 | x86shim-audio | `audio_*` — audio-build boot |
 | `emu_audio_playthrough.sh` | abtest / 25 | x86shim-audio | `audioplay_end.png` → **PROOF_10** (audio level win) |
 | `emu_audio_modern.sh` | abtest34 / 34 | x86shim-audio | `audiomod_*` — audio on API 34 |
@@ -517,6 +518,7 @@ drift a reader can see.
 | `port/validation/emu_audio_test.sh` | AUDIO TEST: run the -DABSHIM_AUDIO proxy WITH emulator audio ENABLED (no -no-audio; QEMU null |
 | `port/validation/emu_fatal.sh` | Boot ab-emu, install the CURRENT x86 shim APK, launch, and watch the game AUTO-navigate |
 | `port/validation/emu_fatal_release.sh` | Boot ab-emu, install the CURRENT x86 shim APK, launch, and watch the game AUTO-navigate |
+| `port/validation/emu_gpu_capture.sh` | capture the whole GPU-facing surface in one run, reproducibly. |
 | `port/validation/emu_install_commands.sh` | verify the install commands the DOCS give the user actually work. |
 | `port/validation/emu_interactive.sh` | Persistent emulator: boot + install + launch the x86 shim APK, then STAY ALIVE (sleep) so the |
 | `port/validation/emu_interactive_capture.sh` | regenerate the INTERACTIVE proofs (PROOF_2/3/4) unattended. |
@@ -627,6 +629,33 @@ not a pass"*) and accepts the verified one.
 Three partial measurements preceded the first real result, each producing a plausible number — see
 `port/OPEN_FINDINGS.md` R10. They are recorded because how a number was obtained is part of whether
 it means anything.
+
+### `gl_caps.py` — the other half of that surface
+
+`shader_screen.py` screens what the engine asks the driver to **compile**. This screens what the
+driver **tells the engine about itself**, because the engine branches on it: `libAngryBirdsClassic.so`
+imports `glGetString` and contains exactly three GL extension name strings, which is the signature of
+a capability query. If the rig and the A56 answer differently, the phone runs code nothing here has
+executed.
+
+Measured rather than inferred, and the difference is not academic. The first attempt grepped the
+extension names out of the emulator's `libGLESv2.so`; the string the engine actually receives is the
+emulator's GLES **translator** list (`ANDROID_EMU_*`, `GL_EXT_debug_marker`), not SwiftShader's own,
+so that grep screens a set the engine never sees. A string in a binary is what a driver *could* say —
+only the returned value is what it *did* say.
+
+Like its counterpart, it refuses rather than reports when the measurement is absent: a capture in
+which the engine never completed a `GL_EXTENSIONS` query is a hard **FAIL**, because screening it
+would print "none of the three extensions present" — a dramatic-looking finding that actually means
+no data, which is precisely the "zero of everything" failure `shader_screen.py` exists to refuse. The
+list of extensions the engine looks for is **derived from the engine binary** passed as argument 2,
+not hardcoded, so it cannot silently screen the wrong list. Self-tested in three directions
+(complete capture → pass; no `GL_EXTENSIONS` query → fail; truncated chunks → excluded, then fail).
+
+    python3 port/validation/gl_caps.py reports/shots/<capture>_abshim.txt work803/libv7/libAngryBirdsClassic.so
+
+The rig's answer is saved to `reports/gl_extensions_rig.txt` so a device capture can be **diffed**
+against it rather than eyeballed. See `port/OPEN_FINDINGS.md` R11.
 
 ### Shared libraries
 
