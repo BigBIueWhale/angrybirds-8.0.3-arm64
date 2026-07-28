@@ -159,6 +159,49 @@ mut_missing_proof() {
     rm -f "$p"
 }
 
+
+# Flip one character of a documented SHA-256. This is what a hand-transcription error looks like,
+# and it is exactly how the audio APK's digest was wrong in RELEASE_NOTES.md on 2026-07-28.
+mut_dochash() {
+    local f="$1/RELEASE_NOTES.md"
+    [ -f "$f" ] || return 1
+    local body; body=$(cat "$f"); rm -f "$f"
+    printf '%s\n' "$body" | sed -E '0,/^[0-9a-f]{64}  angrybirds/s/^([0-9a-f]{63})[0-9a-f]( angrybirds)/\1z\2/' > "$f"
+    grep -qE '^[0-9a-f]{63}z ' "$f" || {
+        # the substitution must actually land, or this case proves nothing
+        printf '%s\n' "$body" | sed -E '0,/^[0-9a-f]{64}  angrybirds/s/^[0-9a-f]{2}/ff/' > "$f"; }
+    ! cmp -s <(printf '%s\n' "$body") "$f"
+}
+
+# Re-sign the deliverable with a freshly generated key — precisely what every build script's
+# `keytool -genkeypair` fallback produces when port/debug.ks is missing. The APK stays perfectly
+# valid; only the signer changes, and a differently-signed APK cannot update-install over the one
+# already on the phone.
+mut_signer() {
+    local tree="$1"
+    local apk="$tree/out/angrybirds-8.0.3-arm64.apk"
+    local tmp; tmp=$(mktemp -d)
+    docker run --rm --network none -v "$tmp":/t -v "$tree":/w -w /w ab-port bash -c '
+        keytool -genkeypair -keystore /t/rogue.ks -storepass android -keypass android \
+                -alias r -keyalg RSA -keysize 2048 -validity 3650 -dname "CN=Rogue" >/dev/null 2>&1
+        rm -rf /t/x && unzip -q -o out/angrybirds-8.0.3-arm64.apk -d /t/x 2>/dev/null
+        rm -rf /t/x/META-INF
+        (cd /t/x && zip -q -r /t/uns.apk .) && zipalign -f -p 4 /t/uns.apk /t/al.apk >/dev/null 2>&1
+        apksigner sign --ks /t/rogue.ks --ks-pass pass:android --key-pass pass:android \
+                 --out /t/rogue.apk /t/al.apk >/dev/null 2>&1' >/dev/null 2>&1
+    # The container writes as root, so a plain `rm -rf` here fails on every extracted file with
+    # "Permission denied" and leaves a few hundred MB of debris in /tmp. Remove it from inside a
+    # container, which owns those files.
+    local ok=1; [ -s "$tmp/rogue.apk" ] && ok=0
+    [ "$ok" -eq 0 ] && { rm -f "$apk"; cp "$tmp/rogue.apk" "$apk"; }
+    # Clear the directory's CONTENTS rather than a list of expected names: apksigner also writes a
+    # .idsig alongside the APK, which an enumerated list missed and left 776 KB behind. Deleting what
+    # is actually there cannot fall behind what the tools decide to produce.
+    docker run --rm -v "$tmp":/t alpine sh -c 'rm -rf /t/..?* /t/.[!.]* /t/*' >/dev/null 2>&1
+    rmdir "$tmp" 2>/dev/null
+    return "$ok"
+}
+
 echo "== mutation test: break each guarantee, confirm the gate says so =="
 case_run diagnostics   "diagnostic string(s) leaked into release"       mut_diagnostics
 case_run perf          "contains perf instrumentation"                  mut_perf
@@ -169,6 +212,9 @@ case_run docref        "docs reference files that are NOT in the repo"  mut_docr
 case_run stale         "capture(s) are from builds that are no longer current" mut_stale
 case_run missing_proof "the index names proofs that do not exist"     mut_missing_proof
 case_run extra_proof   "proofs exist that the index never describes"    mut_extra_proof
+
+case_run doc_hash      "documented SHA-256 does not match the artifact"  mut_dochash
+case_run signer        "signed by an UNEXPECTED key"                     mut_signer
 
 echo
 echo "== control: the real tree must still PASS =="
