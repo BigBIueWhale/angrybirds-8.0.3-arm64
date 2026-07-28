@@ -37,6 +37,8 @@
 #   audio-variant sameness   appended a byte to the AUDIO build's engine  -> caught
 #   audio shim size bound    padded the audio shim by 200 KB (>1%)        -> caught
 #   documented log markers   added a phantom marker to ONDEVICE.md        -> caught (see below)
+#   doc-referenced files     (a) referenced a script that does not exist  -> caught
+#                            (b) referenced a file present but UNTRACKED  -> caught  <- the real bug
 #
 # TWO of these attempts did not go as expected, and both were instructive:
 #
@@ -282,6 +284,33 @@ for f in port/validation/emu_*.sh; do
 done
 [ -z "$BADLBL" ] && ok "every parameterised capture script labels its provenance with \$PFX" \
                  || bad "these take \$PFX but record a FIXED provenance label:$BADLBL"
+
+echo "== CLAIM: every script and Dockerfile the docs reference is actually in the repo =="
+# Checked against `git ls-files`, NOT the working tree. The distinction is the whole point: the docs
+# once described `apks/…8.0.3.apk` and `work803/…/libAngryBirdsClassic.so` as "committed in this
+# repo" when only the .xz is committed. Both files existed HERE, because a build had produced them,
+# so any presence check would have passed while a fresh clone hit errors naming files it had never
+# seen. Tracked-in-git is what a reader can actually rely on.
+DOCREF=$( { grep -rhoE 'port/[a-zA-Z0-9_/.-]+\.(sh|py)' --include='*.md' . 2>/dev/null;
+            grep -rhoE 'Dockerfile\.[a-zA-Z0-9_-]+' --include='*.md' . 2>/dev/null | sed 's|^|port/docker/|'; } | sort -u )
+# `-c safe.directory=*` because this normally runs INSIDE a container as root while /work is owned
+# by the host user, and git then refuses with "detected dubious ownership" — which made EVERY file
+# look untracked and produced a confident, completely false FAIL listing files that are plainly in
+# the repo. A check that cannot tell "not tracked" from "cannot ask" is worse than no check.
+GIT="git -c safe.directory=*"
+if ! $GIT rev-parse --git-dir >/dev/null 2>&1; then
+  skip "doc-referenced files (no usable git repo here - cannot distinguish untracked from unknowable)"
+  DOCREF=""
+fi
+UNTRACKED=""
+for f in $DOCREF; do
+  $GIT ls-files --error-unmatch "$f" >/dev/null 2>&1 || UNTRACKED="$UNTRACKED $f"
+done
+NREF=$(printf '%s\n' "$DOCREF" | grep -c .)
+if [ -n "$DOCREF" ]; then
+  [ -z "$UNTRACKED" ] && ok "all $NREF doc-referenced scripts/Dockerfiles are tracked in git" \
+                      || bad "docs reference files that are NOT in the repo:$UNTRACKED"
+fi
 
 echo "== CLAIM: the screenshots were captured on builds that still exist =="
 # Screenshots have gone stale silently twice: PROOF_2/3/4 showed a binary that no longer existed,
