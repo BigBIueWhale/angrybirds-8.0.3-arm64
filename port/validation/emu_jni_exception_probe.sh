@@ -44,7 +44,10 @@ FULL="$OUT/${PFX}_full_logcat.txt"; : >"$FULL"
 ABLOG="$OUT/${PFX}_abshim.txt"; : >"$ABLOG"
 say(){ echo "$@" | tee -a "$LOG"; }
 
-say "== boot API 34 =="
+# NOT "API 34": ABSHIM_AVD is parameterised, so running this against ab36 (Android 16) printed a
+# header claiming API 34 — a log kept as evidence stating the wrong OS under test. The version is
+# reported from the device a few lines below; assert nothing here that was not measured.
+say "== boot $AVD =="
 emulator -avd "$AVD" -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
          -gpu swiftshader_indirect -partition-size 6144 -wipe-data >/tmp/emu.log 2>&1 &
 adb wait-for-device

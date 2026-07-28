@@ -15,7 +15,10 @@ PFX="${ABSHIM_OUTPFX:-save}"
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/${PFX}.txt"; : >"$LOG"
 AB1="$OUT/save_ab1.txt"; AB2="$OUT/save_ab2.txt"
 say(){ echo "$@" | tee -a "$LOG"; }
-say "== boot API 34 (fresh wipe-data) =="
+# NOT "API 34": ABSHIM_AVD is parameterised, so running this against ab36 (Android 16) printed a
+# header claiming API 34 — a log kept as evidence stating the wrong OS under test. The version is
+# reported from the device a few lines below; assert nothing here that was not measured.
+say "== boot $AVD (fresh wipe-data) =="
 emulator -avd "$AVD" -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
          -gpu swiftshader_indirect -partition-size 6144 -wipe-data >/tmp/emu34.log 2>&1 &
 adb wait-for-device

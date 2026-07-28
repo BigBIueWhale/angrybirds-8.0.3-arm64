@@ -63,7 +63,11 @@ fi
 # is enough to answer "which binary produced these numbers".
 say "  measuring: $(basename "$APK")  sha256 $(sha256sum "$APK" | cut -c1-16)…"
 
-say "== boot API 34 ($AVD) =="
+# NOT "API 34": $AVD is parameterised (ABSHIM_AVD=ab36 runs Android 16, the A56's OS), so a
+# hardcoded version here prints "boot API 34 (ab36)" on an Android 16 run — a log line that
+# misstates what was under test, in a file kept as evidence. The very next line reports the
+# version read FROM THE DEVICE, so state nothing here that is not measured.
+say "== boot $AVD =="
 emulator -avd "$AVD" -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
     -gpu swiftshader_indirect >/tmp/emu.log 2>&1 &
 adb wait-for-device

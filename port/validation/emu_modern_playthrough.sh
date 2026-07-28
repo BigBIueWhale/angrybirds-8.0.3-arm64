@@ -21,7 +21,11 @@ PFX="${ABSHIM_OUTPFX:-modplay}"
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/${PFX}.txt"; : >"$LOG"
 ABLOG="$OUT/${PFX}_abshim.txt"; : >"$ABLOG"
 say(){ echo "$@" | tee -a "$LOG"; }
-say "== boot API 34 ($AVD) =="
+# NOT "API 34": $AVD is parameterised (ABSHIM_AVD=ab36 runs Android 16, the A56's OS), so a
+# hardcoded version here prints "boot API 34 (ab36)" on an Android 16 run — a log line that
+# misstates what was under test, in a file kept as evidence. The very next line reports the
+# version read FROM THE DEVICE, so state nothing here that is not measured.
+say "== boot $AVD =="
 emulator -avd "$AVD" -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
          -gpu swiftshader_indirect -partition-size 6144 -wipe-data >/tmp/emu34.log 2>&1 &
 adb wait-for-device
