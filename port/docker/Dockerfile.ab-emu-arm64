@@ -1,0 +1,79 @@
+# ab-emu-arm64 — an **ARM64** Android emulator, for running THE ACTUAL DELIVERABLE.
+#
+# Every other emulator tier here is x86_64 and runs the `…-x86shim-release.apk` proxy: same shim
+# source, same 32-bit engine payload, but compiled for x86 and running in x86 ART. This tier exists
+# so the file the user actually installs — `angrybirds-8.0.3-arm64.apk` — can be executed by a real
+# ARM64 Android runtime rather than only reasoned about.
+#
+# Used by `port/validation/emu_arm64_real_artifact.sh`.
+#
+# ---------------------------------------------------------------------------
+# PROVENANCE
+# ---------------------------------------------------------------------------
+# Like ab-emu-34 before it, the original ab-emu-arm64:latest was built without a committed
+# Dockerfile. The recipe below was recovered from the build transcript kept at
+# `port/build/emu-arm64.log`, which records every layer verbatim (`#5 [2/6] RUN apt-get …`), and
+# cross-checked against the image's own recorded ENV (`docker inspect ab-emu-arm64:latest`):
+#
+#   PATH=/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/emulator:/usr/bin:/bin
+#   ANDROID_SDK_ROOT=/opt/android-sdk
+#   AVD: arm64   ->   system-images/android-30/google_apis/arm64-v8a/   (abi.type=arm64-v8a)
+#
+# ---------------------------------------------------------------------------
+# PERFORMANCE — READ BEFORE USING
+# ---------------------------------------------------------------------------
+# There is **no KVM acceleration for an arm64 guest on an x86 host**. The entire Android system runs
+# under QEMU TCG, and our shim then emulates ARM32 *inside* that emulated ARM64 — emulation within
+# emulation. Boot alone can take tens of minutes and the game may never reach a playable frame rate.
+#
+# That is why emu_arm64_real_artifact.sh reports **how far it got** on a milestone scale rather than
+# passing or failing on reaching a win. A low milestone is evidence about TCG speed; every milestone
+# actually reached is evidence about the real artifact.
+#
+# ---------------------------------------------------------------------------
+# NETWORK POLICY
+# ---------------------------------------------------------------------------
+# Building requires network (SDK + system image download). Every RUN of the image is launched
+# `--network none`, like every other tier. Treat the build host as internet-reachable: never
+# `-p`/`--publish`, never `--network host`.
+#
+# ---------------------------------------------------------------------------
+# REPRODUCIBILITY LIMITATION
+# ---------------------------------------------------------------------------
+# The commandline-tools zip is pinned by filename (11076708) but Google revises system images in
+# place, so `system-images;android-30;google_apis;arm64-v8a` is not a fixed artifact. The installed
+# revision is written to /IMAGE_VERSIONS at build time so whatever produced a given result stays
+# recoverable from the image itself.
+#
+#   docker build -f port/docker/Dockerfile.ab-emu-arm64 -t ab-emu-arm64 port/docker
+
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openjdk-17-jdk-headless wget unzip ca-certificates socat \
+        libpulse0 libnss3 libxcomposite1 libglib2.0-0 libgl1 libx11-6 libxcb1 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV PATH=/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/emulator:/usr/bin:/bin
+
+RUN mkdir -p /opt/android-sdk/cmdline-tools && cd /tmp && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O ct.zip && \
+    unzip -q ct.zip -d /opt/android-sdk/cmdline-tools && \
+    mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest && \
+    rm -f ct.zip
+
+RUN yes | sdkmanager --licenses >/dev/null 2>&1 || true
+
+RUN sdkmanager "platform-tools" "emulator" "system-images;android-30;google_apis;arm64-v8a" >/dev/null 2>&1
+
+RUN echo no | avdmanager create avd -n arm64 -k "system-images;android-30;google_apis;arm64-v8a" >/dev/null 2>&1
+
+# Fail the build rather than publish a broken image (same rule as the other tiers).
+RUN set -e; \
+    test -f "$HOME/.android/avd/arm64.avd/config.ini" || { echo "FATAL: AVD arm64 was not created"; exit 1; }; \
+    grep -q "abi.type=arm64-v8a" "$HOME/.android/avd/arm64.avd/config.ini" || { echo "FATAL: AVD is not arm64-v8a"; exit 1; }; \
+    { echo -n "sysimg-30-arm64 "; grep Pkg.Revision $ANDROID_SDK_ROOT/system-images/android-30/google_apis/arm64-v8a/source.properties; } > /IMAGE_VERSIONS; \
+    cat /IMAGE_VERSIONS
+
+CMD ["/bin/bash"]

@@ -73,6 +73,31 @@ qemu-user it builds two standalone C binaries that load the real engine and run 
 static constructors on AArch64. No Android, no ART, no JNI, no GL, no frames. It validates
 the ABI, nothing above it.
 
+Run it with an arm64 container via binfmt (`docker run --privileged --rm tonistiigi/binfmt
+--install arm64` once, on the host, to register `qemu-aarch64`):
+
+```bash
+docker run --rm --platform linux/arm64 -v "$PWD":/work -v /scratch:/scratch -w /work \
+    ubuntu:22.04 bash /work/port/validation/arm64_unicorn_test.sh
+```
+
+It caches its Unicorn build in `/scratch/uni-arm64`. **With that cache absent the first run
+compiles Unicorn under qemu-user emulation, which takes hours and needs network** — that build is
+the only step here that does, and it is why the script keeps the result outside the container.
+
+**Running the real APK on an emulated ARM64 Android is not possible on an x86_64 host.** It was
+attempted (`emu_arm64_real_artifact.sh`, and the `ab-emu-arm64` image with its `arm64-v8a` AVD);
+the emulator refuses outright:
+
+```
+FATAL | Avd's CPU Architecture 'arm64' is not supported by the QEMU2 emulator on x86_64 host.
+        System image must match the host architecture.
+```
+
+The AVD is creatable but can never boot, which is why nothing had ever used that image. The script
+is kept, and now detects that failure in seconds instead of waiting out its boot budget, so the
+limitation is recorded by running code rather than by a comment that could drift.
+
 ---
 
 ## Running the rig
@@ -162,6 +187,7 @@ PROOF mapping verified by md5 against the source screenshots, not by filename.
 
 | Script | AVD / API | APK under test | Produces |
 |---|---|---|---|
+| `emu_arm64_real_artifact.sh` | **arm64 / 30 (ARM64!)** | **`angrybirds-8.0.3-arm64.apk` — THE DELIVERABLE** | the only script that runs the artifact users actually install, rather than the x86 proxy. No KVM for an arm64 guest on an x86 host, so everything is QEMU TCG *and* our shim emulates ARM32 inside that — expect it to be very slow. Reports how far it got on a 6-milestone scale (installed → process → shim loaded → engine mapped → ctors ran → frames) instead of pass/fail, because a low milestone means TCG speed, not a broken artifact |
 | `emu_layer4_fcm_test.sh` | **abgms / 34 (GMS)** | x86shim-release + x86shim-fbcontrol | **the only tier with Google Play Services.** Differential proof of de-phone-home layer 4: the control build (`ABSHIM_FIREBASE_CONTROL=1`, kill-switch removed) attempts FCM token registration, the shipped build attempts it 0 times. Requires each arm to prove it executed before its measurement counts. Exits non-zero on failure |
 | `emu_jni_exception_probe.sh` | abtest34 / 34 | x86shim-release | **the only script that captures UNFILTERED logcat.** Asserts (1) ART reports no pending JNI exception / CheckJNI error / abort, (2) the app's OWN pid does no name resolution or socket work — runtime de-phone-home proof, attributed by pid because the system's NetworkMonitor legitimately resolves names on a different pid, (3) FlurryAgent logs that ACCESS_NETWORK_STATE is missing. Exits non-zero on failure |
 | `emu_run.sh` | abtest / 25 | x86shim | first boot-through rig; `emu_screen.png`, `emu_abshim.txt`, `emu_engine.txt` |

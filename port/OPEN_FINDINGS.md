@@ -12,6 +12,16 @@ below, with the evidence, so the same question is not re-investigated from scrat
 
 Not defects — limits of the environment. Stated so they are never implied to be covered.
 
+- **Executing the real arm64 APK.** Not a gap that better effort closes: the Android emulator
+  **refuses** to run an arm64 system image on an x86_64 host — `FATAL | Avd's CPU Architecture
+  'arm64' is not supported by the QEMU2 emulator on x86_64 host. System image must match the host
+  architecture.` The `ab-emu-arm64` image and its `arm64-v8a` AVD exist and were built successfully,
+  but the AVD can never boot, which is why nothing had ever used it. `emu_arm64_real_artifact.sh`
+  is kept and now reports that in seconds. What *does* cover the arm64 side: `arm64_unicorn_test.sh`
+  (qemu-**user**, which translates user-space only and therefore works) runs the engine load and all
+  125 C++ constructors on AArch64, and `verify_claims.sh` checks the shipped ELF is AArch64,
+  16 KB-page aligned and links libm. None of that is the game running; the shipped APK has been
+  built, signed, aligned and statically audited, not executed.
 - **The physical Galaxy A56 run.** Everything is validated on emulators (API 25 and API 34, x86 with
   the shim in real ART). The A56's Exynos 1580 specifically is untested. See `ONDEVICE.md`.
 - **Frame pacing under a real GPU.** All rendering evidence is SwiftShader software rendering.
