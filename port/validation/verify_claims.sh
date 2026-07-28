@@ -392,10 +392,16 @@ else
 fi
 
 echo "== CLAIM: the SDK auto-init kill-switches are injected =="
-for k in firebase_messaging_auto_init_enabled com.facebook.sdk.AutoLogAppEventsEnabled; do
-  unzip -p "$APK" AndroidManifest.xml 2>/dev/null | strings | grep -q "$k" \
-    && ok "$k present" || bad "$k MISSING"
-done
+# PRESENT *AND FALSE*. This used to be `strings | grep -q <flag-name>`, which confirms the switch
+# exists but not which way it is thrown: the value is an AXML integer, invisible to grep, so an
+# injector bug writing `true` would have passed while leaving FCM auto-init ON. Layer 4 is precisely
+# the one the missing INTERNET permission cannot cover — GMS performs the registration for the app —
+# so the value IS the claim. Flag list derived from manifest_firebase_off.py's own FLAGS.
+if python3 "$(dirname "$0")/check_killswitches.py" "$T/am.bin"; then
+  ok "layer-4 kill-switches present AND false"
+else
+  bad "the layer-4 kill-switch check failed — see the lines above"
+fi
 
 echo "== CLAIM: de-phone-home layer 2 — the shim hard-fails the network for the guest =="
 strings -a "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" | grep -q "hard-fail (de-phone-home)" \

@@ -598,6 +598,12 @@ of them are load-bearing parts of the pipeline rather than helpers:
   screenshot in this repo was produced by its output**, because an arm64 AVD cannot run on an x86_64
   host. It is invoked by `build_apk_x86_release.sh` and `build_apk_x86_audio.sh`. A reader tracing
   "where did this win screenshot come from" had no documented path to it.
+- **`port/validation/check_killswitches.py`** — de-phone-home layer 4: the SDK auto-init flags must be
+  present **and false**. The previous check grepped for the flag NAME; the value is an AXML integer
+  that `grep` cannot see, so an injector bug writing `true` would have passed while leaving FCM
+  auto-init on. Flag list derived from `manifest_firebase_off.py`'s own `FLAGS`. Refuses when no
+  `meta-data` parses at all. Controls: Rovio's original manifest and the `fbcontrol` build (layer 4
+  skipped on purpose) both fail it, as they must.
 - **`port/validation/check_no_sockets.py`** — asserts the shim imports **no network-capable symbol**,
   checked against *everything* it imports rather than six hand-picked names, and with the positive
   control built into the check: Rovio's untouched engine imports 18 such symbols, so if the scan
