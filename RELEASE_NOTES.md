@@ -43,8 +43,8 @@ Both are signed with the same key, so either update‑installs over the other wi
 
 **SHA‑256**
 ```
-4fdb3d7cf31bf4d6f5556330c84bd32a36b134033c27aa41158101672d56c2b6  angrybirds-8.0.3-arm64.apk
-702009356993bd21cafef7dc9b282058517acd10c0328cd259ddf6b425b20dc0  angrybirds-8.0.3-arm64-audio.apk
+9da84326e1f2b82acba9b50ecec56207f58afcfc97306acb167257a4c0d094a4  angrybirds-8.0.3-arm64.apk
+27f98f27d475b342e718aecafc163486102c3ca2fc8715e268f084dc85957ec9  angrybirds-8.0.3-arm64-audio.apk
 ```
 
 ## What's verified

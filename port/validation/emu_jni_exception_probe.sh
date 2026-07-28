@@ -98,9 +98,23 @@ fi
 say ""
 say "== ASSERTION 3: a bundled tracking SDK observes the missing permission =="
 # Positive evidence the de-permissioning is real and visible to the SDKs, not just to aapt.
+SDKSEEN=0
 grep -aiq "Flurry.*ACCESS_NETWORK_STATE" "$FULL" \
-  && ok "FlurryAgent reports ACCESS_NETWORK_STATE is not declared" \
-  || say "  [note] Flurry did not log its permission warning this run (not a failure)"
+  && { ok "FlurryAgent reports ACCESS_NETWORK_STATE is not declared"; SDKSEEN=$((SDKSEEN+1)); } \
+  || say "  [note] Flurry did not log its permission warning this run"
+# The Facebook SDK states it even more plainly, and is a SECOND independent confirmation.
+grep -aiq "No internet permissions granted for the app" "$FULL" \
+  && { ok "Facebook SDK reports no INTERNET permission granted"; SDKSEEN=$((SDKSEEN+1)); } \
+  || say "  [note] the Facebook SDK did not log its permission warning this run"
+[ "$SDKSEEN" -ge 1 ] && ok "$SDKSEEN bundled SDK(s) observed the stripped permissions at runtime" \
+                     || bad "no bundled SDK reported a missing permission - is the strip actually reaching them?"
+# GMS is ABSENT from this emulator ("Google Play Store is missing"), so de-phone-home layer 4 - the
+# Firebase/FCM auto-init kill-switch, which exists precisely for GMS-MEDIATED phone-homes - is NOT
+# exercised here. Say so rather than let a green run imply it was covered. See OPEN_FINDINGS.md.
+if grep -aiq "Google Play Store is missing\|Default FirebaseApp failed to initialize" "$FULL"; then
+  say "  [SCOPE] no Google Play Services on this emulator -> layer 4 (Firebase/FCM auto-init"
+  say "          kill-switch) is NOT exercised by this run. The A56 does have GMS."
+fi
 
 say ""
 say "== raw counts (informational) =="

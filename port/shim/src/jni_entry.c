@@ -497,7 +497,7 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
       for(int i=0;i<nseen;i++) if(!strcmp(seen[i],name)){ sv=1; break; }
       if(!sv){ if(nseen<128){ strncpy(seen[nseen],name,47); seen[nseen][47]=0; nseen++;
                  LOG("call[%d] %s (%s) @0x%x", nseen, name, shorty, gaddr); }   /* log ONLY on store */
-               else if(!capped){ capped=1; LOGE("call-log: >128 distinct natives; further first-call logs suppressed"); } } }
+               else if(!capped){ capped=1; LOG("call-log: >128 distinct natives; further first-call logs suppressed"); } } }  /* INFO, not LOGE: this is a diagnostic notice, and ONDEVICE.md tells people to triage by looking for errors */
     uint32_t thiz_tok = tok(thiz, HK_LOCAL);
     uint32_t frame = ht_frame_mark(HT());
     /* pass 1: stack bytes for spilled args (env=r0, thiz=r1 already) */

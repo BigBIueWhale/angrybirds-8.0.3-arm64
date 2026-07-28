@@ -19,7 +19,7 @@ Full scope note under [What's verified](#whats-verified).
 </p>
 <p align="center"><em>Left: a level won under the shim on Android 14 (the A56's OS regime). Right: it advances into the next level.<br>
 Both from the x86_64 proxy build — see the scope note above. The left image is PROOF_15, produced by a committed script on a
-bit‑reproducible binary (<code>dda34e2c…</code>), so it can be regenerated rather than taken on trust.</em></p>
+bit‑reproducible binary (<code>3bae8551…</code>), so it can be regenerated rather than taken on trust.</em></p>
 
 ---
 
@@ -108,9 +108,18 @@ maps every `abshim` log line to a diagnosis so one `adb logcat` pinpoints anythi
    Cloud Messaging auto‑registration (the one phone‑home the missing INTERNET permission can't stop,
    since Google Play Services does that network *for* the app) and Facebook local event collection.
 
+Layers 1–3 are verified at runtime. **Layer 4 is not** — it exists for the GMS‑mediated FCM
+registration that layers 1–3 cannot stop, and the test emulators have no Google Play Services, so
+nothing here exercises it. What *is* checked is that the kill‑switch `<meta-data>` is present in
+the shipped manifest. See `port/OPEN_FINDINGS.md`.
+
 Native Flurry / Rovio‑BI still gather data **locally**, but it is **sendless** — layer 1 denies every
-socket, so nothing collected can ever leave the device. (The engine's own blocked DNS retries are
-visible in `logcat` but never reach the network; see `port/ONDEVICE.md`.)
+socket, so nothing collected can ever leave the device. (What you actually see in `logcat` is the bundled SDK's own resolver reading `/etc/hosts`
+over and over — 1851 times in one measured playthrough — plus `[net] l_socket -> hard-fail
+(de-phone-home)` when it tries to open a socket. The `UnknownHostException` lines in a full
+`logcat` belong to the **system's** NetworkMonitor on a different pid, not to this app: a
+measured run attributes **zero** name-resolution or socket activity to the app's own pid, and
+`emu_jni_exception_probe.sh` asserts that by pid. See `port/ONDEVICE.md`.)
 
 ## Reproduce it yourself (fully offline conversion)
 

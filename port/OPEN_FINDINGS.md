@@ -8,7 +8,36 @@ below, with the evidence, so the same question is not re-investigated from scrat
 
 ## Open
 
-### 1. Not verifiable from this machine
+### 1. De-phone-home layer 4 (Firebase/FCM auto-init) is not exercised by any test
+
+**Status:** open, and it is a real gap rather than an environment limit — worth stating plainly
+because every other de-phone-home layer *is* verified.
+
+The four layers are: (1) no INTERNET permission, so the kernel refuses the app's sockets;
+(2) the shim's libc hard-fails socket calls; (3) manifest billing/accounts/push neutralised;
+(4) `manifest_firebase_off.py` injects `firebase_messaging_auto_init_enabled=false` so Firebase
+Cloud Messaging cannot auto-register a device token.
+
+Layer 4 exists **specifically for the phone-home that layers 1–3 cannot stop**: FCM registration is
+performed by Google Play Services *on the app's behalf*, so it does not need the app's own INTERNET
+permission. That is the one path where the app can reach the network without owning a socket.
+
+**The emulator has no GMS.** Unfiltered logcat shows `GooglePlayServicesUtil: Google Play Store is
+missing.` and `Default FirebaseApp failed to initialize because no default options were found.` —
+so Firebase never initialises there, and the kill-switch is never put to the test. **The A56 does
+have GMS**, so this is exactly the environment where layer 4 matters and exactly the one we cannot
+reproduce here.
+
+What *is* verified statically: the injected `<meta-data>` is present in the shipped manifest
+(`verify_claims.sh` asserts it), the Firebase config resources are byte-identical to Rovio's
+original, and `FirebaseInitProvider` is left intact — so the surgery is minimal and targeted rather
+than a blunt removal.
+
+What would settle it: install on a GMS-equipped device and confirm no FCM registration token is
+obtained. `emu_jni_exception_probe.sh` now prints an explicit `[SCOPE]` line when it detects GMS is
+absent, so a green run cannot be mistaken for coverage of this layer.
+
+### 2. Not verifiable from this machine
 
 Not defects — limits of the environment. Stated so they are never implied to be covered.
 
