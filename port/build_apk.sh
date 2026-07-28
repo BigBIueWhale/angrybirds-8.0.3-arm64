@@ -130,7 +130,7 @@ echo "   injected assets/data/script_paths.json ($(wc -c < assets/data/script_pa
 # AAssetManager, and per the comment above a failed open cascades to io::IOException -> the scene
 # loader maps no script -> JSON ParseError -> HANG at boot. gen_script_paths.py writing 0 keys would
 # produce exactly that, and the count was only printed. Assert it parses and is non-empty.
-python3 - "$WORK/assets/data/script_paths.json" <<'PYCHK' || { echo "FATAL: script_paths.json is empty/unparseable — the engine would hang at boot."; exit 1; }
+python3 - "$WORK/assets/data/script_paths.json" "$WORK/assets" <<'PYCHK' || { echo "FATAL: script_paths.json is empty/unparseable — the engine would hang at boot."; exit 1; }
 import json,sys
 # The real file is a LIST of ~2035 asset paths, not an object. A first version of this guard asserted
 # isinstance(d, dict) and would have failed EVERY build — caught only by running it against the real
@@ -141,7 +141,33 @@ d = json.load(open(sys.argv[1]))
 if not isinstance(d, (list, dict)) or len(d) == 0:
     sys.exit(1)
 items = d if isinstance(d, list) else list(d)
-sys.exit(0 if all(isinstance(x, str) for x in items[:50]) else 1)
+if not all(isinstance(x, str) for x in items):        # ALL of them, not items[:50]
+    sys.exit(1)                                       # (checking 50 of 2035 is a sample, not a check)
+
+# COMPLETENESS, which non-empty + looks-like-paths does not give you. A partially generated
+# manifest passes every check above while leaving levels unreachable — the same boot hang the
+# missing file caused. This is build-GENERATED, so unlike the game assets it is not covered by
+# the input-APK sha256 gate and has to be checked here.
+import os
+root = sys.argv[2]
+listed = set(items)
+have = set()
+for base in ("scripts", "levels", "vehicles"):        # the three trees gen_script_paths.py walks
+    d0 = os.path.join(root, "data", base)
+    for dp, _dn, fn in os.walk(d0):
+        for f in fn:
+            if f.endswith(".lua"):
+                have.add(os.path.relpath(os.path.join(dp, f), root).replace(os.sep, "/"))
+missing = have - listed                               # a level the engine cannot reach
+dangling = listed - have                              # a path that resolves to nothing
+if missing or dangling:
+    print("script_paths.json is INCOMPLETE: %d unlisted, %d dangling" % (len(missing), len(dangling)),
+          file=sys.stderr)
+    for x in sorted(missing)[:5]:  print("   unlisted: %s" % x, file=sys.stderr)
+    for x in sorted(dangling)[:5]: print("   dangling: %s" % x, file=sys.stderr)
+    sys.exit(1)
+print("   script_paths.json: %d entries, complete against scripts/levels/vehicles" % len(items))
+sys.exit(0)
 PYCHK
 
 echo "== 4/5 strip old signature, repack, zipalign =="
