@@ -399,7 +399,7 @@ if [ ! -f "$PROV" ]; then
   skip "screenshot provenance (no $PROV yet - re-run the emu_*.sh captures to populate it)"
 else
   STALE=""; CUR=0; NOTBUILT=""
-  while IFS="$(printf '\t')" read -r lbl sha apk; do
+  while IFS="$(printf '\t')" read -r lbl sha apk producer avd; do
     [ -n "$lbl" ] || continue
     # "not built here" is NOT "stale". A fresh clone builds only the arm64 deliverable, so every x86
     # proxy is absent and all 12 rows were being reported as evidence from builds "that no longer
@@ -408,7 +408,16 @@ else
     if [ ! -f "out/$apk" ]; then NOTBUILT="$NOTBUILT $lbl"; continue; fi
     now=$(sha256sum "out/$apk" 2>/dev/null | cut -d' ' -f1)
     if [ "$now" = "$sha" ]; then CUR=$((CUR+1))
-    else STALE="$STALE\n           - $lbl: captured on ${sha:0:12}…, $apk is now ${now:0:12}…"; fi
+    else
+      # Print a command that reproduces THIS row, not merely the script's name. The same script with
+      # a different ABSHIM_AVD/ABSHIM_OUTPFX writes a DIFFERENT row (modplay vs modplay36), so a bare
+      # script name would tell the reader to overwrite a good row and leave this one stale.
+      if [ -n "$producer" ]; then
+        hint="re-run: ${avd:+ABSHIM_AVD=$avd }ABSHIM_OUTPFX=$lbl bash port/validation/$producer"
+      else
+        hint="re-run: unknown script (row predates producer tracking; see lib_provenance.sh)"
+      fi
+      STALE="$STALE\n           - $lbl: captured on ${sha:0:12}…, $apk is now ${now:0:12}…\n             $hint"; fi
   done < "$PROV"
   [ "$CUR" -gt 0 ] && ok "$CUR capture(s) match the current build"
   if [ -n "$NOTBUILT" ]; then

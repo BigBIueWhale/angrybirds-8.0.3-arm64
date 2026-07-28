@@ -21,11 +21,17 @@
 # The label ties a row to the screenshots that run produced, so a stale row points at specific
 # files rather than at "something, somewhere".
 #
-# Each row also records THE SCRIPT THAT WROTE IT, because the label does not identify it. Chasing a
-# stale `interactive` row cost 13 minutes of emulator time running emu_interactive.sh — which never
-# records provenance at all; the row comes from emu_interactive_capture.sh. A stale row should say
-# what to re-run, not send you guessing by name. Older 3-column rows stay readable: consumers take
-# the 4th field as optional.
+# Each row also records THE SCRIPT THAT WROTE IT and the AVD it ran on, because the label identifies
+# neither. Chasing a stale `interactive` row cost 13 minutes of emulator time running
+# emu_interactive.sh — which never records provenance at all; the row comes from
+# emu_interactive_capture.sh.
+#
+# The AVD is recorded because the script alone is an ACTIVELY MISLEADING instruction. `modplay` and
+# `modplay36` are the same script — emu_modern_playthrough.sh — separated only by ABSHIM_AVD and
+# ABSHIM_OUTPFX. Re-running it bare to refresh `modplay36` would regenerate `modplay` instead,
+# overwriting a good row and leaving the stale one untouched. A hint that sends you to damage a
+# different row is worse than no hint, so the row carries what is needed to reproduce it exactly.
+# Older 3- and 4-column rows stay readable: consumers treat the extra fields as optional.
 
 record_build() {
     local apk="$1" label="$2"
@@ -41,6 +47,7 @@ record_build() {
         grep -v "^${label}	" "$tsv" > "$tsv.tmp" 2>/dev/null || true
         mv "$tsv.tmp" "$tsv"
     fi
-    printf '%s\t%s\t%s\t%s\n' "$label" "$sha" "$(basename "$apk")" "$(basename "${BASH_SOURCE[1]:-$0}")" >> "$tsv"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$label" "$sha" "$(basename "$apk")" \
+        "$(basename "${BASH_SOURCE[1]:-$0}")" "${ABSHIM_AVD:-}" >> "$tsv"
     echo "  [provenance] $label <- $(basename "$apk") ${sha:0:12}… (by $(basename "${BASH_SOURCE[1]:-$0}"))"
 }
