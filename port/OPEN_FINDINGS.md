@@ -142,6 +142,17 @@ tier, and it is nearly the same data: 5 of its 9 files are byte-identical to the
 successfully. So even if the A56's aspect ratio selects the other splash sheet, it is one image of a
 size the pipeline has demonstrably handled.
 
+**Locale does not route the engine to different files either.** The same question, asked of the other
+setting that varies per device: the rig runs `en-US`, the phone may not. There *are* per-locale
+assets — `ML_LEAGUE_ASSETS_LEAGUE_LOCALIZED_<locale>` ships for 11 locales (`de_DE`, `en_EN`,
+`es_ES`, `fr_FR`, `it_IT`, `ja_JP`, `ko_KR`, `pt_BR`, `ru_RU`, `zh_CN`, `zh_TW`) and none was opened
+in any run. But the game's **text** is not tiered that way: `TEXTS_BASIC.dat` is a single 589 800-byte
+file containing all ten language tags, 22 772 UTF-8 Cyrillic sequences and 19 020 CJK sequences, and
+it is opened 69 times in every run along with the other 15 `TEXTS_*.dat`. Locale therefore selects a
+**record inside a file the rig already reads**, not a path the rig never opens — which is engine-
+internal and host-independent. The only locale-dependent *paths* are the Mighty League sheets, and
+they belong to a feature a tutorial-to-level-2 playthrough never reaches, not to a device difference.
+
 ### R10. The shaders screened: every float declaration is precision-qualified, no extensions
 
 The GPU is one of only two genuinely device-first surfaces (R9), and shader compilation is its most
