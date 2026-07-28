@@ -211,13 +211,29 @@ What to look for, and what it means:
 
 ## The engine's OWN logs also reach logcat
 
-The shim forwards the engine's `__android_log_print` to the real logger, so `adb logcat` (no
-`-s abshim`) shows the engine's own messages (e.g. tag **`Framework`**) — including the exact
-reason if it aborts. Watch both:
+The shim forwards the engine's `__android_log_print`/`__android_log_write` to the real logger **under
+the engine's OWN tag**, not under `abshim`. That matters more than it sounds: `adb logcat -s abshim`,
+the command this document leads with, filters those messages out entirely.
 
 ```bash
-adb logcat -c && adb logcat abshim:V Framework:V '*:S'
+adb logcat -c && adb logcat abshim:V Framework:V '*:S'      # quick watch: shim + the usual engine tag
 ```
+
+**If something fails that has never failed here, use this instead** — it captures every tag the app
+emits, including ones nobody anticipated:
+
+```bash
+adb logcat -c && adb logcat --pid=$(adb shell pidof com.rovio.angrybirds)
+```
+
+A tag whitelist can only show messages from tags someone thought of in advance (`Framework`, `Lua`,
+`abshim`), and the failures that remain possible on your phone are by definition the ones not seen
+here. The clearest example is **shader compilation**: the A56 has a real Mali/Xclipse driver where
+SwiftShader is used for all validation, and a shader that compiles here could be rejected there. The
+engine imports `glGetShaderiv`, `glGetShaderInfoLog`, `glGetProgramiv` and `glGetProgramInfoLog`, so
+it checks compile and link status itself and reports the driver's own message — a far better error
+than anything the shim could synthesise. But it reports it under its own tag, so a filtered logcat
+would show a black screen and no reason. Capture by pid and the message is right there.
 
 ## `io::IOException` — now caught, no longer the blocker
 
