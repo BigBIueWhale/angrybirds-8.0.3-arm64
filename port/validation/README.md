@@ -78,10 +78,27 @@ and "x86 passed therefore arm64 behaves identically" does not follow. It is not 
 having run it. **`out/angrybirds-8.0.3-arm64.apk` has never been executed anywhere** —
 it has been built, signed, aligned and statically audited only.
 
-The one arm64 execution that exists is `arm64_unicorn_test.sh`, and it is not the game: under
-qemu-user it builds two standalone C binaries that load the real engine and run its 125 C++
-static constructors on AArch64. No Android, no ART, no JNI, no GL, no frames. It validates
-the ABI, nothing above it.
+arm64 execution is `arm64_cross_test.sh` (and the older, slower `arm64_unicorn_test.sh`), and it
+is not the game. Under qemu-user it runs the project's whole test suite on AArch64 — the seven
+device tests and all ten mode-agnostic module tests, 19 checks — including the pieces that are
+genuinely ABI-sensitive and had **never** run on AArch64 before 2026-07-28:
+
+| test | why the architecture matters |
+|---|---|
+| `longjmp` | `setjmp`/`longjmp` across `cpu_run` stop/restart — `jmp_buf` layout is per-ABI |
+| `sched`   | the green-thread scheduler, built on that same mechanism (300/300 switches, deadlock detection fires) |
+| `libc`    | the soft-float / integer ABI bridges — argument passing differs sharply from x86 |
+| `file`    | stdio `FILE*` round-trip through guest memory |
+| `native_init` | JNI passthrough marshalling up to the JVM boundary (8 env slots exercised) |
+
+Two checkpoints agree with the x86 suite exactly: `605096` bytes in use after the 125 constructors
+and `650032` after `nativeInit`.
+
+The suite is negative-tested: deliberately breaking `galloc`'s size-class arithmetic makes the
+AArch64 `galloc` module test exit non-zero, so a pass is not vacuous.
+
+There is still no Android, no ART, no GL and no frames here. It validates the ABI and the ARM32
+emulation running on it, nothing above that.
 
 Run it with an arm64 container via binfmt (`docker run --privileged --rm tonistiigi/binfmt
 --install arm64` once, on the host, to register `qemu-aarch64`):
@@ -222,7 +239,7 @@ PROOF mapping verified by md5 against the source screenshots, not by filename.
 | `stage_pull.sh` | abtest / 25 | offline | pulls app data dir for save inspection |
 | `run_render.sh` | — (`ab-render`) | — | host render harness, mesa llvmpipe |
 | `run_ctor.sh` | — | — | host constructor-execution harness |
-| `arm64_cross_test.sh` | — (cross + qemu-user) | — | **the practical arm64 validation**: same engine load + 125 ctors on AArch64, but CROSS-compiled on x86 in the `ab-arm64x` image, so it runs in minutes and fully offline instead of taking hours of emulated compilation. Asserts the binaries really are AArch64 and that 125/125 ctors run clean |
+| `arm64_cross_test.sh` | — (cross + qemu-user) | — | **the arm64 validation**: the WHOLE suite on AArch64 — 7 device tests (boot, ctors, longjmp, sched, libc, file, native_init) + all 10 mode-agnostic module tests, 19 checks. CROSS-compiled on x86 in the `ab-arm64x` image so it runs in minutes, fully offline, instead of hours of emulated compilation. Asserts the binaries really are AArch64 |
 | `arm64_unicorn_test.sh` | — (qemu-user) | — | the original arm64 validation, built *inside* an emulated arm64 container. Superseded by `arm64_cross_test.sh` for routine use; kept because it is the one path that does **not** depend on a cross toolchain |
 
 ### Corrections made 2026-07-27 (read before trusting any older run output)

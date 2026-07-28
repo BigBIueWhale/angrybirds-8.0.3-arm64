@@ -81,7 +81,6 @@ if [ -x /tmp/t_ctors ]; then
   OUT=$(timeout 1800 $QEMU /tmp/t_ctors 2>&1); RC=$?
   echo "$OUT" | tail -8 | sed 's/^/    /'
   [ "$RC" = 0 ] || bad "test_ctors exited $RC on AArch64"
-  # The point of the whole exercise: all 125 constructors must run clean ON AArch64.
   if echo "$OUT" | grep -qE "125/125 constructors ran CLEAN"; then
     ok "125/125 C++ constructors ran CLEAN on AArch64"
   else
@@ -90,6 +89,62 @@ if [ -x /tmp/t_ctors ]; then
 else
   bad "test_ctors did not link"; head -12 /tmp/ctors.err | sed 's/^/    /'
 fi
+
+# ---------------------------------------------------------------------------
+# The REST of the device suite, on AArch64.
+#
+# Until now the arm64 side ran only boot + ctors, while the x86 suite ran seven device tests. The
+# ones it was missing are precisely the architecture-SENSITIVE ones:
+#   longjmp  setjmp/longjmp across cpu_run stop/restart - jmp_buf layout is per-ABI
+#   sched    the green-thread scheduler, which is built on that same mechanism
+#   libc     the soft-float / integer ABI bridges (arg passing differs sharply from x86)
+#   file     stdio FILE* round-trip through guest memory
+#   ninit    JNI passthrough marshalling up to the JVM boundary
+# Running these on AArch64 is the whole point of having a cross toolchain that finishes in minutes.
+# ---------------------------------------------------------------------------
+run_dev(){   # $1=name  $2=extra srcs  $3=timeout
+  local name="$1" extra="$2" tmo="$3"
+  echo
+  echo "== $name (device test) on AArch64 =="
+  $CC -Wall -O2 -iquote "$SRC" -I"$USRC/include" -D_GNU_SOURCE -DRTLD_DEFAULT=0 "$T/test_$name.c" $extra \
+      -Wl,--start-group $UL -Wl,--end-group -lpthread -lm -ldl -o "/tmp/t_$name" 2>"/tmp/$name.err"
+  if [ ! -x "/tmp/t_$name" ]; then bad "$name did not link"; head -8 "/tmp/$name.err" | sed 's/^/    /'; return; fi
+  local o rc
+  o=$(timeout "$tmo" $QEMU "/tmp/t_$name" 2>&1); rc=$?
+  echo "$o" | tail -5 | sed 's/^/    /'
+  [ "$rc" = 0 ] && ok "$name passed on AArch64" || bad "$name exited $rc on AArch64"
+}
+FILEB="$SRC/bridge_file.c $SRC/cpu.c $SRC/galloc.c $SRC/marshal.c $SRC/format.c"
+run_dev longjmp     "$DEV"                        600
+run_dev sched       "$DEV"                        900
+run_dev libc        "$DEV"                        900
+run_dev file        "$FILEB"                      600
+run_dev native_init "$DEV $SRC/jni_passthrough.c" 900
+
+# ---------------------------------------------------------------------------
+# Mode-agnostic core modules, on AArch64. These are pure logic over the mem-ops interface and are
+# normally validated on x86 under ASan+UBSan. Sanitizers are omitted here because they are
+# unreliable under qemu-user; what this adds over the x86 run is the AArch64 code generation itself
+# — alignment and integer-width assumptions that x86 happens to tolerate.
+# ---------------------------------------------------------------------------
+echo
+echo "== mode-agnostic module tests on AArch64 (no sanitizers: unreliable under qemu-user) =="
+run_mod(){   # $1=name  $2...=srcs
+  local name="$1"; shift
+  $CC -Wall -O2 -iquote "$SRC" -D_GNU_SOURCE "$T/test_$name.c" "$@" -lpthread -lm -o "/tmp/m_$name" 2>/dev/null
+  if [ ! -x "/tmp/m_$name" ]; then bad "module $name did not link"; return; fi
+  if timeout 600 $QEMU "/tmp/m_$name" >/dev/null 2>&1; then ok "module $name"; else bad "module $name FAILED on AArch64"; fi
+}
+run_mod galloc            "$SRC/galloc.c"
+run_mod galloc_quarantine "$SRC/galloc.c"
+run_mod marshal           "$SRC/marshal.c"
+run_mod format            "$SRC/format.c" "$SRC/marshal.c"
+run_mod handle_table      "$SRC/handle_table.c"
+run_mod jni_arg           "$SRC/jni_argbuild.c" "$SRC/marshal.c" "$SRC/handle_table.c"
+run_mod elf32             "$SRC/elf32.c"
+run_mod utf               "$SRC/utf.c"
+run_mod ctype_tables      "$SRC/ctype_tables.c"
+run_mod fdtable           "$SRC/fdtable.c"
 
 echo
 [ "$FAIL" = 0 ] && echo "ARM64 CROSS TEST PASSED" || echo "ARM64 CROSS TEST FAILED"
