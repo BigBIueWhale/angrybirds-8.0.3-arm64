@@ -33,7 +33,7 @@ is given from the run that produced them and is marked `(by run, not hash)`.
 | `PROOF_2_interactive_level.png` | Tutorial level up and interactive: slingshot loaded, pigs placed, score 0, drag hint | x86shim `1fae5fba` | 25 | `emu_interactive_capture.sh` |
 | `PROOF_3_bird_launched.png` | Bird launched and connected — impact burst, score popups, debris, a live scored hit | x86shim `1fae5fba` | 25 | `emu_interactive_capture.sh` |
 | `PROOF_4_debris_settle.png` | The shot has resolved: structure collapsed, score well above zero, physics still settling. Exact framing varies per run (see the note below) | x86shim `1fae5fba` | 25 | `emu_interactive_capture.sh` |
-| `PROOF_5_destruction_score5820.png` | Structure destroyed, score 5820 | x86shim | 25 | `deeper_bird1` capture |
+| `PROOF_5_destruction_score5820.png` | Structure destroyed, score 5820. **HISTORICAL — no script regenerates this**, and it is superseded by `PROOF_3`, which shows a launch and impact with live scoring and *can* be regenerated | x86shim (build unknown) | 25 | — |
 | `PROOF_6_levelend_survived.png` | **The level-end transition survives** (the deepest bug) — win screen, `h_fatal=0` | x86shim | 25 | `emu_playthrough.sh` |
 | `PROOF_7_level2_progression.png` | Tapping NEXT loads a **fresh, distinct level 2** — score 0, new structures | x86shim-release | 25 | `emu_progress_release.sh` |
 | `PROOF_8_modern_android_win.png` | "LEVEL CLEARED", score 44000, on modern Android | x86shim-release | 34 | `emu_modern_playthrough.sh` *(by run, not hash)* |
@@ -46,8 +46,8 @@ is given from the run that produced them and is marked `(by run, not hash)`.
 | `PROOF_14_heapfix_api34_wins.png` | Allocator fix holds on modern Android | x86shim-release | 34 | *(by run, not hash)* |
 | `PROOF_16_win_with_gms.png` | **Wins on modern Android with Google Play Services present** — the closest reachable match to the A56's environment (API 34 + GMS + W^X + targetSdk-26 install policy). Every other win proof is from a GMS-less AOSP image | x86shim-release | 34 (GMS) | `ABSHIM_AVD=abgms ABSHIM_OUTPFX=modplaygms emu_modern_playthrough.sh` |
 | `PROOF_15_win_on_reproducible_proxy.png` | Wins on the **bit-reproducible** proxy build | x86shim-release | 34 | `emu_modern_playthrough.sh` |
-| `PROOF_release_render.png` | The release-gated build renders | x86shim-release | 25 | `release_interim` capture |
-| `PROOF_release_bird_launched.png` | The release-gated build launches a bird | x86shim-release | 25 | `release_launch` capture |
+| `PROOF_release_render.png` | The release-gated build renders. **HISTORICAL — no script regenerates this**; superseded by `PROOF_13`/`PROOF_15`/`PROOF_16`, which show the release build winning | x86shim-release (build unknown) | 25 | — |
+| `PROOF_release_bird_launched.png` | The release-gated build launches a bird. **HISTORICAL — no script regenerates this**; superseded by `PROOF_15`/`PROOF_16` | x86shim-release (build unknown) | 25 | — |
 
 ## Scores vary between runs — do not encode them here
 
@@ -78,6 +78,19 @@ docker run --rm --network none --device /dev/kvm --group-add "$(getent group kvm
 Then **look at the images**. `PROOF_3` and `PROOF_4` are timing-sensitive captures of a launch and
 its aftermath; a blank or results screen means the timing missed, not that the shim failed. The
 script's exit code cannot tell those apart — only the image can.
+
+## Historical proofs
+
+Three rows above are marked **HISTORICAL**: `PROOF_5`, `PROOF_release_render` and
+`PROOF_release_bird_launched`. No script regenerates them — they were captured by hand from a live
+emulator, which is exactly the condition that let `PROOF_2/3/4` sit for a day showing a binary that
+no longer existed. They are kept rather than deleted because removing evidence is worse than
+labelling it, but they should be read as a record of what was true then, not as a claim about the
+current build. Each is superseded by a regenerable proof that shows something stronger.
+
+Everything else is produced by a committed script and records the sha256 of the APK it installed
+into `provenance.tsv` at capture time, so `verify_claims.sh` can tell you when an image has fallen
+behind its build.
 
 ## What these do NOT prove
 
