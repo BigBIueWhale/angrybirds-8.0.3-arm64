@@ -40,6 +40,13 @@ $CC -shared -fPIC -O2 -DABSHIM_RELEASE -DABSHIM_AUDIO -Wno-unused -I/opt/unicorn
   -Wl,--start-group $UNI -Wl,--end-group -llog -landroid -lGLESv2 -lEGL -lm -ldl -Wl,-z,max-page-size=16384 -o /tmp/shim_x86.so
 echo "   arch: $(readelf -h /tmp/shim_x86.so 2>/dev/null | sed -n 's/.*Machine: *//p') (must be X86-64)"
 echo "   exports: $(readelf --dyn-syms -W /tmp/shim_x86.so 2>/dev/null | grep -cE ' (Java_com_rovio_|JNI_OnLoad$)') JNI entry points"
+# See build_apk.sh: gen_thunks.py's `>` truncates jni_thunks.gen.c before it runs, and a failure
+# inside the `&&` chain does not trip set -e, so an empty generated file compiles fine and yields a
+# shim with no JNI entry points — an APK that dies at launch with UnsatisfiedLinkError.
+JNIN=$(readelf --dyn-syms -W /tmp/shim_x86.so 2>/dev/null | grep -cE ' (Java_com_rovio_|JNI_OnLoad$)')
+[ "${JNIN:-0}" -ge 8 ] || { echo "FATAL: shim exports only ${JNIN:-0} JNI entry points (expected ~73)."; \
+    echo "       jni_thunks.gen.c is $(wc -c < "$S/jni_thunks.gen.c" 2>/dev/null) bytes — 0 means gen_thunks.py"; \
+    echo "       failed after '>' had already truncated it. Refusing to emit a launch-dead APK."; exit 1; }
 
 echo "== 2/5 unpack + de-phone-home =="
 rm -rf "$WORK"; mkdir -p "$WORK"; (cd "$WORK" && unzip -q "$IN")
@@ -63,6 +70,23 @@ for b in js adcolony; do f=/tmp/aux/lib/armeabi-v7a/lib$b.so; [ -f "$f" ] && cp 
 mkdir -p assets/data
 python3 /work/port/gen_script_paths.py "$WORK/assets" > assets/data/script_paths.json
 echo "   injected assets/data/script_paths.json ($(wc -c < assets/data/script_paths.json) bytes, $(python3 -c 'import json;print(len(json.load(open("'"$WORK"'/assets/data/script_paths.json"))))' 2>/dev/null) keys)"
+# An EMPTY or unparseable script_paths.json is not a cosmetic problem: the engine opens it through
+# AAssetManager, and per the comment above a failed open cascades to io::IOException -> the scene
+# loader maps no script -> JSON ParseError -> HANG at boot. gen_script_paths.py writing 0 keys would
+# produce exactly that, and the count was only printed. Assert it parses and is non-empty.
+python3 - "$WORK/assets/data/script_paths.json" <<'PYCHK' || { echo "FATAL: script_paths.json is empty/unparseable — the engine would hang at boot."; exit 1; }
+import json,sys
+# The real file is a LIST of ~2035 asset paths, not an object. A first version of this guard asserted
+# isinstance(d, dict) and would have failed EVERY build — caught only by running it against the real
+# generated file rather than against the shape I assumed from the "{}" mentioned in the comment above
+# (that "{}" was an early bootstrap placeholder, long superseded). Accept either container, require
+# non-empty, and require the entries to look like asset paths.
+d = json.load(open(sys.argv[1]))
+if not isinstance(d, (list, dict)) or len(d) == 0:
+    sys.exit(1)
+items = d if isinstance(d, list) else list(d)
+sys.exit(0 if all(isinstance(x, str) for x in items[:50]) else 1)
+PYCHK
 
 echo "== 4/5 repack + align =="
 rm -f META-INF/*.RSA META-INF/*.SF META-INF/*.MF 2>/dev/null || true
