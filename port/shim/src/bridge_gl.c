@@ -43,6 +43,20 @@ static uint8_t *tmp(size_t n){
     }
     return g_tmp;
 }
+/* Guest-driven size for a scratch copy. Returns 0 if the product overflowed 32 bits or exceeds a
+ * sane cap, so the caller can refuse rather than hand the GL driver a buffer smaller than the
+ * dimensions it was also given - the driver would then read past the end of our allocation.
+ * A texture or uniform array beyond this bound is not something this game produces. */
+#define GL_SCRATCH_MAX (64u*1024u*1024u)
+/* Returns 1 and writes the size, or 0 if the product overflowed / exceeded the cap. A size of ZERO
+ * is a legitimate answer (a 0-width or 0-height texture is legal GL) and must be distinguishable
+ * from a refusal - an earlier version folded both into "return 0", which would have silently
+ * dropped zero-sized calls that previously reached the driver. */
+static int gsize3(uint64_t a, uint64_t b, uint64_t c, uint32_t *out){
+    uint64_t v = a*b*c;
+    if(v > GL_SCRATCH_MAX) return 0;
+    *out = (uint32_t)v; return 1;
+}
 
 static float f_of(uint32_t b){ float f; memcpy(&f,&b,4); return f; }
 static uint32_t bpp(uint32_t fmt,uint32_t type){
@@ -205,14 +219,14 @@ DEF(h_glDrawElements){ REAL(void,(uint32_t,int,uint32_t,const void*),"glDrawElem
 
 /* --- IN pointer, explicit size --- */
 DEF(h_glBufferData){ REAL(void,(uint32_t,long,const void*,uint32_t),"glBufferData");
-    uint32_t tgt=W,size=W,data=W,usage=W; void*h=0; if(data){ h=tmp(size); RD(c,data,h,size);} f(tgt,(long)size,h,usage);
+    uint32_t tgt=W,size=W,data=W,usage=W; void*h=0; if(data){ h=tmp(size); if(!h) return 0; RD(c,data,h,size);} f(tgt,(long)size,h,usage);
     if(tgt==0x8893 && g_elembuf){                       /* snapshot the index buffer for client-vertex glDrawElements */
         gl_evbo_t *e=evbo_get(g_elembuf);
         if(e){ e->data=realloc(e->data,size?size:1); if(e->data){ e->size=size; if(h&&size)memcpy(e->data,h,size); else if(size)memset(e->data,0,size);} else e->size=0; }
     }
     return 0; }
 DEF(h_glBufferSubData){ REAL(void,(uint32_t,long,long,const void*),"glBufferSubData");
-    uint32_t tgt=W,off=W,size=W,data=W; void*h=0; if(data){ h=tmp(size); RD(c,data,h,size);} f(tgt,(long)off,(long)size,h);
+    uint32_t tgt=W,off=W,size=W,data=W; void*h=0; if(data){ h=tmp(size); if(!h) return 0; RD(c,data,h,size);} f(tgt,(long)off,(long)size,h);
     if(tgt==0x8893 && g_elembuf && h){                  /* keep the index snapshot current */
         gl_evbo_t *e=evbo_get(g_elembuf);
         if(e && e->data && (uint64_t)off+size<=e->size) memcpy(e->data+off,h,size);
@@ -220,15 +234,17 @@ DEF(h_glBufferSubData){ REAL(void,(uint32_t,long,long,const void*),"glBufferSubD
     return 0; }
 DEF(h_glTexImage2D){ REAL(void,(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*),"glTexImage2D");
     uint32_t tgt=W; int lvl=(int)W,ifmt=(int)W,w=(int)W,ht=(int)W,bd=(int)W; uint32_t fmt=W,ty=W,px=W;
-    void*h=0; if(px){ uint32_t n=(uint32_t)w*bpp(fmt,ty)*ht; h=tmp(n); RD(c,px,h,n);} f(tgt,lvl,ifmt,w,ht,bd,fmt,ty,h); return 0; }
+    void*h=0; uint32_t n=0;
+    if(px){ if(!gsize3((uint32_t)w,bpp(fmt,ty),(uint32_t)ht,&n)) return 0; h=tmp(n?n:1); if(!h) return 0; RD(c,px,h,n);} f(tgt,lvl,ifmt,w,ht,bd,fmt,ty,h); return 0; }
 DEF(h_glTexSubImage2D){ REAL(void,(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*),"glTexSubImage2D");
     uint32_t tgt=W; int lvl=(int)W,xo=(int)W,yo=(int)W,w=(int)W,ht=(int)W; uint32_t fmt=W,ty=W,px=W;
-    void*h=0; if(px){ uint32_t n=(uint32_t)w*bpp(fmt,ty)*ht; h=tmp(n); RD(c,px,h,n);} f(tgt,lvl,xo,yo,w,ht,fmt,ty,h); return 0; }
+    void*h=0; uint32_t n=0;
+    if(px){ if(!gsize3((uint32_t)w,bpp(fmt,ty),(uint32_t)ht,&n)) return 0; h=tmp(n?n:1); if(!h) return 0; RD(c,px,h,n);} f(tgt,lvl,xo,yo,w,ht,fmt,ty,h); return 0; }
 DEF(h_glCompressedTexImage2D){ REAL(void,(uint32_t,int,uint32_t,int,int,int,int,const void*),"glCompressedTexImage2D");
     uint32_t tgt=W; int lvl=(int)W; uint32_t ifmt=W; int w=(int)W,ht=(int)W,bd=(int)W,isz=(int)W; uint32_t data=W;
-    void*h=0; if(data){ h=tmp(isz); RD(c,data,h,isz);} f(tgt,lvl,ifmt,w,ht,bd,isz,h); return 0; }
+    void*h=0; if(data){ h=tmp(isz); if(!h) return 0; RD(c,data,h,isz);} f(tgt,lvl,ifmt,w,ht,bd,isz,h); return 0; }
 DEF(h_glUniformMatrix4fv){ REAL(void,(int,int,uint8_t,const float*),"glUniformMatrix4fv");
-    int loc=(int)W,cnt=(int)W; uint8_t tr=(uint8_t)W; uint32_t v=W; uint32_t n=(uint32_t)cnt*16*4; float*h=(float*)tmp(n); RD(c,v,h,n); f(loc,cnt,tr,h); return 0; }
+    int loc=(int)W,cnt=(int)W; uint8_t tr=(uint8_t)W; uint32_t v=W; uint32_t n=0; if(!gsize3((uint32_t)cnt,16,4,&n)) return 0; float*h=(float*)tmp(n?n:1); if(!h) return 0; RD(c,v,h,n); f(loc,cnt,tr,h); return 0; }
 DEF(h_glShaderSource){ REAL(void,(uint32_t,int,const char*const*,const int*),"glShaderSource");
     uint32_t sh=W; int cnt=(int)W; uint32_t strp=W,lenp=W;
     /* cnt and every length come from the guest. A negative or absurd cnt made calloc fail (or be
@@ -259,14 +275,14 @@ DEF(h_glShaderSource){ REAL(void,(uint32_t,int,const char*const*,const int*),"gl
     free(hs); free(hl); return 0; }
 
 /* --- OUT arrays / scalars --- */
-DEF(h_glGenBuffers){ REAL(void,(int,uint32_t*),"glGenBuffers"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); f(n,h); WR(c,g,h,n*4); return 0; }
-DEF(h_glGenTextures){ REAL(void,(int,uint32_t*),"glGenTextures"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); f(n,h); WR(c,g,h,n*4); return 0; }
-DEF(h_glGenFramebuffers){ REAL(void,(int,uint32_t*),"glGenFramebuffers"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); f(n,h); WR(c,g,h,n*4); return 0; }
-DEF(h_glGenRenderbuffers){ REAL(void,(int,uint32_t*),"glGenRenderbuffers"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); f(n,h); WR(c,g,h,n*4); return 0; }
-DEF(h_glDeleteBuffers){ REAL(void,(int,const uint32_t*),"glDeleteBuffers"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); RD(c,g,h,n*4); f(n,h); return 0; }
-DEF(h_glDeleteTextures){ REAL(void,(int,const uint32_t*),"glDeleteTextures"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); RD(c,g,h,n*4); f(n,h); return 0; }
-DEF(h_glDeleteFramebuffers){ REAL(void,(int,const uint32_t*),"glDeleteFramebuffers"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); RD(c,g,h,n*4); f(n,h); return 0; }
-DEF(h_glDeleteRenderbuffers){ REAL(void,(int,const uint32_t*),"glDeleteRenderbuffers"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); RD(c,g,h,n*4); f(n,h); return 0; }
+DEF(h_glGenBuffers){ REAL(void,(int,uint32_t*),"glGenBuffers"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); if(!h) return 0; f(n,h); WR(c,g,h,n*4); return 0; }
+DEF(h_glGenTextures){ REAL(void,(int,uint32_t*),"glGenTextures"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); if(!h) return 0; f(n,h); WR(c,g,h,n*4); return 0; }
+DEF(h_glGenFramebuffers){ REAL(void,(int,uint32_t*),"glGenFramebuffers"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); if(!h) return 0; f(n,h); WR(c,g,h,n*4); return 0; }
+DEF(h_glGenRenderbuffers){ REAL(void,(int,uint32_t*),"glGenRenderbuffers"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); if(!h) return 0; f(n,h); WR(c,g,h,n*4); return 0; }
+DEF(h_glDeleteBuffers){ REAL(void,(int,const uint32_t*),"glDeleteBuffers"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); if(!h) return 0; RD(c,g,h,n*4); f(n,h); return 0; }
+DEF(h_glDeleteTextures){ REAL(void,(int,const uint32_t*),"glDeleteTextures"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); if(!h) return 0; RD(c,g,h,n*4); f(n,h); return 0; }
+DEF(h_glDeleteFramebuffers){ REAL(void,(int,const uint32_t*),"glDeleteFramebuffers"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); if(!h) return 0; RD(c,g,h,n*4); f(n,h); return 0; }
+DEF(h_glDeleteRenderbuffers){ REAL(void,(int,const uint32_t*),"glDeleteRenderbuffers"); int n=(int)W; uint32_t g=W; uint32_t*h=(uint32_t*)tmp(n*4); if(!h) return 0; RD(c,g,h,n*4); f(n,h); return 0; }
 DEF(h_glGetShaderiv){ REAL(void,(uint32_t,uint32_t,int*),"glGetShaderiv"); uint32_t s=W,pn=W,p=W; int v=0; f(s,pn,&v); WR(c,p,&v,4); return 0; }
 DEF(h_glGetProgramiv){ REAL(void,(uint32_t,uint32_t,int*),"glGetProgramiv"); uint32_t s=W,pn=W,p=W; int v=0; f(s,pn,&v); WR(c,p,&v,4); return 0; }
 DEF(h_glGetIntegerv){ REAL(void,(uint32_t,int*),"glGetIntegerv"); uint32_t pn=W,p=W;
@@ -284,8 +300,8 @@ DEF(h_glGetIntegerv){ REAL(void,(uint32_t,int*),"glGetIntegerv"); uint32_t pn=W,
     int v[256]; memset(v,0,sizeof v);
     if(n>0){ f(pn,v); if(n>256)n=256; WR(c,p,v,(uint32_t)n*4u); }
     return 0; }
-DEF(h_glGetShaderInfoLog){ REAL(void,(uint32_t,int,int*,char*),"glGetShaderInfoLog"); uint32_t s=W; int bs=(int)W; uint32_t lp=W,sp=W; char*h=(char*)tmp(bs+1); int L=0; f(s,bs,&L,h); if(lp)WR(c,lp,&L,4); WR(c,sp,h,(uint32_t)L+1); return 0; }
-DEF(h_glGetProgramInfoLog){ REAL(void,(uint32_t,int,int*,char*),"glGetProgramInfoLog"); uint32_t s=W; int bs=(int)W; uint32_t lp=W,sp=W; char*h=(char*)tmp(bs+1); int L=0; f(s,bs,&L,h); if(lp)WR(c,lp,&L,4); WR(c,sp,h,(uint32_t)L+1); return 0; }
+DEF(h_glGetShaderInfoLog){ REAL(void,(uint32_t,int,int*,char*),"glGetShaderInfoLog"); uint32_t s=W; int bs=(int)W; uint32_t lp=W,sp=W; char*h=(char*)tmp(bs+1); if(!h) return 0; int L=0; f(s,bs,&L,h); if(lp)WR(c,lp,&L,4); WR(c,sp,h,(uint32_t)L+1); return 0; }
+DEF(h_glGetProgramInfoLog){ REAL(void,(uint32_t,int,int*,char*),"glGetProgramInfoLog"); uint32_t s=W; int bs=(int)W; uint32_t lp=W,sp=W; char*h=(char*)tmp(bs+1); if(!h) return 0; int L=0; f(s,bs,&L,h); if(lp)WR(c,lp,&L,4); WR(c,sp,h,(uint32_t)L+1); return 0; }
 
 /* --- frame sync / readback / uniform introspection (Audit 07 gap: were UNIMPL->0) --- */
 DEF(h_glFinish){ REAL(void,(void),"glFinish"); (void)cur; f(); return 0; }
@@ -296,10 +312,10 @@ DEF(h_glCopyTexImage2D){ REAL(void,(uint32_t,int,uint32_t,int,int,int,int,int),"
 DEF(h_glReadPixels){ REAL(void,(int,int,int,int,uint32_t,uint32_t,void*),"glReadPixels");
     int x=(int)W,y=(int)W,w=(int)W,h=(int)W; uint32_t fmt=W,type=W,p=W;
     size_t n=(size_t)(w<0?0:w)*(size_t)(h<0?0:h)*bpp(fmt,type); if(n>32u*1024*1024) return 0;
-    uint8_t*hb=tmp(n?n:1); f(x,y,w,h,fmt,type,hb); WR(c,p,hb,(uint32_t)n); return 0; }
+    uint8_t*hb=tmp(n?n:1); if(!hb) return 0; f(x,y,w,h,fmt,type,hb); WR(c,p,hb,(uint32_t)n); return 0; }
 DEF(h_glGetActiveUniform){ REAL(void,(uint32_t,uint32_t,int,int*,int*,uint32_t*,char*),"glGetActiveUniform");
     uint32_t prog=W,idx=W; int bs=(int)W; uint32_t lp=W,szp=W,tp=W,np=W; if(bs<0)bs=0;
-    int len=0,sz=0; uint32_t typ=0; char*nm=(char*)tmp((size_t)bs+1);
+    int len=0,sz=0; uint32_t typ=0; char*nm=(char*)tmp((size_t)bs+1); if(!nm) return 0;
     f(prog,idx,bs,&len,&sz,&typ,nm); if(lp)WR(c,lp,&len,4); if(szp)WR(c,szp,&sz,4); if(tp)WR(c,tp,&typ,4); if(np)WR(c,np,nm,(uint32_t)len+1); return 0; }
 DEF(h_glGetUniformfv){ REAL(void,(uint32_t,int,float*),"glGetUniformfv");
     uint32_t prog=W; int loc=(int)W; uint32_t p=W; float v[16]; memset(v,0,sizeof v); f(prog,loc,v); WR(c,p,v,sizeof v); return 0; }

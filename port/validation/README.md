@@ -193,14 +193,14 @@ source produced different APKs, which meant no PROOF could be tied to a specific
 causes are fixed (`port/build_apk_x86*.sh`); the proxies now rebuild byte-for-byte:
 
 ```
-0fedc48c747459b75d0a049d6ae135f827777a0a3e5f2bcca1b638218f2fee41  x86shim.apk          (diagnostic)
-a621ade9540a79c354f2b651a6bc563e5c4ea75517fa0cac08b5ce8f78328c3150811a73a5a9b0a4573cf7f2c914c4faa8c2a639c9f637f777fd92cfade38225b586129e64953df8cc62e92e86f06a108f1a89133b0582d5630d790585f8140bdc353175a8a034c0  x86shim-release.apk  (shipping config)
-072fb2f5fa4acd05a76be52056faee34b0d47f84779e6fcd7630cfa03d9c545f0d1383730c9b360ca749caabf42a323e32179f8164e93edf4bd0dcaed87473364a828ba4937fdf73945772331c1d76ee27eee668c1d778daaa0c13345daa7ad2c2aa2b2a7b7cdacb  x86shim-audio.apk    (audio variant)
+f5c96d90747459b75d0a049d6ae135f827777a0a3e5f2bcca1b638218f2fee41  x86shim.apk          (diagnostic)
+b95d5c27a863132592b5ec1b2a862e3922706f350b311b9b9e532f744729d51f54f2b651a6bc563e5c4ea75517fa0cac08b5ce8f78328c3150811a73a5a9b0a4573cf7f2c914c4faa8c2a639c9f637f777fd92cfade38225b586129e64953df8cc62e92e86f06a108f1a89133b0582d5630d790585f8140bdc353175a8a034c0  x86shim-release.apk  (shipping config)
+3fdc9e45b0e80126fa08904911c6eae1e874607ae3802a8587466f40221689e9a76be52056faee34b0d47f84779e6fcd7630cfa03d9c545f0d1383730c9b360ca749caabf42a323e32179f8164e93edf4bd0dcaed87473364a828ba4937fdf73945772331c1d76ee27eee668c1d778daaa0c13345daa7ad2c2aa2b2a7b7cdacb  x86shim-audio.apk    (audio variant)
 ```
 
 **PROOF_15** is the first piece of evidence tied to one of these hashes: a full API-34 win
 ("LEVEL CLEARED", 3 stars, 45790, `h_fatal=0`, frame[1501]) produced by
-`emu_modern_playthrough.sh` on `x86shim-release.apk` = `a621ade9…`. Before the reproducibility
+`emu_modern_playthrough.sh` on `x86shim-release.apk` = `b95d5c27…`. Before the reproducibility
 fix that sentence could not have been written — every build minted a different signing key, so
 no screenshot could be attributed to a recreatable binary.
 
