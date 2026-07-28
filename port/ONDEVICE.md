@@ -138,6 +138,48 @@ emulation overhead). If anything
 regresses, the silent `angrybirds-8.0.3-arm64.apk` is the safe fallback — same signer, so it
 update-installs straight back over the audio build with no save-data loss.
 
+## Optional: GPU-diagnostic build (use this if the screen is black or the art is wrong)
+
+The shipped APK is `-DABSHIM_RELEASE` and emits **none** of the GPU dumps, so a black screen on the
+phone can be reported but not diagnosed. This variant is the shipped configuration **plus** the
+GPU-surface dumps, and it exists because the GPU is one of only two genuinely device-first surfaces:
+everything known about it here — 22 screened shaders, 51 advertised extensions, a 2000 × 1991 largest
+texture upload — was measured against SwiftShader, never against Mali/Xclipse.
+
+```bash
+docker run --rm --network none -v "$PWD":/work ab-port \
+    env ABSHIM_GPUCAP=1 bash /work/port/build_apk.sh    # -> out/angrybirds-8.0.3-arm64-gpucap.apk
+adb install -r out/angrybirds-8.0.3-arm64-gpucap.apk    # same signer -> updates over the shipped one
+adb logcat -c && adb logcat -s abshim > gpucap_abshim.txt
+# play for a minute or two, then Ctrl-C, and screen the capture with the same tools used off-device:
+python3 port/validation/gl_caps.py      gpucap_abshim.txt work803/libv7/libAngryBirdsClassic.so \
+                                        reports/gl_extensions_a56.txt
+python3 port/validation/shader_screen.py gpucap_abshim.txt
+diff reports/gl_extensions_rig.txt reports/gl_extensions_a56.txt   # the comparison R11 is waiting on
+```
+
+The `diff` is the point. The engine reads `GL_EXTENSIONS` **once** and branches on three names
+(`OPEN_FINDINGS` R11), so any line the phone reports that the rig did not — or vice versa — is a
+different code path, and the one candidate identified in advance is
+`GL_OES_vertex_buffer_object`: a GLES1-era name whose functionality is core in GLES2, absent on the
+rig, and *expected* to be absent on the phone. If it shows up in the device column, the engine is
+taking a VBO path nothing off-device has executed.
+
+Also worth reading out of the same capture:
+
+- `[tex-dim] … running-max=` — the largest texture the phone actually uploaded. Off-device the
+  maximum was 2000 × 1991, under 2048; a phone value above the device's `GL_MAX_TEXTURE_SIZE` would
+  mean silently missing art rather than a crash.
+- `[tex-comp]` — compressed uploads. Off-device this is **0** on a driver that *does* advertise ETC1.
+  Any non-zero count on the phone means the ETC1 branch is live there and was never exercised here.
+- `[shader-src]` — if the driver rejects a shader, the engine's own log line will name the program;
+  the source that failed is in this dump, which is the only place it exists (the shaders are
+  assembled at runtime, not stored in the APK).
+
+Same signer as the shipped APK, so it update-installs over it and back with no save-data loss. It is
+**not** a deliverable: it is slower and it writes a lot to logcat. Reinstall
+`angrybirds-8.0.3-arm64.apk` when you are done.
+
 ## Happy-path boot + play (what success looks like)
 
 ```

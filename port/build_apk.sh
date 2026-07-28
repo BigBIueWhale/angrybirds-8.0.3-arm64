@@ -34,6 +34,26 @@ WORK=/tmp/apkwork
 AUDIO_FLAG=""; OUT_APK="angrybirds-8.0.3-arm64.apk"
 if [ "${ABSHIM_AUDIO:-0}" = 1 ]; then AUDIO_FLAG="-DABSHIM_AUDIO"; OUT_APK="angrybirds-8.0.3-arm64-audio.apk"; fi
 
+# ABSHIM_GPUCAP=1 — the arm64 GPU-DIAGNOSTIC variant. Release configuration plus the GPU-surface
+# dumps ([shader-src], [gl-str], [tex-dim], [tex-comp]); see build_apk_x86_shaders.sh for what each
+# one is for. NOT a deliverable.
+#
+# WHY IT EXISTS. The GPU is one of only two genuinely device-first surfaces (OPEN_FINDINGS R9), and
+# every conclusion about it here — 22 screened shaders, 51 advertised extensions, a 2000x1991 largest
+# upload — was measured against SwiftShader, not against the A56's Mali/Xclipse. R11 says the residual
+# is "one diff away" from being settled on hardware, and that was not true of anything that existed:
+# the SHIPPED APK is -DABSHIM_RELEASE and emits none of these dumps, so no device capture could
+# produce a list to diff. This is the build that can. It is also what makes a black screen on the
+# phone diagnosable rather than merely reportable.
+#
+# A FLAG HERE, not a seventh build script, on purpose: the arm64 pipeline already carries details a
+# copy would have to re-derive and could silently drop — above all `-lm`, whose absence once shipped a
+# binary that would have died on the A56 with `cannot locate symbol "sin"` (API 25 masked it). A
+# variant that shares this code path cannot lose it.
+if [ "${ABSHIM_GPUCAP:-0}" = 1 ]; then
+    AUDIO_FLAG="$AUDIO_FLAG -DABSHIM_SHADERDUMP"; OUT_APK="angrybirds-8.0.3-arm64-gpucap.apk"
+fi
+
 # Hermetic: the ab-port image bakes in apksigner/zipalign/zip/unzip/keytool (see
 # port/docker/Dockerfile.ab-port). This conversion does NO network of its own — it is
 # meant to run fully offline (docker run --network none). Fail loudly if a tool is

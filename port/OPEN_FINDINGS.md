@@ -79,8 +79,17 @@ So `ETC1` being advertised changes nothing for the shipped data, and `glCompress
 same capability state and takes the same branch. The one place rig and device could genuinely differ
 is `GL_OES_vertex_buffer_object`: it is a GLES1-era name whose functionality is **core** in GLES2, so
 no GLES2 driver is expected to advertise it and the rig does not — but if the A56's driver does, the
-engine would take a VBO path nothing here has executed. That is the residual, and it is one `diff`
-away from being settled on hardware (`ONDEVICE.md`).
+engine would take a VBO path nothing here has executed. That is the residual.
+
+It is now genuinely one `diff` away from settled, which it was not when this entry was first written.
+That sentence originally pointed at `ONDEVICE.md` for a comparison **no artifact could perform**: the
+shipped APK is `-DABSHIM_RELEASE` and emits no `[gl-str]` line, so no device capture could produce a
+list to diff — the claim described a procedure that did not exist. `ABSHIM_GPUCAP=1 build_apk.sh` now
+produces an arm64 diagnostic variant (same signer, so it update-installs over the shipped APK and
+back), and `ONDEVICE.md` carries the capture-and-diff steps against `reports/gl_extensions_rig.txt`.
+It is a flag on the arm64 pipeline rather than a seventh build script specifically so it cannot drift
+from it — most of all on `-lm`, whose omission once produced a binary that would have died on the A56
+with `cannot locate symbol "sin"`.
 
 **The largest texture actually uploaded: 2000 × 1991 — and zero compressed uploads.** The assets alone
 could not answer this. Of the 1087 textures stored as plain zip entries (`.png`/`.pvr`/`.webp`) the
