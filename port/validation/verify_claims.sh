@@ -35,6 +35,7 @@
 #   provenance label lint    reintroduced a fixed record_build label   -> caught
 #   proof index consistency  added an unlisted proof / a phantom entry -> caught
 #   audio-variant sameness   appended a byte to the AUDIO build's engine  -> caught
+#   audio shim size bound    padded the audio shim by 200 KB (>1%)        -> caught
 #   documented log markers   added a phantom marker to ONDEVICE.md        -> caught (see below)
 #
 # TWO of these attempts did not go as expected, and both were instructive:
@@ -49,6 +50,14 @@
 #     Trying to break a check is also how you discover it was never doing what it said.
 #
 # Every check in this file has now been deliberately broken at least once.
+#
+# TITLES ARE PART OF THE CHECK. Two claims here asserted more than their code established, and both
+# were found by asking "could I break this?" rather than by reading the code for correctness:
+#   - "every log marker ONDEVICE.md tells you to grep for" never opened ONDEVICE.md (now it does);
+#   - "the audio variant is the same build with only the mixer enabled" bounded nothing about how
+#     the two shims differ (now it bounds their size delta, and the title says what is actually
+#     established rather than what would be nice to establish).
+# A check that overstates itself is worse than no check: it produces confidence without coverage.
 #
 # Usage — runs anywhere; it uses apksigner/zipalign from PATH when present (as inside ab-port,
 # which is how REPRODUCE.md step 3 invokes it) and otherwise shells out to the ab-port image.
@@ -112,7 +121,9 @@ echo "== CLAIM: libm is in DT_NEEDED (without it modern bionic fails to resolve 
 readelf -d "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" 2>/dev/null | grep -q "libm.so" \
   && ok "libm.so present in DT_NEEDED" || bad "libm.so MISSING — would crash on launch"
 
-echo "== CLAIM: no heap-diagnostic scaffolding ships in the release build =="
+# Titled precisely: this greps a KNOWN list of diagnostic markers. It cannot prove the absence of
+# ALL scaffolding, only that these do not ship. Keep the list in step with any new diagnostic.
+echo "== CLAIM: none of the known heap-diagnostic markers ship in the release build =="
 N=$(strings -a "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" | grep -cE 'GALLOC-CORRUPT|GALLOC-STATS|HEAP-PINPOINT|ABSHIM_ALLOC_TRACE')
 [ "$N" = "0" ] && ok "no diagnostic strings in the shipped shim" || bad "$N diagnostic string(s) leaked into release"
 
@@ -193,7 +204,11 @@ for sym in socket connect sendto recvfrom getaddrinfo gethostbyname; do
 done
 [ "$NETIMP" = "0" ] && ok "shim imports NO host socket symbols (no socket capability at all)"
 
-echo "== CLAIM: the audio variant is the same build with only the mixer enabled =="
+# TITLE CORRECTED (2026-07-28). This used to claim "the same build with only the mixer enabled",
+# which nothing here verifies - no check bounded how the two shims differ, and `nativeMixData`
+# appears in BOTH (the mixer is gated inside the function, not compiled out). Same failure mode as
+# the log-marker check: a title asserting more than the code establishes.
+echo "== CLAIM: the audio variant ships identical payloads + the same hardening as the silent build =="
 if [ -f "$AUDIO" ]; then
   unzip -o -q "$AUDIO" -d "$T/a" 'lib/arm64-v8a/*' 'classes.dex' 2>/dev/null
   for f in libengine32.so libjs32.so libadcolony32.so; do
@@ -206,6 +221,16 @@ if [ -f "$AUDIO" ]; then
   readelf -d "$ad" 2>/dev/null | grep -q libm.so && ok "audio variant: libm in DT_NEEDED" || bad "audio variant: libm MISSING"
   n=$(strings -a "$ad" | grep -cE "GALLOC-CORRUPT|GALLOC-STATS|HEAP-PINPOINT|ABSHIM_ALLOC_TRACE")
   [ "$n" = "0" ] && ok "audio variant: no diagnostic strings" || bad "audio variant: $n diagnostic string(s) leaked"
+  # Bound the divergence. This cannot prove "only the mixer differs" - that is a claim about
+  # behaviour - but it does catch the audio variant silently becoming a DIFFERENT build (other
+  # flags, a debug build, a stale binary). Measured delta is ~208 bytes on ~9.1 MB.
+  sz_s=$(stat -c%s "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" 2>/dev/null)
+  sz_a=$(stat -c%s "$ad" 2>/dev/null)
+  if [ -n "$sz_s" ] && [ -n "$sz_a" ]; then
+    d=$(( sz_a > sz_s ? sz_a - sz_s : sz_s - sz_a )); lim=$(( sz_s / 100 ))
+    [ "$d" -le "$lim" ] && ok "audio shim differs from the silent one by $d bytes (<=1%: one build, one flag)" \
+                        || bad "audio shim differs by $d bytes (>1% of $sz_s) - that is not just a flag"
+  fi
 else
   echo "  [skip] $AUDIO not built"
 fi
