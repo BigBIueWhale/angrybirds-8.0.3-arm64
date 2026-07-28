@@ -240,7 +240,7 @@ PROOF mapping verified by md5 against the source screenshots, not by filename.
 | `stage_pull.sh` | abtest / 25 | offline | pulls app data dir for save inspection |
 | `run_render.sh` | — (`ab-render`) | — | host render harness, mesa llvmpipe |
 | `run_ctor.sh` | — | — | host constructor-execution harness |
-| `alloc_trace_compare.sh` | — (x86 + cross/qemu) | — | diffs the guest's ALLOCATION SEQUENCE between x86 and AArch64: same order, sizes and call sites. All 7793 records identical, same sha256. The strongest host-independence evidence available without the device |
+| `alloc_trace_compare.sh` | — (x86 + cross/qemu) | — | diffs the guest's ALLOCATION SEQUENCE between x86 and AArch64 at TWO depths — 7793 records through the constructors, 8290 through `nativeInit` (past boot, into the JNI lifecycle). Identical, same sha256 both times. The strongest host-independence evidence available without the device. Fails if either trace is empty, so an empty-vs-empty comparison cannot pass |
 | `arm64_cross_test.sh` | — (cross + qemu-user) | — | **the arm64 validation**: the WHOLE suite on AArch64 — 7 device tests (boot, ctors, longjmp, sched, libc, file, native_init) + all 10 mode-agnostic module tests, 19 checks. CROSS-compiled on x86 in the `ab-arm64x` image so it runs in minutes, fully offline, instead of hours of emulated compilation. Asserts the binaries really are AArch64 |
 | `arm64_unicorn_test.sh` | — (qemu-user) | — | the original arm64 validation, built *inside* an emulated arm64 container. Superseded by `arm64_cross_test.sh` for routine use; kept because it is the one path that does **not** depend on a cross toolchain |
 

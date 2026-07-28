@@ -13,11 +13,13 @@
 # redone, so the README was quoting a number about a binary that no longer existed. Falling back to
 # "the totals agree" was honest but weaker.
 #
-# So: measure it properly, and make it repeatable. Each side runs test_ctors with
+# So: measure it properly, and make it repeatable. Each side runs TWO phases - test_ctors (boot)
+# and test_native_init (past boot, driving JNI passthrough to the JVM boundary) - with
 # ABSHIM_ALLOC_TRACE set, which records one line per allocation — `m|c|r <size> lr=<engine-rel PC>` —
 # then the two traces are compared byte-for-byte.
 #
-# RESULT (2026-07-28): all 7793 records identical, same sha256 on both sides.
+# RESULT (2026-07-28): ctors 7793 records identical, same sha256 on both sides; native_init
+# likewise (see the run output for the current counts).
 #
 # Needs both images:
 #   docker build -f port/docker/Dockerfile.ab-hosttest -t ab-hosttest port/docker
@@ -36,9 +38,9 @@ export ABSHIM_ENGINE_SO=/work/work803/libv7/libAngryBirdsClassic.so
 SRC=/work/port/shim/src; T=/work/port/shim/test; U="${ABSHIM_UNICORN:-/work/port/shim/vendor/unicorn}"
 DEV="$SRC/cpu.c $SRC/loader.c $SRC/dispatch.c $SRC/sched.c $SRC/galloc.c $SRC/elf32.c $SRC/ctype_tables.c $SRC/marshal.c $SRC/format.c $SRC/bridge_gl.c $SRC/bridge_asset.c $SRC/bridge_libc.c $SRC/bridge_file.c $SRC/handle_table.c"
 # same flags as run_tests.sh - notably NO -D_GNU_SOURCE, which breaks the glibc headers here
-cc -w -O2 -DRTLD_DEFAULT=0 -I"$SRC" -I"$U/include" "$T/test_ctors.c" $DEV "$U/lib/libunicorn.a" \
+cc -w -O2 -DRTLD_DEFAULT=0 -I"$SRC" -I"$U/include" "$T/test_$TEST.c" $DEV ${EXTRA:+$SRC/$EXTRA} "$U/lib/libunicorn.a" \
    -lpthread -lm -ldl -o /tmp/tc
-ABSHIM_ALLOC_TRACE=/out/trace_x86.txt /tmp/tc >/dev/null 2>&1
+ABSHIM_ALLOC_TRACE=/out/trace_x86_$TEST.txt /tmp/tc >/dev/null 2>&1
 EOS
 
 cat > "$OUT/_a64.sh" <<'EOS'
@@ -49,28 +51,39 @@ export ABSHIM_ENGINE_SO=/work/work803/libv7/libAngryBirdsClassic.so
 CC=aarch64-linux-gnu-gcc; SRC=/work/port/shim/src; T=/work/port/shim/test
 U=/opt/unicorn-b; USRC=/opt/unicorn-src; UL=$(ls $U/libunicorn*.a | tr '\n' ' ')
 DEV="$SRC/cpu.c $SRC/loader.c $SRC/dispatch.c $SRC/sched.c $SRC/galloc.c $SRC/elf32.c $SRC/ctype_tables.c $SRC/marshal.c $SRC/format.c $SRC/bridge_gl.c $SRC/bridge_asset.c $SRC/bridge_libc.c $SRC/bridge_file.c $SRC/handle_table.c"
-$CC -w -O2 -iquote "$SRC" -I"$USRC/include" -D_GNU_SOURCE -DRTLD_DEFAULT=0 "$T/test_ctors.c" $DEV \
+$CC -w -O2 -iquote "$SRC" -I"$USRC/include" -D_GNU_SOURCE -DRTLD_DEFAULT=0 "$T/test_$TEST.c" $DEV ${EXTRA:+$SRC/$EXTRA} \
     -Wl,--start-group $UL -Wl,--end-group -lpthread -lm -ldl -o /tmp/tc
-ABSHIM_ALLOC_TRACE=/out/trace_a64.txt qemu-aarch64-static -L /usr/aarch64-linux-gnu /tmp/tc >/dev/null 2>&1
+ABSHIM_ALLOC_TRACE=/out/trace_a64_$TEST.txt qemu-aarch64-static -L /usr/aarch64-linux-gnu /tmp/tc >/dev/null 2>&1
 EOS
 
-echo "== x86 trace =="
-docker run --rm --network none -v "$PWD":/work -v "$OUT":/out -w /work ab-hosttest bash /out/_x86.sh >/dev/null 2>&1
-echo "   records: $(wc -l < "$OUT/trace_x86.txt" 2>/dev/null)"
-echo "== AArch64 trace (cross-built, run under qemu-user) =="
-docker run --rm --network none -v "$PWD":/work -v "$OUT":/out -w /work ab-arm64x bash /out/_a64.sh >/dev/null 2>&1
-echo "   records: $(wc -l < "$OUT/trace_a64.txt" 2>/dev/null)"
-
-echo "== compare =="
-if [ ! -s "$OUT/trace_x86.txt" ] || [ ! -s "$OUT/trace_a64.txt" ]; then
-  echo "  [FAIL] one or both traces are empty - the comparison proves nothing"; FAIL=1
-elif cmp -s "$OUT/trace_x86.txt" "$OUT/trace_a64.txt"; then
-  echo "  [ OK ] all $(wc -l < "$OUT/trace_x86.txt") allocation records identical (sha256 $(sha256sum "$OUT/trace_x86.txt" | cut -c1-16)…)"
-else
-  echo "  [DIFF] $(diff "$OUT/trace_x86.txt" "$OUT/trace_a64.txt" | grep -c '^[<>]') differing lines:"
-  diff "$OUT/trace_x86.txt" "$OUT/trace_a64.txt" | head -10 | sed 's/^/    /'
-  echo "  (a difference is not automatically a bug - it means the guest took a different path on the"
-  echo "   two hosts, which is worth understanding before it is either fixed or documented)"
-  FAIL=1
-fi
+# Two phases, increasingly deep into the app's life:
+#   ctors        the 125 C++ static constructors  -> boot
+#   native_init  drives JNI passthrough to the JVM boundary -> past boot, into the lifecycle
+# Comparing both means host-independence is shown for more than just start-up.
+# EXTRA is a BARE filename: $SRC only exists inside the container scripts, so passing
+# "$SRC/jni_passthrough.c" here delivered a literal un-expanded path, the compile failed, and
+# no trace was written. The empty-trace guard caught it rather than reporting a false pass.
+for phase in "ctors:" "native_init:jni_passthrough.c"; do
+  TEST="${phase%%:*}"; EXTRA="${phase#*:}"
+  echo
+  echo "== phase: $TEST =="
+  docker run --rm --network none -e TEST="$TEST" -e EXTRA="$EXTRA" -v "$PWD":/work -v "$OUT":/out -w /work \
+      ab-hosttest bash /out/_x86.sh >/dev/null 2>&1
+  docker run --rm --network none -e TEST="$TEST" -e EXTRA="$EXTRA" -v "$PWD":/work -v "$OUT":/out -w /work \
+      ab-arm64x   bash /out/_a64.sh >/dev/null 2>&1
+  X="$OUT/trace_x86_$TEST.txt"; A="$OUT/trace_a64_$TEST.txt"
+  echo "   x86 records: $(wc -l < "$X" 2>/dev/null)   AArch64 records: $(wc -l < "$A" 2>/dev/null)"
+  if [ ! -s "$X" ] || [ ! -s "$A" ]; then
+    echo "  [FAIL] $TEST: one or both traces are empty - the comparison proves nothing"; FAIL=1
+  elif cmp -s "$X" "$A"; then
+    echo "  [ OK ] $TEST: all $(wc -l < "$X") allocation records identical (sha256 $(sha256sum "$X" | cut -c1-16)…)"
+  else
+    echo "  [DIFF] $TEST: $(diff "$X" "$A" | grep -c '^[<>]') differing lines:"
+    diff "$X" "$A" | head -10 | sed 's/^/    /'
+    echo "  (a difference is not automatically a bug - it means the guest took a different path on the"
+    echo "   two hosts, which is worth understanding before it is either fixed or documented)"
+    FAIL=1
+  fi
+done
+echo
 exit "$FAIL"

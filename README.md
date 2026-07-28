@@ -78,10 +78,12 @@ Everything reachable without the physical phone has been verified against the **
 > an x86_64 host (the emulator refuses: *"Avd's CPU Architecture 'arm64' is not supported by the
 > QEMU2 emulator on x86_64 host"*), so an end‑to‑end arm64 run genuinely requires the device.
 > Unicorn runs the ARM32 guest faithfully on both hosts — 125/125 C++ constructors execute clean
-> on each, and the guest's allocation sequence is now **byte‑for‑byte identical** between them:
-> all **7793** records — same order, same sizes, same call sites — same sha256 on x86 and
-> AArch64 (`port/validation/alloc_trace_compare.sh`). The older *"7792 of 7793 match"* figure
-> was measured before the allocator size‑class fix; that one divergent allocation is now gone.
+> on each, and the guest's allocation sequence is now **byte‑for‑byte identical** between them —
+> same order, same sizes, same call sites, same sha256 — at **two depths**: **7793** records
+> through the constructors, and **8290** through `nativeInit`, which drives JNI passthrough to
+> the JVM boundary and so reaches past boot into the lifecycle
+> (`port/validation/alloc_trace_compare.sh`). The older *"7792 of 7793 match"* figure was
+> measured before the allocator size‑class fix; that one divergent allocation is now gone.
 > This is still *"both hosts run the guest identically"*, **not** *"the arm64 APK runs"* — the
 > latter needs the device. See `port/validation/README.md`.
 
