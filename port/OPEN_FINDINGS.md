@@ -119,6 +119,29 @@ covers the tutorial and level 2, not every episode's art. Anything larger would 
 4 011 824 bytes at 2 bytes/px, so it holds at most 2 005 892 pixels and could exceed 2048 on one axis
 only by being an extreme strip (4096 × 489 would fit that budget). Not excluded; not observed.
 
+**The phone's much larger screen cannot select an asset tier the rig never used, because there is
+only one.** This was worth checking rather than assuming: the rig renders at 640 × 320 and the A56 is
+1080 × 2340, and games of this vintage routinely pick a texture set by screen size — which would mean
+the phone loading art no run has touched, and would undercut the upload bound above. The assets *are*
+tiered, so the mechanism exists:
+
+| asset directory | files | exercised in runs? |
+|---|---|---|
+| `data/images/base` | 129 | yes — 3932 opens |
+| `data/images/1024x768` | 213 | yes — 2076 opens (**the only gameplay resolution tier**) |
+| `data/images/themes_android` | 183 | yes — 247 opens |
+| `data/images/1024x600_splash` | 9 | yes — 230 opens |
+| `data/images/1024x768_splash` | 9 | **no — never opened in any run** |
+
+There is exactly one gameplay tier (`1024x768`) and it is the one every run loads, so screen size
+cannot route the engine to unexercised gameplay art. The only untested set is the alternate *splash*
+tier, and it is nearly the same data: 5 of its 9 files are byte-identical to the exercised tier's,
+2 are the `loadlist` manifests, and the tier differs by exactly **one image** —
+`SPLASHES_SHEET_1_1024x768_1.png` at **1028 × 772** against the loaded `1024x600` variant's
+1028 × 604. Same width, 168 px taller, and less than half the largest dimension already uploaded
+successfully. So even if the A56's aspect ratio selects the other splash sheet, it is one image of a
+size the pipeline has demonstrably handled.
+
 ### R10. The shaders screened: every float declaration is precision-qualified, no extensions
 
 The GPU is one of only two genuinely device-first surfaces (R9), and shader compilation is its most
