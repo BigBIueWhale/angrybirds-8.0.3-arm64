@@ -9,8 +9,9 @@ compilation is its likeliest failure: every validation run uses SwiftShader, whi
 the A56's Mali/Xclipse driver is not. A shader that compiles here can be rejected there, and the
 symptom is a black screen.
 
-The shaders cannot be screened statically. There is no .vsh/.fsh/.glsl among the APK's 3217 asset
-entries and no `gl_Position`/`varying`/`precision` string in the engine or libjs.so — they are
+The shaders cannot be screened statically. There is no .vsh/.fsh/.glsl anywhere in the APK — all 4398
+zip entries were searched, not merely the 3217 under assets/data/ — and no `gl_Position`/`varying`/
+`precision` string appears in the engine or libjs.so, because the shaders are
 assembled at RUNTIME from a preprocessor-driven uber-shader, variants selected by #define
 combination. The only point where the final text exists is the shim's glShaderSource bridge, which
 dumps it under `#ifndef ABSHIM_RELEASE` (the shipped APK carries none of this).

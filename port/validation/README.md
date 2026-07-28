@@ -613,7 +613,7 @@ whose whole argument is that a reader can check the claims.
 The GPU is one of two genuinely device-first surfaces, and shader compilation is its likeliest
 failure: everything here renders under SwiftShader, which is lenient, while a conformant
 Mali/Xclipse driver is not. The shaders cannot be read statically — there is no `.vsh`/`.fsh` among
-the 3217 asset entries and no GLSL string in the engine, because they are **assembled at runtime**
+the APK's 4398 entries — 3521 of them assets — and no GLSL string in the engine, because they are **assembled at runtime**
 from a preprocessor-driven uber-shader. The only place the final text exists is the shim's
 `glShaderSource` bridge, which dumps it under `#ifndef ABSHIM_RELEASE`.
 

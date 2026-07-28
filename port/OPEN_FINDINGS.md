@@ -334,7 +334,7 @@ likely failure: all validation runs on SwiftShader, which is lenient, while a co
 driver is not. A shader that compiles here could be rejected there, and the symptom would be a black
 screen.
 
-**Static screening was impossible.** There is no `.vsh`/`.fsh`/`.glsl` among the 3217 asset entries,
+**Static screening was impossible.** There is no `.vsh`/`.fsh`/`.glsl` anywhere in the APK (all **4398** zip entries searched, not only the 3217 under `assets/data/`),
 and no `gl_Position`/`varying`/`precision` string in the engine or `libjs.so` — the shaders are
 **assembled at runtime from a preprocessor-driven uber-shader**, variants selected by `#define`
 combinations (`ENABLE_ALPHA_BLENDING`, `ENABLE_PREMULT_ALPHA_BLENDING`, `ENABLE_TWOSIDED`,
