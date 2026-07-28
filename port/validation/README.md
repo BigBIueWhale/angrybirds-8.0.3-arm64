@@ -470,6 +470,26 @@ LEVEL CLEARED with 3 stars and 43700. And running it over the stored end screens
 scripts actually finish on a win (`audiomod`, `audioplay`, `playthroughR`, `playthrough`) and which
 end mid-level by design (`audio_end`, `deeper_end`), so the check was added only to the former.
 
+### Shared libraries
+
+One implementation each, sourced by the scripts — because a fix pasted into eight scripts is a fix
+that will drift in eight scripts. Listed here by full path so `verify_claims.sh`'s doc-reference
+check covers them: it matches `port/...` paths, so a file discussed only by bare name sits outside
+the net that catches a doc pointing at something not in the repo.
+
+| library | what it exists to prevent |
+|---|---|
+| `port/validation/lib_settle.sh` | fixed `sleep`s: the frame rate varies ~2–16 fps between runs, so a wall-clock wait is ~29 frames on a bad run and ~250 on a good one |
+| `port/validation/lib_dialogs.sh` | Android 16 stacks a second modal on top; dismissing only the older-Android one looks exactly like a shim bug and cost two wrong diagnoses |
+| `port/validation/lib_metrics.sh` | `h_fatal: 0` printed from a log that was never written — a clean result from a measurement that did not happen |
+| `port/validation/lib_provenance.sh` | screenshots going stale silently; rows now carry the producing script and AVD so a stale verdict prints a command that reproduces *that* row |
+| `port/validation/lib_install.sh` | `boot_completed=1` ≠ package service ready; a transient "Broken pipe" install failure reads exactly like a broken build |
+| `port/validation/lib_wincheck.sh` | conflating "cannot check" with "not a win" — a missing interpreter once reported a winning run as a failure |
+| `port/validation/lib_selfhash.sh` | a script edited *while a container executes it*: bash reads by byte offset, so the run silently re-enters or skips whole sections |
+
+The win detector itself is `port/validation/win_detect.py`, and the module-level mutation suite is
+`port/shim/test/mutation_modules.sh`.
+
 ### `mutation_test.sh` — proving the gate can fail
 
 `verify_claims.sh` is the file every claim in this repo leans on, and a gate nobody has watched fail
