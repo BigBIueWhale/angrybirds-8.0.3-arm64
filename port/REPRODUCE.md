@@ -20,6 +20,15 @@ from-scratch toolchain : 9da84326e1f2b82acba9b50ecec56207f58afcfc97306acb167257a
 cached toolchain       : 9da84326e1f2b82acba9b50ecec56207f58afcfc97306acb167257a4c0d094a4
 ```
 
+**And the documented path itself is run, not assumed.** On 2026-07-28 `bash port/reproduce.sh`
+was executed exactly as published — inputs prepared and sha256-gated, image built, conversion run
+offline, artifact verified — and produced
+`9da84326e1f2b82acba9b50ecec56207f58afcfc97306acb167257a4c0d094a4`, the same hash recorded here,
+with all 13 claim sections holding. Worth doing periodically rather than trusting: the entry point
+the docs lead with is the one most likely to rot unnoticed, because everyday work calls the inner
+scripts directly. That is exactly how its step 0 came to reference files that a fresh clone does
+not have.
+
 **The toolchain image itself is verified, not assumed.** On 2026-07-28 the committed
 `Dockerfile.ab-port` was rebuilt from scratch with `--no-cache` into `ab-port:verify`, and the
 deliverable rebuilt with that image came out **byte-identical** to the one built by the
