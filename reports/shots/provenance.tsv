@@ -1,4 +1,3 @@
-modplay36	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybirds-8.0.3-x86shim-release.apk
 audioplay	6db01bfeaf8205cedf780f1d7e4583be87eca98bc20f974beffbb10730d8c38a	angrybirds-8.0.3-x86shim-audio.apk
 progR	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybirds-8.0.3-x86shim-release.apk
 playthroughR	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybirds-8.0.3-x86shim-release.apk
@@ -10,3 +9,4 @@ playthrough	0ac034ec5815bba86c25a3d829d073abe4a955d4cb2d056038fb8ac4df873fa4	ang
 emu_fatal	0ac034ec5815bba86c25a3d829d073abe4a955d4cb2d056038fb8ac4df873fa4	angrybirds-8.0.3-x86shim.apk
 interactive	0ac034ec5815bba86c25a3d829d073abe4a955d4cb2d056038fb8ac4df873fa4	angrybirds-8.0.3-x86shim.apk
 modplay	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybirds-8.0.3-x86shim-release.apk	emu_modern_playthrough.sh	abtest34
+modplay36	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybirds-8.0.3-x86shim-release.apk	emu_modern_playthrough.sh	ab36
