@@ -519,6 +519,7 @@ drift a reader can see.
 | `port/validation/emu_fatal.sh` | Boot ab-emu, install the CURRENT x86 shim APK, launch, and watch the game AUTO-navigate |
 | `port/validation/emu_fatal_release.sh` | Boot ab-emu, install the CURRENT x86 shim APK, launch, and watch the game AUTO-navigate |
 | `port/validation/emu_gpu_capture.sh` | capture the whole GPU-facing surface in one run, reproducibly. |
+| `port/validation/lib_install_test.sh` | pin `install_classify()` against REAL `pm install` outputs. No emulator needed. |
 | `port/validation/emu_install_commands.sh` | verify the install commands the DOCS give the user actually work. |
 | `port/validation/emu_interactive.sh` | Persistent emulator: boot + install + launch the x86 shim APK, then STAY ALIVE (sleep) so the |
 | `port/validation/emu_interactive_capture.sh` | regenerate the INTERACTIVE proofs (PROOF_2/3/4) unattended. |

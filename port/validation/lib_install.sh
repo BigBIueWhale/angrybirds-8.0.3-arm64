@@ -27,16 +27,64 @@
 # Returns 0 on success. On failure prints why, and whether it ever became ready.
 
 # Wait until `service check package` reports the package service is published.
+#
+# Matches the PUBLISHED form positively rather than treating "anything that is not 'not found'" as
+# ready. The permissive version returned success for any non-empty line, so a transient adb message
+# ("error: device offline", "error: closed") read as "the package manager is up" and sent the
+# install straight into a service that was not there. Requiring the interface name means only the
+# real answer counts — the same rule the rest of this project applies to measurements: a signal that
+# is absent must not be scored as a signal that is good.
+# 0 = the check output says the service is published, 1 = not yet. Pure function of the string so
+# lib_install_test.sh can pin it against outputs MEASURED on a real device, which is the only reason
+# it is right: the previous comment here documented the output as
+# "Service package: [android.content.pm.IPackageManager]", and API 34 actually prints
+# "Service package: found" / "Service package: not found". A first attempt to harden this matched
+# the documented form and so never became ready at all — 120 s of waiting, then a false
+# "the device is not ready". Both spellings are accepted now, and "not found" is tested BEFORE
+# "found" because it contains it.
+pm_check_ready() {                    # $1 = output of `service check package`
+    case "$1" in
+        *"not found"*)              return 1 ;;
+        *found*|*IPackageManager*)  return 0 ;;
+        *)                          return 1 ;;   # empty, "error: device offline", anything unknown
+    esac
+}
+
 wait_for_pm() {                       # $1 = max seconds (default 120)
     local cap="${1:-120}" i
     for i in $(seq 1 "$cap"); do
-        case "$(adb shell service check package 2>/dev/null | tr -d '\r')" in
-            *"not found"*) sleep 1 ;;
-            "") sleep 1 ;;
-            *) return 0 ;;            # "Service package: [android.content.pm.IPackageManager]"
-        esac
+        if pm_check_ready "$(adb shell service check package 2>/dev/null | tr -d '\r')"; then
+            # Published is not the same as able to answer: at the moment `service check` first
+            # succeeds, `pm` can still return "Can't find service: package". `pm path android` is
+            # the cheapest command that proves the service will actually take one, and it is the
+            # capability the install needs — so require it rather than inferring it.
+            case "$(adb shell pm path android 2>&1 | tr -d '\r')" in
+                package:*) return 0 ;;
+            esac
+        fi
+        sleep 1
     done
     return 1
+}
+
+# Classify one `pm install` output.  0 = installed, 1 = transient (retry), 2 = real rejection.
+#
+# A SEPARATE FUNCTION so it can be tested against real strings without an emulator
+# (`lib_install_test.sh`). It was inline, and the classification was wrong in the dangerous
+# direction: `cmd: Can't find service: package` — the package service not yet published, the very
+# condition this file exists to absorb — fell into the catch-all and was reported as
+# "a real rejection — signature, ABI or manifest — not a flake". That is exactly the failure this
+# library's own header warns about: a transient error reading as "the build is broken", sending a
+# reader after a bug that is not there. Observed 2026-07-28, killing a 15-minute capture run.
+install_classify() {                  # $1 = the pm install output
+    case "$1" in
+        *Success*)                                       return 0 ;;
+        *"Broken pipe"*|*"DeadObjectException"*|\
+        *"Failure calling service"*|\
+        *"Can't find service"*|*"Can not find service"*|\
+        *"Service not registered"*)                      return 1 ;;
+        *)                                               return 2 ;;
+    esac
 }
 
 # Push + install with retries. Echoes progress; caller decides what to do on failure.
@@ -50,15 +98,15 @@ install_apk() {                       # $1 = host path to apk   $2 = tries (defa
     adb push "$apk" /data/local/tmp/ab.apk >/dev/null 2>&1
     for t in $(seq 1 "$tries"); do
         out="$(adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | tr -d '\r')"
-        case "$out" in
-            *Success*) [ "$t" -gt 1 ] && echo "  install: ok (attempt $t)" || echo "  install: ok"
-                       return 0 ;;
-            *"Broken pipe"*|*"DeadObjectException"*|*"Failure calling service"*)
-                       echo "  install: attempt $t hit a transient service error, retrying: $out"
-                       sleep 10 ;;
-            *)         echo "  install: REJECTED by the package manager: $out"
-                       echo "           (a real rejection — signature, ABI or manifest — not a flake)"
-                       return 1 ;;
+        install_classify "$out"
+        case $? in
+            0) [ "$t" -gt 1 ] && echo "  install: ok (attempt $t)" || echo "  install: ok"
+               return 0 ;;
+            1) echo "  install: attempt $t hit a transient service error, retrying: $out"
+               sleep 10 ;;
+            *) echo "  install: REJECTED by the package manager: $out"
+               echo "           (a real rejection — signature, ABI or manifest — not a flake)"
+               return 1 ;;
         esac
     done
     echo "  install: still failing after $tries attempts on transient errors"

@@ -240,6 +240,31 @@ DEF(h_glBufferSubData){ REAL(void,(uint32_t,long,long,const void*),"glBufferSubD
 DEF(h_glTexImage2D){ REAL(void,(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*),"glTexImage2D");
     uint32_t tgt=W; int lvl=(int)W,ifmt=(int)W,w=(int)W,ht=(int)W,bd=(int)W; uint32_t fmt=W,ty=W,px=W;
     void*h=0; uint32_t n=0;
+#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_SHADERDUMP)
+    /* TEXTURE DIMENSION DUMP — bounds the one texture question the assets themselves cannot answer.
+     * Of the 1087 textures stored as plain zip entries the largest dimension is exactly 2048, but the
+     * 26 .zstream sprite sheets are opaque: their 40-byte container header gives a format tag and no
+     * dimensions that reconcile with the payload length, and a byte count bounds AREA, not a single
+     * axis (the largest, at 2 bytes/px, would still admit a 4096x489 strip). Reverse-engineering a
+     * proprietary container is the wrong tool when this bridge sees the real width and height.
+     * Logs ONLY on a new maximum or an unseen internal format. A line per upload would be thousands
+     * of lines and would slow the very load phase it measures; this stays bounded while still
+     * recording every distinct value that could matter. */
+    { static int mw=0,mh=0; static uint32_t sf[16]; static int nsf=0; int isnew=1;
+      for(int i=0;i<nsf;i++) if(sf[i]==(uint32_t)ifmt){ isnew=0; break; }
+      if(w>mw || ht>mh || isnew){
+          if(w>mw) mw=w;
+          if(ht>mh) mh=ht;
+          if(isnew && nsf<16) sf[nsf++]=(uint32_t)ifmt;
+#ifdef __ANDROID__
+          __android_log_print(4,"abshim","[tex-dim] %dx%d lvl=%d ifmt=0x%x fmt=0x%x type=0x%x running-max=%dx%d",
+                              w,ht,lvl,(unsigned)ifmt,(unsigned)fmt,(unsigned)ty,mw,mh);
+#else
+          fprintf(stderr,"[tex-dim] %dx%d lvl=%d ifmt=0x%x fmt=0x%x type=0x%x running-max=%dx%d\n",
+                  w,ht,lvl,(unsigned)ifmt,(unsigned)fmt,(unsigned)ty,mw,mh);
+#endif
+      } }
+#endif
     if(px){ if(!gl_gsize3((uint32_t)w,bpp(fmt,ty),(uint32_t)ht,&n)) return 0; h=tmp(n?n:1); if(!h) return 0; RD(c,px,h,n);} f(tgt,lvl,ifmt,w,ht,bd,fmt,ty,h); return 0; }
 DEF(h_glTexSubImage2D){ REAL(void,(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*),"glTexSubImage2D");
     uint32_t tgt=W; int lvl=(int)W,xo=(int)W,yo=(int)W,w=(int)W,ht=(int)W; uint32_t fmt=W,ty=W,px=W;
@@ -247,6 +272,18 @@ DEF(h_glTexSubImage2D){ REAL(void,(uint32_t,int,int,int,int,int,uint32_t,uint32_
     if(px){ if(!gl_gsize3((uint32_t)w,bpp(fmt,ty),(uint32_t)ht,&n)) return 0; h=tmp(n?n:1); if(!h) return 0; RD(c,px,h,n);} f(tgt,lvl,xo,yo,w,ht,fmt,ty,h); return 0; }
 DEF(h_glCompressedTexImage2D){ REAL(void,(uint32_t,int,uint32_t,int,int,int,int,const void*),"glCompressedTexImage2D");
     uint32_t tgt=W; int lvl=(int)W; uint32_t ifmt=W; int w=(int)W,ht=(int)W,bd=(int)W,isz=(int)W; uint32_t data=W;
+#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_SHADERDUMP)
+    /* EVERY call, not just new maxima. Every texture in the APK is uncompressed (R11), so the
+     * expectation is that this handler never runs — and "never runs" is only worth stating if it was
+     * watched for. An unconditional line makes a zero count mean "measured zero" instead of "not
+     * looked at"; if the engine ever does take the ETC1 path, the count is non-zero and the format
+     * is right here. It cannot flood: if the expectation holds there is nothing to print. */
+#ifdef __ANDROID__
+    __android_log_print(4,"abshim","[tex-comp] %dx%d lvl=%d ifmt=0x%x bytes=%d",w,ht,lvl,(unsigned)ifmt,isz);
+#else
+    fprintf(stderr,"[tex-comp] %dx%d lvl=%d ifmt=0x%x bytes=%d\n",w,ht,lvl,(unsigned)ifmt,isz);
+#endif
+#endif
     void*h=0; if(data){ h=tmp(isz); if(!h) return 0; RD(c,data,h,isz);} f(tgt,lvl,ifmt,w,ht,bd,isz,h); return 0; }
 DEF(h_glUniformMatrix4fv){ REAL(void,(int,int,uint8_t,const float*),"glUniformMatrix4fv");
     int loc=(int)W,cnt=(int)W; uint8_t tr=(uint8_t)W; uint32_t v=W; uint32_t n=0; if(!gl_gsize3((uint32_t)cnt,16,4,&n)) return 0; float*h=(float*)tmp(n?n:1); if(!h) return 0; RD(c,v,h,n); f(loc,cnt,tr,h); return 0; }

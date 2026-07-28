@@ -112,6 +112,41 @@ python3 /work/port/validation/shader_screen.py "$ABLOG" 2>&1 | tee -a "$LOG"
 [ "${PIPESTATUS[0]}" -eq 0 ] || FAIL=1
 
 say
+say "== TEXTURE UPLOADS =="
+# The largest texture the game actually uploads. The assets cannot answer this: 1087 textures are
+# plain zip entries (max dimension 2048), but the 26 .zstream sprite sheets are an opaque container
+# whose header yields no reconcilable dimensions, and a byte count bounds area rather than one axis.
+NTD=$(grep -ac '\[tex-dim\]' "$ABLOG")
+if [ "$NTD" -eq 0 ]; then
+    say "  [FAIL] no [tex-dim] lines — no texture upload was observed at all. A max of 'nothing'"
+    say "         is not a bound. Either the build lacks the dump or the run never loaded art."
+    FAIL=1
+else
+    say "  [tex-dim] lines: $NTD (logged only on a new maximum or an unseen internal format)"
+    grep -a '\[tex-dim\]' "$ABLOG" | tail -3 | sed 's/.*\[tex-dim\]/    [tex-dim]/' | tee -a "$LOG"
+    MAXWH=$(grep -a '\[tex-dim\]' "$ABLOG" | sed -n 's/.*running-max=\([0-9]*x[0-9]*\).*/\1/p' | tail -1)
+    say "  largest texture uploaded: $MAXWH"
+    BIG=$(grep -a '\[tex-dim\]' "$ABLOG" | sed -n 's/.*running-max=\([0-9]*\)x\([0-9]*\).*/\1 \2/p' \
+          | awk '$1>2048||$2>2048' | wc -l)
+    if [ "$BIG" -gt 0 ]; then
+        say "  [WARN] a dimension exceeds 2048 — check it against the device's GL_MAX_TEXTURE_SIZE."
+    else
+        say "  [ OK ] no dimension exceeds 2048, which every GLES2 Android GPU supports"
+    fi
+fi
+# Zero is the expectation (every shipped texture is uncompressed, R11) — but a zero only means
+# something because this handler logs unconditionally, so it distinguishes "measured zero" from
+# "never looked at".
+NTC=$(grep -ac '\[tex-comp\]' "$ABLOG")
+say "  compressed-texture uploads ([tex-comp], logged unconditionally): $NTC"
+if [ "$NTC" -eq 0 ]; then
+    say "         => the ETC1 branch was measured and not taken; all uploads are uncompressed"
+else
+    say "         => the engine DOES upload compressed textures — formats above; R11 needs updating"
+    grep -a '\[tex-comp\]' "$ABLOG" | head -3 | sed 's/^/    /' | tee -a "$LOG"
+fi
+
+say
 say "  Reminder: SwiftShader, not Mali/Xclipse. This bounds the GPU risk; it does not remove it."
 selfhash_verify
 say "DONE (FAIL=$FAIL)"

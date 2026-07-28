@@ -82,15 +82,33 @@ no GLES2 driver is expected to advertise it and the rig does not — but if the 
 engine would take a VBO path nothing here has executed. That is the residual, and it is one `diff`
 away from being settled on hardware (`ONDEVICE.md`).
 
-**Not yet bounded: the largest texture actually uploaded.** Of the 1087 textures stored as plain zip
-entries (`.png`/`.pvr`/`.webp`), the largest dimension is exactly **2048** and none exceeds it — well
-inside any plausible `GL_MAX_TEXTURE_SIZE`. The 26 `.zstream` sprite sheets are *not* covered by that
-number: their container header yields a format tag and a 40-byte header size but no dimensions that
-reconcile with the payload length, and file size bounds only **area**, not a single axis (the largest,
-4 011 824 bytes at 2 bytes/px, permits ≤ 2 005 892 px — which a 4096 × 489 strip would satisfy). The
-honest statement is therefore that the *zip-stored* textures are bounded at 2048 and the *streamed*
-sheets are unmeasured. Guessing at a proprietary container is the wrong tool when the shim sees the
-real `glTexImage2D` width and height; that measurement is the next step, not an assumption.
+**The largest texture actually uploaded: 2000 × 1991 — and zero compressed uploads.** The assets alone
+could not answer this. Of the 1087 textures stored as plain zip entries (`.png`/`.pvr`/`.webp`) the
+largest dimension is exactly **2048**, but the 26 `.zstream` sprite sheets are an opaque container:
+the header yields a format tag and a 40-byte header size, no dimensions that reconcile with the
+payload length, and a byte count bounds **area**, not a single axis. So the shim was made to report
+what it actually receives at `glTexImage2D` — a running maximum plus every distinct internal format,
+logged only when one of them changes, so the dump stays bounded instead of emitting thousands of
+lines during the load phase it is measuring.
+
+Measured over a full run (boot → tutorial → win → level 2), `h_fatal=0`:
+
+| | |
+|---|---|
+| largest upload | **2000 × 1991** — under 2048, which every GLES2 Android GPU supports |
+| internal formats | `0x1908` (`GL_RGBA`) and `0x1907` (`GL_RGB`); types `GL_UNSIGNED_BYTE` and `GL_UNSIGNED_SHORT_5_6_5` |
+| compressed uploads | **0** — and that zero is worth something only because `glCompressedTexImage2D` logs *unconditionally*, so it means "measured zero", not "never looked at" |
+
+The compressed branch is therefore not merely unused by the shipped assets (which the container
+formats already showed) but **observed** not to execute, on a driver that *does* advertise ETC1 — so
+the null is not an artifact of the rig lacking the capability. That is the distinction this project
+keeps having to make, and here it is settled in the favourable direction.
+
+Scope, stated rather than glossed: 2000 × 1991 is the largest upload *this run touched*, and a run
+covers the tutorial and level 2, not every episode's art. Anything larger would have to come from a
+`.zstream` sheet, since the zip-stored set is statically bounded at 2048 — and the largest sheet is
+4 011 824 bytes at 2 bytes/px, so it holds at most 2 005 892 pixels and could exceed 2048 on one axis
+only by being an extreme strip (4096 × 489 would fit that budget). Not excluded; not observed.
 
 ### R10. The shaders screened: every float declaration is precision-qualified, no extensions
 

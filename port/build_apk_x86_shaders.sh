@@ -1,5 +1,5 @@
 #!/bin/bash
-# build_apk_x86_shaders.sh — release configuration plus ONLY the glShaderSource dump.
+# build_apk_x86_shaders.sh — release configuration plus ONLY the GPU-surface dumps.
 #
 # WHY THIS EXISTS
 # ---------------
@@ -9,18 +9,19 @@
 # unrepresentative sample — the uber-shader's variants are selected by #define, so gameplay compiles
 # more of them.
 #
-# -DABSHIM_RELEASE -DABSHIM_SHADERDUMP gives release speed with just the dump. NOT a deliverable.
-# build_apk_x86_shaders.sh — a MEASUREMENT-ONLY variant: release configuration plus the perf timers.
+# -DABSHIM_RELEASE -DABSHIM_SHADERDUMP gives release speed with just the dumps. NOT a deliverable.
 #
-# WHY THIS EXISTS
-# ---------------
-# The perf instrumentation is normally non-release, so measuring it on the diagnostic build
-# overstates the emulation's share: that build also samples heap checks. This builds with
-# -DABSHIM_RELEASE (so none of the heavy diagnostics are present) plus -DABSHIM_PERF (so only the
-# two timers are), giving a number representative of what actually ships.
+# WHAT IT DUMPS — all three halves of the GPU surface, under the one gate, because they have to be
+# read together (OPEN_FINDINGS R10/R11):
+#   [shader-src] the assembled shader text            -> shader_screen.py
+#   [gl-str]     what the driver says about itself    -> gl_caps.py
+#   [tex-dim]    the largest texture actually uploaded, and every distinct internal format
+#   [tex-comp]   compressed uploads, logged unconditionally so that a count of zero means
+#                "measured zero" rather than "never looked at"
 #
-# Output: out/angrybirds-8.0.3-x86shim-shaders.apk - NOT a deliverable, and not signed for release.
-# The shipped APKs never define ABSHIM_PERF; verify by rebuilding and comparing hashes.
+# Output: out/angrybirds-8.0.3-x86shim-shaders.apk — NOT a deliverable, and not signed for release.
+# The shipped APKs never define ABSHIM_SHADERDUMP; port/build_apk.sh reproduces the deliverable
+# byte-identically with all of the above gated out, which is checked on every change.
 # Build an x86_64 variant of the emulation-shim APK — SAME shim source + SAME Unicorn commit,
 # just compiled for x86_64-android instead of arm64. Purpose: install it in the x86 Android
 # emulator (which has a REAL ART + app lifecycle) to validate the shim END-TO-END, including the
