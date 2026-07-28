@@ -267,6 +267,28 @@ fails if it is not what the A56 uses.
 The remaining limit is the driver: still SwiftShader (R9/R11), so this says nothing about
 Mali/Xclipse.
 
+**And the density bucket is a bigger difference than "large vs xlarge".** Enumerating every
+configuration qualifier the APK actually ships makes the point concrete:
+
+| qualifier family | buckets present | what the rig selects | what the A56 selects |
+|---|---|---|---|
+| density | `ldpi` `mdpi` `hdpi` `xhdpi` `xxhdpi` `xxxhdpi` | `drawable-mdpi-v4` at 160 (144 files) | `drawable-xxhdpi-v4` at 420 (64 files) |
+| screen size | `large`, `xlarge` (16 files) | *was* xlarge at 160 — the bug above | none (411dp is a normal phone) |
+| layout direction | `ldrtl` (15 files) | never — the rig is `en-US` | only under an RTL locale |
+| API level | `-v4 -v11 -v16 -v17 -v21 -v22 -v23 -v26` | highest applicable | same, API 36 |
+
+So the default 640 × 320 rig has been exercising the **mdpi** drawables for this project's entire
+history, while the phone will use **xxhdpi** — a disjoint set of files. The corrected run is the
+first time the phone's actual bucket has been loaded at all.
+
+**One configuration axis remains unexercised: `ldrtl`.** The APK ships 15 right-to-left drawables,
+selected only when the device locale is RTL (Arabic, Hebrew, Persian). Every run here is `en-US`. The
+blast radius is small and worth stating precisely rather than alarming: the game's own UI is drawn by
+the engine from `assets/`, which has no RTL variants at all — its text comes from the
+locale-independent `TEXTS_*.dat` (see above) — so `ldrtl` can only affect the thin Java-side surface
+(splash, dialogs) that Android composes from `res/`. It ships those resources, so it was built for
+that case; it simply has not been run in it here.
+
 **Locale does not route the engine to different files either.** The same question, asked of the other
 setting that varies per device: the rig runs `en-US`, the phone may not. There *are* per-locale
 assets — `ML_LEAGUE_ASSETS_LEAGUE_LOCALIZED_<locale>` ships for 11 locales (`de_DE`, `en_EN`,
