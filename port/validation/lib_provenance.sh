@@ -43,11 +43,20 @@ record_build() {
     # One row per label: replace any previous row so the file reflects the LATEST capture, which is
     # what "is this proof current" asks about. Without this the file would grow a history and the
     # check would have to guess which row is authoritative.
-    if [ -f "$tsv" ]; then
-        grep -v "^${label}	" "$tsv" > "$tsv.tmp" 2>/dev/null || true
-        mv "$tsv.tmp" "$tsv"
+    #
+    # UPDATED IN PLACE, not delete-then-append. Appending moved the row to the end of the file on
+    # every re-run, so re-capturing a proof produced a git diff of one deleted and one added line
+    # with BYTE-IDENTICAL content — pure reordering noise. A ledger whose diffs are mostly noise is
+    # one nobody reads, and a real hash change would sit in the middle of that churn looking the
+    # same. Now a diff of provenance.tsv means a capture actually changed.
+    local row
+    row=$(printf '%s\t%s\t%s\t%s\t%s' "$label" "$sha" "$(basename "$apk")" \
+          "$(basename "${BASH_SOURCE[1]:-$0}")" "${ABSHIM_AVD:-}")
+    if [ -f "$tsv" ] && grep -q "^${label}	" "$tsv"; then
+        awk -v lbl="$label" -v new="$row" -F'\t' \
+            '$1==lbl {print new; next} {print}' "$tsv" > "$tsv.tmp" && mv "$tsv.tmp" "$tsv"
+    else
+        printf '%s\n' "$row" >> "$tsv"
     fi
-    printf '%s\t%s\t%s\t%s\t%s\n' "$label" "$sha" "$(basename "$apk")" \
-        "$(basename "${BASH_SOURCE[1]:-$0}")" "${ABSHIM_AVD:-}" >> "$tsv"
     echo "  [provenance] $label <- $(basename "$apk") ${sha:0:12}… (by $(basename "${BASH_SOURCE[1]:-$0}"))"
 }
