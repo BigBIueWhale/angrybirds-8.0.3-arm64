@@ -39,6 +39,8 @@
 #   documented log markers   added a phantom marker to ONDEVICE.md        -> caught (see below)
 #   doc-referenced files     (a) referenced a script that does not exist  -> caught
 #                            (b) referenced a file present but UNTRACKED  -> caught  <- the real bug
+#   unmeasured input         disabled the extraction the scans read from  -> caught
+#                            (previously reported OK, having measured nothing)
 #
 # TWO of these attempts did not go as expected, and both were instructive:
 #
@@ -76,6 +78,12 @@ AUDIO=out/angrybirds-8.0.3-arm64-audio.apk
 ORIG=apks/com.rovio.angrybirds@8.0.3.apk
 FAIL=0
 ok(){ printf "  [ OK ] %s\n" "$1"; }
+# Guard for checks that COUNT things. A count of 0 from a missing or unreadable file is
+# indistinguishable from a genuine zero, so `strings | grep -c` and `readelf | awk` both report
+# success when they have measured nothing at all. That is the inverse - and more dangerous form - of
+# the "cannot ask vs bad answer" confusion found three times already: here a failure to measure
+# reads as a clean result. Every counting check asserts its input exists first.
+have(){ [ -s "$1" ] && return 0; bad "$2: cannot measure - $1 is missing or empty"; return 1; }
 bad(){ printf "  [FAIL] %s\n" "$1"; FAIL=1; }
 # A skipped check must not read as a passing one: "ALL CHECKED CLAIMS HOLD" printed after two
 # silent [skip]s is a false all-clear. Skips are counted and named in the verdict.
@@ -126,8 +134,10 @@ readelf -d "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" 2>/dev/null | grep -q "l
 # Titled precisely: this greps a KNOWN list of diagnostic markers. It cannot prove the absence of
 # ALL scaffolding, only that these do not ship. Keep the list in step with any new diagnostic.
 echo "== CLAIM: none of the known heap-diagnostic markers ship in the release build =="
-N=$(strings -a "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" | grep -cE 'GALLOC-CORRUPT|GALLOC-STATS|HEAP-PINPOINT|ABSHIM_ALLOC_TRACE')
-[ "$N" = "0" ] && ok "no diagnostic strings in the shipped shim" || bad "$N diagnostic string(s) leaked into release"
+if have "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" "release diagnostic scan"; then
+  N=$(strings -a "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" | grep -cE 'GALLOC-CORRUPT|GALLOC-STATS|HEAP-PINPOINT|ABSHIM_ALLOC_TRACE')
+  [ "$N" = "0" ] && ok "no diagnostic strings in the shipped shim" || bad "$N diagnostic string(s) leaked into release"
+fi
 
 echo "== CLAIM: signed v1+v2+v3, and 4-byte zipaligned =="
 # Prefer the tools on PATH, fall back to docker. This script's DOCUMENTED invocation is inside
@@ -199,7 +209,14 @@ strings -a "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" | grep -q "hard-fail (de
 # Stronger than the bridges returning -1: the shim must not even IMPORT socket syscalls, so there
 # is no socket capability in the binary for anything to reach.
 NETIMP=0
+# readelf on a missing file yields no rows, awk prints 0, and every symbol looks absent - i.e. the
+# strongest de-phone-home statement here would be produced by not measuring anything.
+if ! readelf -sW --dyn-syms "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" 2>/dev/null | grep -q "Symbol table"; then
+  bad "socket-import scan: cannot read the shim's dynamic symbol table - not measured"
+  NETIMP=2
+fi
 for sym in socket connect sendto recvfrom getaddrinfo gethostbyname; do
+  [ "$NETIMP" = "2" ] && break
   c=$(readelf -sW --dyn-syms "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" 2>/dev/null \
       | awk -v s="$sym" '$8==s && $7=="UND"{n++} END{print n+0}')
   [ "$c" != "0" ] && { bad "shim IMPORTS host $sym (x$c) — it could open a real socket"; NETIMP=1; }
@@ -221,8 +238,10 @@ if [ -f "$AUDIO" ]; then
   done
   ad="$T/a/lib/arm64-v8a/libAngryBirdsClassic.so"
   readelf -d "$ad" 2>/dev/null | grep -q libm.so && ok "audio variant: libm in DT_NEEDED" || bad "audio variant: libm MISSING"
-  n=$(strings -a "$ad" | grep -cE "GALLOC-CORRUPT|GALLOC-STATS|HEAP-PINPOINT|ABSHIM_ALLOC_TRACE")
-  [ "$n" = "0" ] && ok "audio variant: no diagnostic strings" || bad "audio variant: $n diagnostic string(s) leaked"
+  if have "$ad" "audio-variant diagnostic scan"; then
+    n=$(strings -a "$ad" | grep -cE "GALLOC-CORRUPT|GALLOC-STATS|HEAP-PINPOINT|ABSHIM_ALLOC_TRACE")
+    [ "$n" = "0" ] && ok "audio variant: no diagnostic strings" || bad "audio variant: $n diagnostic string(s) leaked"
+  fi
   # Bound the divergence. This cannot prove "only the mixer differs" - that is a claim about
   # behaviour - but it does catch the audio variant silently becoming a DIFFERENT build (other
   # flags, a debug build, a stale binary). Measured delta is ~208 bytes on ~9.1 MB.
