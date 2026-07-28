@@ -36,14 +36,14 @@ is given from the run that produced them and is marked `(by run, not hash)`.
 | `PROOF_5_destruction_score5820.png` | Structure destroyed, score 5820. **HISTORICAL — no script regenerates this**, and it is superseded by `PROOF_3`, which shows a launch and impact with live scoring and *can* be regenerated | x86shim (build unknown) | 25 | — |
 | `PROOF_6_levelend_survived.png` | **The level-end transition survives** (the deepest bug) — win screen, `h_fatal=0` | x86shim | 25 | `emu_playthrough.sh` |
 | `PROOF_7_level2_progression.png` | Tapping NEXT loads a **fresh, distinct level 2** — score 0, new structures | x86shim-release | 25 | `emu_progress_release.sh` |
-| `PROOF_8_modern_android_win.png` | "LEVEL CLEARED", score 44000, on modern Android | x86shim-release | 34 | `emu_modern_playthrough.sh` *(by run, not hash)* |
+| `PROOF_8_modern_android_win.png` | "LEVEL CLEARED", score 44000 — the FIRST modern-Android win. **HISTORICAL**: its raw capture was overwritten before provenance existed, so it cannot be tied to a build. Superseded by `PROOF_15` (current, provenance-tracked) | x86shim-release (build unknown) | 34 | — | |
 | `PROOF_9_modern_android_level2.png` | Advances into level 2 on modern Android | x86shim-release | 34 | `emu_modern_progress.sh` |
 | `PROOF_10_audio_levelwin.png` | The **audio variant** plays through and wins, with the mixer actually running (`nativeMixData` called) | x86shim-audio | 25 | `emu_audio_playthrough.sh` |
 | `PROOF_17_audio_win_modern.png` | The audio variant wins on **modern Android** as well — previously it was only ever proven on API 25 | x86shim-audio | 34 | `emu_audio_modern.sh` |
-| `PROOF_11_modern_win_reproduced_in_repo.png` | The modern-Android win reproduced from the in-repo rig | x86shim-release | 34 | `emu_modern_playthrough.sh` *(by run, not hash)* |
-| `PROOF_12_postfix_no_regression.png` | No regression after the fix round | x86shim-release | 34 | *(by run, not hash)* |
+| `PROOF_11_modern_win_reproduced_in_repo.png` | The modern-Android win reproduced from the in-repo rig. **HISTORICAL** — same reason; superseded by `PROOF_15` | x86shim-release (build unknown) | 34 | — | |
+| `PROOF_12_postfix_no_regression.png` | No regression after that fix round. **HISTORICAL** — a point-in-time check; superseded by `PROOF_15`/`PROOF_16` | x86shim-release (build unknown) | 34 | — | |
 | `PROOF_13_heapfix_still_wins.png` | Still wins **after the allocator fix** | x86shim-release | 25 | `emu_playthrough_release.sh` |
-| `PROOF_14_heapfix_api34_wins.png` | Allocator fix holds on modern Android | x86shim-release | 34 | *(by run, not hash)* |
+| `PROOF_14_heapfix_api34_wins.png` | The allocator fix holds on modern Android. **HISTORICAL** — a point-in-time check; superseded by `PROOF_15`/`PROOF_16` | x86shim-release (build unknown) | 34 | — | |
 | `PROOF_16_win_with_gms.png` | **Wins on modern Android with Google Play Services present** — the closest reachable match to the A56's environment (API 34 + GMS + W^X + targetSdk-26 install policy). Every other win proof is from a GMS-less AOSP image | x86shim-release | 34 (GMS) | `ABSHIM_AVD=abgms ABSHIM_OUTPFX=modplaygms emu_modern_playthrough.sh` |
 | `PROOF_15_win_on_reproducible_proxy.png` | Wins on the **bit-reproducible** proxy build | x86shim-release | 34 | `emu_modern_playthrough.sh` |
 | `PROOF_release_render.png` | The release-gated build renders. **HISTORICAL — no script regenerates this**; superseded by `PROOF_13`/`PROOF_15`/`PROOF_16`, which show the release build winning | x86shim-release (build unknown) | 25 | — |
@@ -81,12 +81,19 @@ script's exit code cannot tell those apart — only the image can.
 
 ## Historical proofs
 
-Three rows above are marked **HISTORICAL**: `PROOF_5`, `PROOF_release_render` and
-`PROOF_release_bird_launched`. No script regenerates them — they were captured by hand from a live
+Seven rows above are marked **HISTORICAL**, for two distinct reasons.
+
+`PROOF_5`, `PROOF_release_render` and `PROOF_release_bird_launched`: no script regenerates them — they were captured by hand from a live
 emulator, which is exactly the condition that let `PROOF_2/3/4` sit for a day showing a binary that
 no longer existed. They are kept rather than deleted because removing evidence is worse than
 labelling it, but they should be read as a record of what was true then, not as a claim about the
 current build. Each is superseded by a regenerable proof that shows something stronger.
+
+`PROOF_8`, `PROOF_11`, `PROOF_12` and `PROOF_14`: these *do* have a script, but their raw captures
+were overwritten by later runs before provenance existed, so no build can be attached to them now.
+All four assert the same thing — the release build winning on modern Android — which `PROOF_15`
+covers with current, provenance-tracked evidence and `PROOF_16` covers more strongly still, with
+Google Play Services present. They are a record of when each milestone was first reached.
 
 Everything else is produced by a committed script and records the sha256 of the APK it installed
 into `provenance.tsv` at capture time, so `verify_claims.sh` can tell you when an image has fallen
