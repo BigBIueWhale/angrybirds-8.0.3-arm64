@@ -2091,7 +2091,16 @@ From A07/A08 + synthesis. **Ordered by how likely they are to break first play:*
   guest copy) in the ASSET arena; JVM local-ref capacity if engine hygiene regresses; thread attach/detach
   balance. Bounded by design; device-only under long play.
 - **SR9 — modified-UTF-8 supplementary/surrogate + embedded-NUL edges (R-J2).** Correct by construction
-  (byte-copy + guest sizing), only device zh/ja strings exercise the surrogate path.
+  (byte-copy + guest sizing) **and directly unit-tested**: `test_utf.c` (30 cases) rejects encoding a
+  surrogate as a scalar value and anything above U+10FFFF, decodes U+10348, and checks that mUTF-8
+  encodes each surrogate half separately as 3 bytes.
+  This line used to end "only device zh/ja strings exercise the surrogate path", which names the
+  wrong trigger: ordinary Chinese and Japanese text is BMP — 3-byte UTF-8 — and needs no surrogate
+  pair at all. Surrogate pairs arise only for U+10000 and above. Measured against the shipped data:
+  the 16 `assets/data/localization/TEXTS_*.dat` files contain **38 921** three-byte sequences and
+  **zero** four-byte ones, so no supplementary-plane character exists in the game's own text and the
+  surrogate path is not reachable from assets on **any** locale. It is covered by the unit tests
+  rather than by a playthrough, which is the honest place to rest that claim.
 
 ---
 
