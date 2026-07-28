@@ -32,6 +32,29 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R9. Every surface the phone touches, and whether the emulator actually stands in for it
+
+R6–R8 each traced one path. Collected, they answer the question that matters before a device run:
+*which of these did the test rig genuinely exercise, and which is the phone the first real instance
+of?* Traced from the code and the run logs, not from the design intent.
+
+| surface | how it works | does the emulator stand in for the A56? |
+|---|---|---|
+| **Assets** | forwarded to the **real `libandroid`** — `dlsym`/`dlopen("libandroid.so")`, `AAssetManager_fromJava` on the real `JNIEnv` | **Yes, by construction.** Android's own asset manager does the reading; our code only marshals |
+| **Payload lookup** | `dladdr()` on the shim's own symbol → open `libengine32.so` beside it (R6) | **Yes** — same mechanism, same extracted-libs layout, asserted by `verify_claims.sh` |
+| **Saves** | `/data/user/0/com.rovio.angrybirds/files/`, `.tmp`+rename (R7) | **Yes** — app-private internal storage behaves identically; no permission, no scoped storage |
+| **JNI** | 72 engine entry points, thunk-for-thunk (asserted) | **Yes** — the same ART on both, and the symbol set is checked |
+| **`/proc/cpuinfo`** | passes through to the host's real file (R8) | **No — and the phone is the *favourable* side**: the engine was written for AArch64 `cpuinfo`; x86 is the unusual input |
+| **CPU / ABI** | Unicorn emulates ARM32 on the host CPU | **Partially** — allocation sequences are byte-identical on x86 and AArch64, and the whole suite passes on AArch64 under qemu, but the A56's cores are the first real AArch64 host |
+| **GPU** | GL calls forwarded to the system driver | **No** — SwiftShader here, Mali/Xclipse there. Shader compilation is the main residual risk |
+| **Audio** | mixer no-op in the shipped build; separate audio variant | **No** — the emulator's audio backend cannot init headless |
+
+So of eight surfaces, **five are host-independent by construction or by assertion**, one differs in
+the phone's favour, and **two — the GPU and audio — are genuinely device-first**. That is a narrower
+statement than "validated on a proxy", and a more useful one: it says exactly where to look if
+something goes wrong, which is why `ONDEVICE.md` now leads with a pid-scoped `logcat` rather than a
+tag filter (the driver reports shader errors under the engine's own tag).
+
 ### R8. `/proc/cpuinfo` passes through to the host — and the phone is the *favourable* side of that
 
 `fdtable.c` contains a `ROUTE_PROC` facility that would synthesise `/proc/cpuinfo`, `/proc/meminfo`,
