@@ -9,6 +9,7 @@ AVD="${ABSHIM_AVD:-abtest34}"
 PFX="${ABSHIM_OUTPFX:-modprog}"
 source "$(dirname "$0")/lib_settle.sh"
 source "$(dirname "$0")/lib_provenance.sh"
+source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_dialogs.sh"   # frame-based settle (replaces flaky fixed sleeps)
 ( sleep 1550; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
@@ -47,7 +48,7 @@ settle_frames "$ABLOG" 120 300
 adb exec-out screencap -p > "$OUT/${PFX}_1_cleared.png" 2>/dev/null
 # NOTE (2026-07-27): `levelComplete` grep-count removed — it counted levelCompleteStars*.lua
 # asset preloads (always 8, before frame[1]), identical in winning and non-winning runs.
-LC=$(grep -ac 'levelCompleteStars' "$ABLOG" 2>/dev/null); say "  starsAssetPreloads=$LC (NOT a win signal) frame=$(fnow) h_fatal=$(grep -ac '\[h_fatal\]' "$ABLOG")"
+LC=$(grep -ac 'levelCompleteStars' "$ABLOG" 2>/dev/null); say "  starsAssetPreloads=$LC (NOT a win signal) frame=$(fnow) h_fatal=$(h_fatal_report "$ABLOG")"
 say "== tap orange NEXT (378,256) -> does level 2 load on modern Android? =="
 adb shell input tap 378 256; sleep 3; adb shell input tap 378 256
 # FIX (2026-07-27): was a fixed `sleep 16` gating the level-2 screenshot — i.e. gating PROOF_9,

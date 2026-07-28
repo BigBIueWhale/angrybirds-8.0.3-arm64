@@ -8,6 +8,7 @@
 # PulseAudio runs as a non-root user with an anonymous unix socket; the root emulator connects via
 # PULSE_SERVER. Everything is a Unix socket -> safe under --network none (no network port bound).
 set +e
+source "$(dirname "$0")/lib_metrics.sh"
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/audiocap.txt"; : >"$LOG"
 ABLOG="$OUT/audiocap_abshim.txt"; : >"$ABLOG"
 WAV="$OUT/audio_capture.wav"; rm -f "$WAV"
@@ -61,7 +62,7 @@ kill $RECPID 2>/dev/null; sleep 1
 say "== RESULTS (continuous-audio capture) =="
 say "  install:        ok"
 say "  mixData total:  $(grep -ac 'nativeMixData ENABLED' "$ABLOG")  (>>8 => CONTINUOUS mixing, PulseAudio drained the buffer)"
-say "  h_fatal:        $(grep -ac '\[h_fatal\]' "$ABLOG")   stack_chk: $(grep -ac stack_chk_fail "$ABLOG")"
+say "  h_fatal:        $(h_fatal_report "$ABLOG")   stack_chk: $(grep -ac stack_chk_fail "$ABLOG")"
 say "  final frame:    $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG"|tail -1)"
 say "  WAV bytes:      $(stat -c%s "$WAV" 2>/dev/null || echo 0)"
 say "  --- sox stat (Maximum/Minimum amplitude & RMS non-zero => ACTUAL SOUND, not silence) ---"

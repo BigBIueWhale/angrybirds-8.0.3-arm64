@@ -6,6 +6,7 @@
 #   (2) does the shim's Unicorn JIT get EXECUTABLE memory under W^X (targetSdk<29 exemption), i.e.
 #       does init_array run + the game render, with NO execmem/SELinux denials?
 set +e
+source "$(dirname "$0")/lib_metrics.sh"
 ( sleep 1500; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/modern34.txt"; : >"$LOG"
@@ -50,7 +51,7 @@ say "== RESULTS =="
 say "  Q1 install:   $INST"
 say "  init_array:   $(grep -aoE 'init_array [0-9]+/125' "$ABLOG" 2>/dev/null | tail -1)  (125/125 => the ARM32 engine's C++ ctors ran = Unicorn JIT works)"
 say "  JNI_OnLoad:   $(grep -ac 'JNI_OnLoad' "$ABLOG" 2>/dev/null)   last frame: $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1)"
-say "  h_fatal:      $(grep -ac '\[h_fatal\]' "$ABLOG" 2>/dev/null)"
+say "  h_fatal:      $(h_fatal_report "$ABLOG")"
 say "  final pid:    [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]  (alive => running)"
 say "  crash-sig:    $(adb logcat -d 2>/dev/null | grep -ciE 'SIGSEGV|Fatal signal|com.rovio.*died')"
 say "  --- W^X / execmem / SELinux denials touching the app (JIT-blocking? MUST be none) ---"

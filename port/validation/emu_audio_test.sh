@@ -7,7 +7,8 @@
 #      "pipeline runs + no freeze + no crash" is the decisive safety result (blocking AudioTrack.write
 #      is Java-side, not under the BEL, per AudioOutput.java).
 set +e
-source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
+source "$(dirname "$0")/lib_settle.sh"
+source "$(dirname "$0")/lib_metrics.sh"   # frame-based settle (replaces flaky fixed sleeps)
 ( sleep 1400; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-audio.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/audio.txt"; : >"$LOG"
@@ -46,7 +47,7 @@ say "  frames: card=$FB after-play=$FE  => $([ -n "$FE" ] && [ -n "$FB" ] && [ "
 # NOTE (2026-07-27): `levelComplete` grep-count removed — it counted levelCompleteStars*.lua
 # asset preloads (always 8, before frame[1]), not wins. This test's subject is the audio mixer.
 say "  starsAssetPreloads:      $(grep -ac levelCompleteStars "$ABLOG")  (NOT a win signal)"
-say "  h_fatal:                 $(grep -ac '\[h_fatal\]' "$ABLOG")"
+say "  h_fatal:                 $(h_fatal_report "$ABLOG")"
 say "  crash-sig:               $(adb logcat -d 2>/dev/null|grep -ciE 'SIGSEGV|Fatal signal|com.rovio.*died')"
 say "  final pid:               [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]"
 say "  --- AudioTrack/AudioOutput status in full logcat ---"

@@ -19,6 +19,7 @@
 set +e
 source "$(dirname "$0")/lib_settle.sh"
 source "$(dirname "$0")/lib_provenance.sh"
+source "$(dirname "$0")/lib_metrics.sh"
 ( sleep 2100; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim.apk          # diagnostic build, as the originals used
 OUT=/work/reports/shots; mkdir -p "$OUT"
@@ -70,7 +71,7 @@ adb exec-out screencap -p > "$OUT/interactive_4.png" 2>/dev/null
 say "  captured interactive_4.png ($(wc -c < "$OUT/interactive_4.png" 2>/dev/null) bytes)"
 
 say "== RESULTS =="
-say "  h_fatal:     $(grep -ac '\[h_fatal\]' "$ABLOG" 2>/dev/null)  (0 = no crash)"
+say "  h_fatal:     $(h_fatal_report "$ABLOG")"
 say "  last frame:  $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1)"
 say "  final pid:   [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]"
 say "  NOTE: the three captures are timing-sensitive (a launch and a mid-arc moment). Check the"

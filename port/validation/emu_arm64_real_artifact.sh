@@ -40,6 +40,7 @@
 #   docker run --rm --network none -v "$PWD":/work ab-emu-arm64 \
 #       bash /work/port/validation/emu_arm64_real_artifact.sh
 set +e
+source "$(dirname "$0")/lib_metrics.sh"
 BUDGET="${ABSHIM_ARM64_BUDGET:-5400}"          # overall wall-clock budget, default 90 min
 ( sleep "$BUDGET"; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-arm64.apk       # THE REAL DELIVERABLE, not a proxy
@@ -114,7 +115,7 @@ say "  furthest milestone reached: $M / 6"
 say "  1=installed 2=process 3=shim loaded 4=engine mapped 5=ctors ran 6=frames"
 say "  final pid:   [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]"
 say "  last frame:  $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null | tail -1)"
-say "  h_fatal:     $(grep -ac '\[h_fatal\]' "$ABLOG" 2>/dev/null)"
+say "  h_fatal:     $(h_fatal_report "$ABLOG")"
 say "  NOTE: a low milestone here is about TCG speed, not necessarily about the artifact. Read the"
 say "        milestone list: everything up to the one reached is genuine evidence about the real APK."
 say DONE

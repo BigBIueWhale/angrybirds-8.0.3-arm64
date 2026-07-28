@@ -35,6 +35,7 @@ set +e
 AVD="${ABSHIM_AVD:-abtest34}"
 PFX="${ABSHIM_OUTPFX:-jniexc}"
 source "$(dirname "$0")/lib_settle.sh"
+source "$(dirname "$0")/lib_metrics.sh"
 ( sleep 2400; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"
@@ -142,7 +143,7 @@ grep -ai 'pending exception\|JNI DETECTED ERROR\|SecurityException\|Permission D
 say ""
 say "== our own guest-read failures for correlation =="
 say "  [gm] read FAIL:           $(grep -ac '\[gm\] read FAIL' "$ABLOG")"
-say "  h_fatal:                  $(grep -ac '\[h_fatal\]' "$ABLOG")"
+say "  h_fatal:                  $(h_fatal_report "$ABLOG")"
 say "  last frame:               $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG"|tail -1)"
 say "  final pid:                [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]"
 say "  full logcat kept at:      reports/shots/jniexc_full_logcat.txt ($(wc -c < "$FULL") bytes)"

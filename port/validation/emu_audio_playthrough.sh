@@ -6,7 +6,8 @@
 # just slower under the audio overhead)? Give it a long settle + play + a multi-minute frame-watch.
 set +e
 source "$(dirname "$0")/lib_settle.sh"
-source "$(dirname "$0")/lib_provenance.sh"   # frame-based settle (replaces flaky fixed sleeps)
+source "$(dirname "$0")/lib_provenance.sh"
+source "$(dirname "$0")/lib_metrics.sh"   # frame-based settle (replaces flaky fixed sleeps)
 ( sleep 2200; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-audio.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/audioplay.txt"; : >"$LOG"
@@ -46,7 +47,7 @@ for w in $(seq 1 24); do
   sleep 15
   CF=$(fnow)
   MB=$(grep -ac 'nativeMixData ENABLED' "$ABLOG")
-  HF=$(grep -ac '\[h_fatal\]' "$ABLOG")
+  HF=$(h_fatal_report "$ABLOG")
   SC=$(grep -ac stack_chk_fail "$ABLOG")
   say "  [t=$((w*15))s] frame[$CF] mixData=$MB h_fatal=$HF stack_chk=$SC"
   [ -n "$CF" ] && [ -n "$LASTF" ] && [ "$CF" -gt "$LASTF" ] && { STUCK=0; LASTF=$CF; } || STUCK=$((STUCK+1))
