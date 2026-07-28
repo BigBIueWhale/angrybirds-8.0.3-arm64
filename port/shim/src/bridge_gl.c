@@ -275,7 +275,13 @@ DEF(h_glShaderSource){ REAL(void,(uint32_t,int,const char*const*,const int*),"gl
          * tolerates that is not something to assume. The shader simply is not sourced. */
         if(!hs[i]){ for(int j=0;j<i;j++) free(hs[j]); free(hs); free(hl); return 0; }
         RD(c,sp,hs[i],sl); hs[i][sl]=0; if(hl)hl[i]=(int)sl; }
-#ifndef ABSHIM_RELEASE
+/* Gated so it can be enabled WITHOUT the rest of the diagnostic build. The full diagnostic shim
+ * logs every fopen (~3800 lines/run) on top of ~350 shader chunks, and that was heavy enough that
+ * the game never reached gameplay: the capture stalled at frame[1] while the app cycled its DNS
+ * retry loop. The instrument was slowing the subject it measures. Building
+ * -DABSHIM_RELEASE -DABSHIM_SHADERDUMP gives release speed with only this dump, which is what
+ * makes capturing the GAMEPLAY variants (not just boot ones) possible. Same pattern as ABSHIM_PERF. */
+#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_SHADERDUMP)
     /* DIAG: dump the shader the guest is about to compile. The A56's Mali/Xclipse driver is the one
      * surface no emulator here stands in for (OPEN_FINDINGS R9), and shader compilation is its most
      * likely failure: SwiftShader is lenient, a real GLES driver is not. The source cannot be read
