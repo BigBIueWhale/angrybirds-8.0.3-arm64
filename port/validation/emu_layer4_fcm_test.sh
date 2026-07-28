@@ -33,7 +33,7 @@
 set +e
 ( sleep 3000; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 OUT=/work/reports/shots; mkdir -p "$OUT"
-LOG="$OUT/layer4_fcm.txt"; : >"$LOG"
+LOG="$OUT/layer4_fcm${ABSHIM_OUTPFX:+_$ABSHIM_OUTPFX}.txt"; : >"$LOG"
 say(){ echo "$@" | tee -a "$LOG"; }
 FAIL=0
 ok(){  printf "  [ OK ] %s\n" "$1" | tee -a "$LOG"; }
@@ -45,8 +45,11 @@ for f in "$CONTROL" "$SHIPPED"; do
   [ -f "$f" ] || { say "FATAL: missing $f"; say "  build it: ABSHIM_FIREBASE_CONTROL=1 bash port/build_apk_x86_release.sh"; exit 1; }
 done
 
-say "== boot API 34 WITH Google Play Services (abgms) =="
-emulator -avd abgms -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
+# AVD overridable so this runs on the API 36 tier too (the A56's actual OS). Both images are
+# google_apis, which is the requirement - the test is meaningless without GMS.
+AVD="${ABSHIM_AVD:-abgms}"
+say "== boot WITH Google Play Services (AVD $AVD) =="
+emulator -avd "$AVD" -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
          -gpu swiftshader_indirect -partition-size 6144 -wipe-data >/tmp/emu.log 2>&1 &
 adb wait-for-device
 for i in $(seq 1 240); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null|tr -d '\r')" = 1 ] && break; sleep 2; done

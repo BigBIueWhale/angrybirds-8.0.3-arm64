@@ -85,7 +85,7 @@ it cannot reach the shipping APK: after adding it, a rebuilt `angrybirds-8.0.3-a
 was invisible in logcat — including anything the engine might report right before giving up. It now
 forwards exactly as `h_log` does.
 
-### R3. De-phone-home layer 4 (Firebase/FCM auto-init) — now proven on a GMS emulator
+### R3. De-phone-home layer 4 (Firebase/FCM auto-init) — proven on a GMS emulator, and on Android 16
 
 Previously listed as open: every emulator tier ran an AOSP image with **no GMS**, so the one layer
 guarding the one path layers 1–3 cannot close was asserted from the manifest and exercised by
@@ -116,6 +116,11 @@ attempts it.
    "FirebaseApp failed to initialize" pair, so it was passing on a 3-vs-2 that could as easily have
    been noise. It now asserts on the **token-registration attempt** specifically — the phone-home
    the layer exists to stop — in both directions.
+
+**Re-verified on Android 16 (API 36), the A56's actual OS**, on the `ab-emu-36` google_apis image:
+GMS present, control attempts token registration once, shipped attempts it zero times, and both
+arms proved they executed (2943 and 2977 `abshim` log lines). So the layer holds on the version the
+phone actually runs, not only on API 34.
 
 Caveat kept honest: the emulator runs `--network none`, so no token could be *fetched* either way.
 What is measured is whether the app's Firebase messaging component **auto-initialises and tries**,

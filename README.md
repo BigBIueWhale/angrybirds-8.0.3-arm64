@@ -108,7 +108,7 @@ maps every `abshim` log line to a diagnosis so one `adb logcat` pinpoints anythi
    Cloud Messaging auto‑registration (the one phone‑home the missing INTERNET permission can't stop,
    since Google Play Services does that network *for* the app) and Facebook local event collection.
 
-**All four layers are verified at runtime.** Layer 4 needed a Google Play Services emulator to
+**All four layers are verified at runtime, on Android 16 — the phone's own OS version.** Layer 4 needed a Google Play Services emulator to
 test at all (`Dockerfile.ab-emu-gms`), because FCM registration is done by GMS *for* the app and
 so survives the missing INTERNET permission. `emu_layer4_fcm_test.sh` proves it differentially:
 the same build with the kill‑switch **removed** attempts token registration, the shipped build
