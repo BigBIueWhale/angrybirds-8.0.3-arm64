@@ -93,15 +93,21 @@ The authentic 8.0.3 input APK (SHA‑256 `0580c3d3…`), the full shim source, t
   it genuinely requires the device. What does cover the arm64 side is the full test suite run on
   AArch64 under qemu-user — 20/20, including the engine load and all 125 C++ constructors — plus
   a byte-identical guest allocation sequence between x86 and AArch64 at two depths.
-- Real‑time frame‑rate under the emulation lock, and the real Mali/Xclipse GPU's shader‑compile path, can only be confirmed on the physical A56 (validation uses software SwiftShader, which is itself the dominant cost in emulator frame timings and so does not predict on‑device rates).
+- Real‑time frame‑rate under the emulation lock, and the real Mali/Xclipse GPU's shader‑compile path, can only be confirmed on the physical A56. (This line used to add "SwiftShader is itself the dominant cost in emulator frame timings" — measured, that is false, and it contradicted the split reported below in this same document. Software rasterisation is ~7–8 % of frame time, not the dominant cost. The frame rate here still does not predict the device's, but for the opposite reason: the cost is CPU‑side emulation, and the A56's CPU differs.)
 - The engine performs roughly 900–1750 heap operations per frame in steady‑state play (measured).
-  Per‑frame time is now split, measured on the **release configuration**: **~92 % inside the shim**
-  (ARM32 emulation + bridges), of which the GL bridge is **~0.9 %**, and **~7–8 % outside it**
-  (GLSurfaceView's `eglSwapBuffers`, rasterisation, vsync). **The emulation dominates; the rasteriser
-  does not** — which contradicts what this document previously assumed. The practical consequence:
-  on the A56 a real GPU replaces a ~7 % slice, so **CPU** single‑thread performance sets the frame
-  rate, not the GPU. The ~24–25 fps seen on this x86 host is a data point, not a prediction for the
-  phone. See `port/OPEN_FINDINGS.md`.
+  Per‑frame time is now split, measured on the **release configuration** by
+  `port/validation/emu_perf_split.sh`, driving actual gameplay. In steady play: **73–75 % is the
+  emulator** (Unicorn running ARM32, plus hook dispatch and the scheduler), **16–18 % the native
+  bridges** (of which the GL bridge is only ~0.6–0.9 % — non‑GL libc bridges are ~20× larger),
+  **~1 % JNI**, and **5–7 % outside the shim** (`eglSwapBuffers`, rasterisation, vsync). Level
+  loading is a different regime (89 % emulator, 6 % bridges). **The emulation dominates; the
+  rasteriser does not** — which contradicts what this document previously assumed in two places.
+  The practical consequence: on the A56 a real GPU replaces only the ~5–7 % slice, so **CPU**
+  single‑thread performance sets the frame rate, not the GPU. The ~24–25 fps seen on this x86 host
+  is a data point, not a prediction for the phone. Three separate wrong measurements preceded this
+  one, none caught by a test — the harness now asserts the impossible cases. See
+  `port/OPEN_FINDINGS.md` R4, which also records a quantified 3–4 % optimisation (`floor` bridging)
+  that was deliberately **not** taken because it would risk game physics.
 
 ---
 

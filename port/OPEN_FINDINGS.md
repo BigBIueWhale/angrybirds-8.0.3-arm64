@@ -59,43 +59,82 @@ Where a sweep found nothing, that is recorded above rather than omitted. A class
 and came back clean is a different statement from one that was never checked, and only one of them
 justifies confidence.
 
-### R4. Where per-frame time goes — measured, and the documented assumption was wrong
+### R4. Where per-frame time goes — measured twice over, and both prior assumptions were wrong
 
 The release notes said the per-frame cost had "only been measured under software rendering, **where
-the rasteriser dominates**". That second clause was an assumption. Measured, it is false.
+the rasteriser dominates**". That clause was an assumption, and it is false. Correcting it raised a
+second question the first measurement could not answer — ~92% of frame time is *inside the shim*,
+but is that Unicorn executing ARM32, or this port's own bridge code running on the guest's behalf?
+Those have opposite consequences: bridge cost is ours to optimise, emulator cost is close to a hard
+ceiling short of replacing Unicorn. So the 92% was split.
 
-Measured on the **release configuration** (`build_apk_x86_perf.sh`: `-DABSHIM_RELEASE` so none of the
-heavy diagnostics are present, plus `-DABSHIM_PERF` for the two timers), four consecutive
-steady-state samples on API 34:
+Measured with `port/validation/emu_perf_split.sh` on the **release configuration**
+(`build_apk_x86_perf.sh`: `-DABSHIM_RELEASE` so no heavy diagnostics, plus `-DABSHIM_PERF` for the
+timers alone), API 34, driving actual gameplay rather than a menu:
 
 ```
-frames=1800 wall=12047ms | IN-shim=11110ms (92%) of which GLbridge=107ms | OUT-shim=940ms  (7%)
-frames=2100 wall=12793ms | IN-shim=11790ms (92%) of which GLbridge=109ms | OUT-shim=1008ms (7%)
-frames=2400 wall=12270ms | IN-shim=11312ms (92%) of which GLbridge=109ms | OUT-shim=949ms  (7%)
-frames=2700 wall=12915ms | IN-shim=11872ms (91%) of which GLbridge=108ms | OUT-shim=1038ms (8%)
+[perf-split] IN-shim=11590ms = emulator=9447ms (75%) + bridges=2015ms (16%, 2617636 calls, GL 112ms) + JNI=127ms (1%: dispatch 1ms + ART-blocking 125ms)
+[perf-split] IN-shim=11870ms = emulator=9441ms (73%) + bridges=2301ms (17%, 2408066 calls, GL  98ms) + JNI=127ms (0%: dispatch 1ms + ART-blocking 126ms)
+[perf-split] IN-shim=12050ms = emulator=9550ms (74%) + bridges=2370ms (18%, 1843529 calls, GL  73ms) + JNI=129ms (1%: dispatch 1ms + ART-blocking 128ms)
+[perf-split] IN-shim=34464ms = emulator=32172ms (89%) + bridges=2159ms (6%, 4482967 calls, GL 178ms) + JNI=133ms (0%: dispatch 1ms + ART-blocking 131ms)   <- level load
 ```
 
-- **~92% of frame time is inside the shim** — ARM32 emulation plus the bridges.
-- **~0.9% is the GL bridge** — this port's marshalling and the driver calls it forwards.
-- **~7–8% is outside the shim** — GLSurfaceView's `eglSwapBuffers`, SwiftShader's rasterisation and
-  any vsync wait.
+Percentages are of **wall** time, so they do not sum to 100: the remaining ~5–7% is OUT-shim
+(`eglSwapBuffers`, rasterisation, vsync). There are two distinct regimes, and quoting either alone
+would mislead:
 
-So **the emulation dominates and the rasteriser does not**, even under a software rasteriser. The
-practical consequence for the A56: a real GPU replaces a ~7% slice, so the phone's **CPU**
-single-thread performance is what determines the frame rate here, not its GPU. ~40 ms/frame
-(~24–25 fps) on this x86 host is a data point, **not** a prediction for the A56 — different CPU,
-different memory system.
+| | steady gameplay | level load |
+|---|---|---|
+| emulator (Unicorn ARM32 + hooks + scheduler) | **73–75 %** | 89 % |
+| native bridges (GL + asset + libc + file) | **16–18 %** | 6 % |
+| — of which the GL bridge | ~0.6–0.9 % | ~0.5 % |
+| JNI (dispatch + blocking ART call) | ~1 % | ~0.4 % |
+| outside the shim (Java swap / vsync) | 5–7 % | 3 % |
 
-**Two wrong measurements preceded this one**, both caught by the numbers being impossible rather
-than by testing:
+**Consequences.**
 
-1. Timing `uc_emu_start` reported a **constant call count** while frames advanced. After boot the
-   guest's whole render loop runs inside **one long-lived `uc_emu_start`**, bridges invoked from
-   hooks during it — so the timer measured the entire run. The measurement had to be inverted.
-2. Process-wide accumulators reported **IN 93% + OUT 65% = 158%** of wall time. `shim_call` is
-   entered from several ART threads, so summing their durations double-counts. The accounting is
-   now `__thread`, and the sanity check is that **entries == frames** (300 per 300) and IN + OUT
-   ≈ 100%.
+- **The emulator proper dominates, and the rasteriser does not** — even under a software rasteriser.
+  On the A56 a real GPU replaces only the ~5–7 % OUT-shim slice, so the phone's **CPU** single-thread
+  performance sets the frame rate, not its GPU.
+- **The bridges are a real 16–18 %**, not the ~0.9 % the GL figure alone suggested. Non-GL (libc)
+  bridges are ~20× the GL bridge. Hottest by call count: **`floor`**, then `free`/`malloc`.
+- Bridge dispatch costs **~0.5–1.3 µs per call** (weighted mean ~0.7 µs over all sampled windows,
+  ~0.97 µs over the gameplay-only windows), at 1.8–4.5 M calls per 300 frames.
+- ~24–25 fps on this x86 host is a **data point, not a prediction** for the A56 — different CPU,
+  different memory system.
+
+**A quantified optimisation that was deliberately NOT taken.** `h_floor` is one line — read the
+double, call the host `floor`, write the result back — so nearly all of its ~0.5–1.3 µs is dispatch
+overhead, not work: Unicorn must end the translated block to invoke a `UC_HOOK_CODE` callback.
+Eliminating it means giving the guest real ARM32 code to execute instead of a bridged stub, i.e.
+hand-written ARM float code that must be bit-exact with libm across NaN, ±inf, ±0 and the
+beyond-int32 range. `floor` is ~20–24 % of bridge time ≈ **3–4 % of frame time**. Trading a
+possible silent change in game physics for 3–4 % in a build that is bit-reproducible, play-tested
+and hash-documented is a bad trade, so it is recorded here rather than done.
+
+**THREE wrong measurements preceded this**, and the pattern is worth more than the numbers: not one
+was caught by a test.
+
+1. Timing `uc_emu_start` reported a **constant call count** while frames advanced 300 → 600 → 900.
+   After boot the guest's whole render loop runs inside **one long-lived `uc_emu_start`**, bridges
+   invoked from hooks during it — so the timer measured the entire run. Caught by the count not
+   moving; the measurement had to be inverted.
+2. Process-wide accumulators reported **IN 93 % + OUT 65 % = 158 %** of wall time. `shim_call` is
+   entered from several ART threads, so summing their durations double-counts. Caught by arithmetic
+   exceeding 100 %. All accumulators are now `__thread` — including `g_gl_ns`, which was a global
+   compared against one thread's time while summing every thread's.
+3. The JNI timer was placed on the RG_JNI hook alone and reported **`JNI=1ms`**. For a
+   `Call*Method`, `env_dispatch_real` only *stashes* the call and redirects the guest; the real ART
+   call runs later in `run_loop` **with the GEL released**, outside that hook. The true figure is
+   ~127 ms/sample, and that time was landing in the residual and being reported as *emulator* — a
+   blocking wait, during which the guest is not executing at all, inflating precisely the number the
+   "CPU-bound on emulation" conclusion rests on. Caught by reading the code path, not by the output,
+   which looked entirely plausible.
+
+Because arithmetic was the only thing that ever caught these, `emu_perf_split.sh` now **asserts** the
+impossible cases instead of leaving them for a reader to notice: GL ≤ bridges, bridges + JNI ≤
+IN-shim, IN % + OUT % within 90–110, and entries ≥ frames. It also discards sample 1, whose window
+contains boot (~140 s against ~12.5 s) — quoting it would be quoting the loading screen.
 
 ### R1. The ~2046 unreadable `E Lua` lines are an **engine** bug, faithfully reproduced
 

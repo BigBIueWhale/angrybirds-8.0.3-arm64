@@ -57,6 +57,12 @@ if [ ! -f "$APK" ]; then
     exit 1
 fi
 
+# Tie the numbers to a binary. Deliberately NOT via record_build/provenance.tsv: that ledger exists
+# to pin SCREENSHOTS to deliverables, and this APK is a measurement tool that gets rebuilt often —
+# adding it there would generate perpetual STALE rows about a build nobody ships. A hash in the log
+# is enough to answer "which binary produced these numbers".
+say "  measuring: $(basename "$APK")  sha256 $(sha256sum "$APK" | cut -c1-16)…"
+
 say "== boot API 34 ($AVD) =="
 emulator -avd "$AVD" -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
     -gpu swiftshader_indirect >/tmp/emu.log 2>&1 &

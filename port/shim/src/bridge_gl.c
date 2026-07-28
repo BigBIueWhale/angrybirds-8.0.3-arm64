@@ -367,9 +367,13 @@ static const struct { const char*n; glh h; } GLT[] = {
 /* Time spent INSIDE the GL bridge, i.e. in the real driver plus our marshalling - everything that
  * is NOT emulating ARM32. Measuring the emulation directly does not work: after boot the guest's
  * whole render loop runs inside ONE long-lived uc_emu_start, and the bridges are called from hooks
- * during it, so a timer around uc_emu_start reports the entire run. This is the complement, and it
- * is the number that matters: under SwiftShader it is dominated by software rasterisation, so
- * subtracting it is what separates the rasteriser's cost from the port's own. */
+ * during it, so a timer around uc_emu_start reports the entire run. This is the complement.
+ *
+ * This comment used to end "under SwiftShader it is dominated by software rasterisation". Measured,
+ * that was wrong twice over: forwarded GL is ~0.8% of frame time, and the rasterisation it was
+ * meant to account for happens OUTSIDE this timer anyway — in eglSwapBuffers on the Java side,
+ * which the split reports as OUT-shim. The useful separation this timer provides is GL-bridge cost
+ * from the OTHER native bridges (libc et al, timed at stub_cb), which turn out to be ~20x larger. */
 /* __thread for the same reason as g_stub_ns in dispatch.c: this is reported as a fraction of a
  * per-thread in-shim total, and it must be a SUBSET of the per-thread bridge total for the
  * stub >= GL invariant in the [perf] line to mean anything. As a global it was compared against
