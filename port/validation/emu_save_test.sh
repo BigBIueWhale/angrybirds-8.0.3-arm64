@@ -3,6 +3,7 @@
 # dir on a win, and RELOAD it after force-stop + relaunch (so the user doesn't replay from scratch)?
 # The shim's FILE bridge (bridge_file.c) is host-suite-validated; this confirms it end-to-end on-device.
 set +e
+source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
 ( sleep 1550; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
@@ -58,8 +59,8 @@ adb exec-out screencap -p > "$OUT/${PFX}_relaunch.png" 2>/dev/null
 kill $C2 2>/dev/null
 say "== RESULTS (save persistence on modern Android) =="
 say "  1st-launch saves written:  $NF private files"
-say "  2nd-launch boot:           init_array=$(grep -aoE 'init_array [0-9]+/125' "$AB2" 2>/dev/null|tail -1)  last-frame=$(grep -aoE 'frame\[[0-9]+\]' "$AB2" 2>/dev/null|tail -1)  h_fatal=$(grep -ac '\[h_fatal\]' "$AB2" 2>/dev/null)"
-say "  2nd-launch reads own files: $(grep -acE 'fopen.*com.rovio.angrybirds|AAsset.*profile|fopen.*(save|profile|progress|settings|\.lua)' "$AB2" 2>/dev/null) (reloaded persisted data)"
+say "  2nd-launch boot:           init_array=$(grep -aoE 'init_array [0-9]+/125' "$AB2" 2>/dev/null|tail -1)  last-frame=$(grep -aoE 'frame\[[0-9]+\]' "$AB2" 2>/dev/null|tail -1)  h_fatal=$(marker_report "$AB2" '\[h_fatal\]')"
+say "  2nd-launch reads own files: $(marker_report "$AB2" 'fopen.*com.rovio.angrybirds|AAsset.*profile|fopen.*(save|profile|progress|settings|\.lua)') (reloaded persisted data)"
 say "  2nd-launch pid:            [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')] (alive => reloaded OK, no crash)"
 say DONE
 adb emu kill >/dev/null 2>&1

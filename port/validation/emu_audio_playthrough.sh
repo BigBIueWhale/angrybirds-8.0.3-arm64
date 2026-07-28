@@ -46,9 +46,9 @@ LASTF=$FB; STUCK=0
 for w in $(seq 1 24); do
   sleep 15
   CF=$(fnow)
-  MB=$(grep -ac 'nativeMixData ENABLED' "$ABLOG")
+  MB=$(marker_report "$ABLOG" 'nativeMixData ENABLED')
   HF=$(h_fatal_report "$ABLOG")
-  SC=$(grep -ac stack_chk_fail "$ABLOG")
+  SC=$(marker_report "$ABLOG" stack_chk_fail)
   say "  [t=$((w*15))s] frame[$CF] mixData=$MB h_fatal=$HF stack_chk=$SC"
   [ -n "$CF" ] && [ -n "$LASTF" ] && [ "$CF" -gt "$LASTF" ] && { STUCK=0; LASTF=$CF; } || STUCK=$((STUCK+1))
   # decisive early-exit: clearly progressed well past the card
@@ -61,10 +61,10 @@ say "== RESULTS (audio playthrough) =="
 say "  install:            ok"
 say "  card frame:         $FB"
 say "  final frame:        $FE   => $([ -n "$FE" ] && [ -n "$FB" ] && [ "$FE" -gt "$FB" ] && echo 'FRAMES CLIMBED PAST CARD (renders/plays with audio)' || echo 'frames did NOT climb past card')"
-say "  nativeMixData:      $(grep -ac 'nativeMixData ENABLED' "$ABLOG")"
-say "  h_fatal:            $(grep -ac '\[h_fatal\]' "$ABLOG")"
-say "  stack_chk_fail:     $(grep -ac stack_chk_fail "$ABLOG")"
-say "  WATCHDOG/FROZEN:    $(grep -acE 'WATCHDOG|FROZEN' "$ABLOG")"
+say "  nativeMixData:      $(marker_report "$ABLOG" 'nativeMixData ENABLED')"
+say "  h_fatal:            $(h_fatal_report "$ABLOG")"
+say "  stack_chk_fail:     $(marker_report "$ABLOG" stack_chk_fail)"
+say "  WATCHDOG/FROZEN:    $(marker_report "$ABLOG" 'WATCHDOG|FROZEN')"
 say "  final pid:          [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]"
 say DONE
 adb emu kill >/dev/null 2>&1

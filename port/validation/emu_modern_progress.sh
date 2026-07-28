@@ -48,7 +48,7 @@ settle_frames "$ABLOG" 120 300
 adb exec-out screencap -p > "$OUT/${PFX}_1_cleared.png" 2>/dev/null
 # NOTE (2026-07-27): `levelComplete` grep-count removed — it counted levelCompleteStars*.lua
 # asset preloads (always 8, before frame[1]), identical in winning and non-winning runs.
-LC=$(grep -ac 'levelCompleteStars' "$ABLOG" 2>/dev/null); say "  starsAssetPreloads=$LC (NOT a win signal) frame=$(fnow) h_fatal=$(h_fatal_report "$ABLOG")"
+LC=$(marker_report "$ABLOG" 'levelCompleteStars'); say "  starsAssetPreloads=$LC (NOT a win signal) frame=$(fnow) h_fatal=$(h_fatal_report "$ABLOG")"
 say "== tap orange NEXT (378,256) -> does level 2 load on modern Android? =="
 adb shell input tap 378 256; sleep 3; adb shell input tap 378 256
 # FIX (2026-07-27): was a fixed `sleep 16` gating the level-2 screenshot — i.e. gating PROOF_9,
@@ -61,9 +61,9 @@ say "== RESULTS (modern-Android multi-level progression) =="
 say "  install:           ok"
 say "  win/advance check: SCREENSHOTS ONLY -> ${PFX}_1_cleared.png (win) + ${PFX}_2_level2.png (level 2)"
 say "  starsAssetPreloads:$LC  (NOT a win signal — see note above)"
-say "  h_fatal:           $(grep -ac '\[h_fatal\]' "$ABLOG" 2>/dev/null)  (0 = no crash across win + advance)"
-say "  s-construct-guard: $(grep -ac 's-construct-null-guard' "$ABLOG" 2>/dev/null)"
-say "  real St11logic:    $(grep -acE 'THROW.*St11logic_error' "$ABLOG" 2>/dev/null)"
+say "  h_fatal:           $(h_fatal_report "$ABLOG")  (0 = no crash across win + advance)"
+say "  s-construct-guard: $(marker_report "$ABLOG" 's-construct-null-guard')"
+say "  real St11logic:    $(marker_report "$ABLOG" 'THROW.*St11logic_error')"
 say "  last frame:        $(fnow)"
 say "  final pid:         [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]  (alive => advanced OK)"
 say DONE

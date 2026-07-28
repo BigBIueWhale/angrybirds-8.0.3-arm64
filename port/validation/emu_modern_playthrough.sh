@@ -67,10 +67,10 @@ say "  install:           ok"
 # runs that won and runs that never cleared a pig, so it never measured anything. No abshim
 # log marker distinguishes a win; the END SCREENSHOT is the only authority.
 say "  win check:         SCREENSHOT ONLY -> ${PFX}_3_end.png (a win shows 'LEVEL CLEARED' + stars + score)"
-say "  levelCompleteStars asset preloads (NOT a win signal): $(grep -ac 'levelCompleteStars' "$ABLOG" 2>/dev/null)"
+say "  levelCompleteStars asset preloads (NOT a win signal): $(marker_report "$ABLOG" 'levelCompleteStars')"
 say "  h_fatal:           $(h_fatal_report "$ABLOG")"
-say "  s-construct-guard: $(grep -ac 's-construct-null-guard' "$ABLOG" 2>/dev/null)  (level-end fix firing)"
-say "  real St11logic:    $(grep -acE 'THROW.*St11logic_error' "$ABLOG" 2>/dev/null)"
+say "  s-construct-guard: $(marker_report "$ABLOG" 's-construct-null-guard')  (level-end fix firing)"
+say "  real St11logic:    $(marker_report "$ABLOG" 'THROW.*St11logic_error')"
 say "  last frame:        $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1)"
 say "  final pid:         [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]  (alive => played through)"
 say DONE

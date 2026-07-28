@@ -5,7 +5,8 @@
 # drags (the sequence proven to reach levelComplete), then dumps the logic_error diagnostics.
 set +e
 source "$(dirname "$0")/lib_settle.sh"
-source "$(dirname "$0")/lib_provenance.sh"   # frame-based settle (replaces flaky fixed sleeps)
+source "$(dirname "$0")/lib_provenance.sh"
+source "$(dirname "$0")/lib_metrics.sh"   # frame-based settle (replaces flaky fixed sleeps)
 ( sleep 1300; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/playthroughR.txt"; : >"$LOG"
@@ -41,7 +42,7 @@ settle_frames "$ABLOG" 120 300
 adb exec-out screencap -p > "$OUT/playthroughR_end.png" 2>/dev/null
 echo "== RESULT: logic_error capture ==" | tee -a "$LOG"
 grep -aE 'levelComplete|THROW #1[5-9]|THROW #2[0-9]|logicerr-msg|logicerr-bt|\[h_fatal\]' "$ABLOG" 2>/dev/null | tail -30 | tee -a "$LOG"
-echo "guard-fired: $(grep -ac 'empty-json-guard\] empty' "$ABLOG" 2>/dev/null)" | tee -a "$LOG"
+echo "guard-fired: $(marker_report "$ABLOG" 'empty-json-guard\] empty')" | tee -a "$LOG"
 echo "final_pid: [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]" | tee -a "$LOG"
 echo DONE | tee -a "$LOG"
 adb emu kill >/dev/null 2>&1

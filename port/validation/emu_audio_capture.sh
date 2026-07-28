@@ -49,7 +49,7 @@ adb shell monkey -p com.rovio.angrybirds -c android.intent.category.LAUNCHER 1 >
 
 say "== wait for render (frame[601]+), then CAPTURE the null-sink monitor while playing =="
 for s in $(seq 1 130); do sleep 5; fn=$(grep -aoE 'frame\[[0-9]+\]' "$ABLOG"|tail -1|grep -oE '[0-9]+'); [ -n "$fn" ]&&[ "$fn" -ge 601 ]&&break; done
-MB=$(grep -ac 'nativeMixData ENABLED' "$ABLOG")
+MB=$(marker_report "$ABLOG" 'nativeMixData ENABLED')
 say "  card at frame[$(grep -aoE 'frame\[[0-9]+\]' "$ABLOG"|tail -1)]  mixData-before-capture=$MB"
 parecord --device=vsink.monitor --format=s16le --rate=44100 --channels=2 "$WAV" 2>/tmp/pa/rec.log &
 RECPID=$!
@@ -61,8 +61,8 @@ sleep 16
 kill $RECPID 2>/dev/null; sleep 1
 say "== RESULTS (continuous-audio capture) =="
 say "  install:        ok"
-say "  mixData total:  $(grep -ac 'nativeMixData ENABLED' "$ABLOG")  (>>8 => CONTINUOUS mixing, PulseAudio drained the buffer)"
-say "  h_fatal:        $(h_fatal_report "$ABLOG")   stack_chk: $(grep -ac stack_chk_fail "$ABLOG")"
+say "  mixData total:  $(marker_report "$ABLOG" 'nativeMixData ENABLED')  (>>8 => CONTINUOUS mixing, PulseAudio drained the buffer)"
+say "  h_fatal:        $(h_fatal_report "$ABLOG")   stack_chk: $(marker_report "$ABLOG" stack_chk_fail)"
 say "  final frame:    $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG"|tail -1)"
 say "  WAV bytes:      $(stat -c%s "$WAV" 2>/dev/null || echo 0)"
 say "  --- sox stat (Maximum/Minimum amplitude & RMS non-zero => ACTUAL SOUND, not silence) ---"

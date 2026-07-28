@@ -50,7 +50,7 @@ adb exec-out screencap -p > "$OUT/modern34_screen.png" 2>/dev/null
 say "== RESULTS =="
 say "  Q1 install:   $INST"
 say "  init_array:   $(grep -aoE 'init_array [0-9]+/125' "$ABLOG" 2>/dev/null | tail -1)  (125/125 => the ARM32 engine's C++ ctors ran = Unicorn JIT works)"
-say "  JNI_OnLoad:   $(grep -ac 'JNI_OnLoad' "$ABLOG" 2>/dev/null)   last frame: $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1)"
+say "  JNI_OnLoad:   $(marker_report "$ABLOG" 'JNI_OnLoad')   last frame: $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1)"
 say "  h_fatal:      $(h_fatal_report "$ABLOG")"
 say "  final pid:    [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]  (alive => running)"
 say "  crash-sig:    $(adb logcat -d 2>/dev/null | grep -ciE 'SIGSEGV|Fatal signal|com.rovio.*died')"

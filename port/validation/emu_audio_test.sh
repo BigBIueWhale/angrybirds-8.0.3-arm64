@@ -30,7 +30,7 @@ adb logcat -s abshim > "$ABLOG" 2>/dev/null &
 adb shell monkey -p com.rovio.angrybirds -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
 say "== wait for tutorial card (frame[601]+), then PLAY (audio active) =="
 for s in $(seq 1 130); do sleep 5; fn=$(fnow); [ -n "$fn" ]&&[ "$fn" -ge 601 ]&&break; done
-FB=$(fnow); MB=$(grep -ac 'nativeMixData ENABLED' "$ABLOG"); say "  card at frame[$FB]  (nativeMixData calls so far: $MB)"
+FB=$(fnow); MB=$(marker_report "$ABLOG" 'nativeMixData ENABLED'); say "  card at frame[$FB]  (nativeMixData calls so far: $MB)"
 adb shell input tap 390 266; sleep 4; adb shell input tap 390 266; sleep 12
 adb shell input swipe 207 118 110 150 700; sleep 8
 adb shell input swipe 207 118 122 140 700; sleep 8
@@ -42,11 +42,11 @@ FE=$(fnow)
 adb exec-out screencap -p > "$OUT/audio_end.png" 2>/dev/null
 say "== RESULTS (audio) =="
 say "  install:                 ok"
-say "  nativeMixData CALLED:    $(grep -ac 'nativeMixData ENABLED' "$ABLOG")  (>0 => AudioTrack inited + mixer running)"
+say "  nativeMixData CALLED:    $(marker_report "$ABLOG" 'nativeMixData ENABLED')  (>0 => AudioTrack inited + mixer running)"
 say "  frames: card=$FB after-play=$FE  => $([ -n "$FE" ] && [ -n "$FB" ] && [ "$FE" -gt "$FB" ] && echo 'ADVANCED (no audio freeze/deadlock)' || echo 'CHECK (did frames stall?)')"
 # NOTE (2026-07-27): `levelComplete` grep-count removed — it counted levelCompleteStars*.lua
 # asset preloads (always 8, before frame[1]), not wins. This test's subject is the audio mixer.
-say "  starsAssetPreloads:      $(grep -ac levelCompleteStars "$ABLOG")  (NOT a win signal)"
+say "  starsAssetPreloads:      $(marker_report "$ABLOG" levelCompleteStars)  (NOT a win signal)"
 say "  h_fatal:                 $(h_fatal_report "$ABLOG")"
 say "  crash-sig:               $(adb logcat -d 2>/dev/null|grep -ciE 'SIGSEGV|Fatal signal|com.rovio.*died')"
 say "  final pid:               [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]"

@@ -46,8 +46,8 @@ adb shell input swipe 207 118 118 136 700
 # varies ~1.8-15 fps between runs, so it silently captured mid-level on slow runs. See lib_settle.sh.
 settle_frames "$ABLOG" 120 300
 for w in $(seq 1 20); do
-  sleep 15; CF=$(fnow); HF=$(h_fatal_report "$ABLOG"); SC=$(grep -ac stack_chk_fail "$ABLOG")
-  say "  [t=$((w*15))s] frame[$CF] mixData=$(grep -ac 'nativeMixData ENABLED' "$ABLOG") h_fatal=$HF stack_chk=$SC"
+  sleep 15; CF=$(fnow); HF=$(h_fatal_report "$ABLOG"); SC=$(marker_report "$ABLOG" stack_chk_fail)
+  say "  [t=$((w*15))s] frame[$CF] mixData=$(marker_report "$ABLOG" 'nativeMixData ENABLED') h_fatal=$HF stack_chk=$SC"
   [ -n "$CF" ] && [ "$CF" -ge 1201 ] && { say "  => reached frame[1201] with audio on API 34"; break; }
   [ "$HF" -gt 0 ] && { say "  => FATAL"; break; }
 done
@@ -56,10 +56,10 @@ say "== RESULTS (API 34 audio) =="
 say "  install:           ok"
 say "  card frame:        601"
 say "  final frame:       $(fnow)"
-say "  nativeMixData:     $(grep -ac 'nativeMixData ENABLED' "$ABLOG")  (>0 => AudioTrack inited + mixer ran under modern W^X)"
-say "  h_fatal:           $(grep -ac '\[h_fatal\]' "$ABLOG")  (0 = no crash)"
-say "  stack_chk_fail:    $(grep -ac stack_chk_fail "$ABLOG")  (0 = nested-gt fix holds on API 34)"
-say "  WATCHDOG/FROZEN:   $(grep -acE 'WATCHDOG|FROZEN' "$ABLOG")"
+say "  nativeMixData:     $(marker_report "$ABLOG" 'nativeMixData ENABLED')  (>0 => AudioTrack inited + mixer ran under modern W^X)"
+say "  h_fatal:           $(h_fatal_report "$ABLOG")  (0 = no crash)"
+say "  stack_chk_fail:    $(marker_report "$ABLOG" stack_chk_fail)  (0 = nested-gt fix holds on API 34)"
+say "  WATCHDOG/FROZEN:   $(marker_report "$ABLOG" 'WATCHDOG|FROZEN')"
 say "  init_array:        $(grep -aoE 'init_array [0-9]+/125' "$ABLOG" | tail -1)  (125/125 = JIT under W^X)"
 say "  final pid:         [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]  (alive => played through with audio)"
 say DONE

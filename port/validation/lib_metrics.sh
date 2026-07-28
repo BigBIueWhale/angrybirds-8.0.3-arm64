@@ -34,8 +34,9 @@ h_fatal_report() {
 }
 
 # Same idea for any other counted marker: a zero is only meaningful if the log exists.
+# Uses -E so both plain and extended patterns work through one helper.
 marker_report() {
     local log="$1" pat="$2"
     if [ ! -s "$log" ]; then printf 'NOT MEASURED (empty log)'; return 0; fi
-    printf '%s' "$(grep -ac "$pat" "$log" 2>/dev/null)"
+    printf '%s' "$(grep -acE "$pat" "$log" 2>/dev/null)"
 }
