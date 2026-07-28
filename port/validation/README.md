@@ -598,6 +598,13 @@ of them are load-bearing parts of the pipeline rather than helpers:
   screenshot in this repo was produced by its output**, because an arm64 AVD cannot run on an x86_64
   host. It is invoked by `build_apk_x86_release.sh` and `build_apk_x86_audio.sh`. A reader tracing
   "where did this win screenshot come from" had no documented path to it.
+- **`port/validation/check_no_sockets.py`** — asserts the shim imports **no network-capable symbol**,
+  checked against *everything* it imports rather than six hand-picked names, and with the positive
+  control built into the check: Rovio's untouched engine imports 18 such symbols, so if the scan
+  reports zero for the control it fails outright — a clean shim result from a broken scan is
+  impossible. The old loop tested `socket connect sendto recvfrom getaddrinfo gethostbyname`; the
+  engine imports eleven families beyond those (`send`, `recv`, `bind`, `setsockopt`, `inet_*`,
+  `if_*`, `getpeername`, `getsockname`, `getsockopt`, `freeaddrinfo`, `gai_strerror`).
 - **`port/validation/check_depermission.py`** — asserts the shipped manifest strips **every**
   permission `depermission.py` claims to, derived from that script's own `STRIP` map instead of a
   hand-written list. `verify_claims.sh` previously checked six names by hand while eleven strings

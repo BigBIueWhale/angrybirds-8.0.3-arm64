@@ -87,6 +87,8 @@ cd "$(dirname "$0")/../.." || exit 1
 APK=out/angrybirds-8.0.3-arm64.apk
 AUDIO=out/angrybirds-8.0.3-arm64-audio.apk
 ORIG=apks/com.rovio.angrybirds@8.0.3.apk
+# Rovio's untouched 32-bit engine: the positive control for the socket-import scan (it imports 18).
+ENGINE_ORIG=work803/libv7/libAngryBirdsClassic.so
 FAIL=0
 ok(){ printf "  [ OK ] %s\n" "$1"; }
 # Guard for checks that COUNT things. A count of 0 from a missing or unreadable file is
@@ -407,13 +409,21 @@ if ! readelf -sW --dyn-syms "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" 2>/dev/
   bad "socket-import scan: cannot read the shim's dynamic symbol table - not measured"
   NETIMP=2
 fi
-for sym in socket connect sendto recvfrom getaddrinfo gethostbyname; do
-  [ "$NETIMP" = "2" ] && break
-  c=$(readelf -sW --dyn-syms "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" 2>/dev/null \
-      | awk -v s="$sym" '$8==s && $7=="UND"{n++} END{print n+0}')
-  [ "$c" != "0" ] && { bad "shim IMPORTS host $sym (x$c) — it could open a real socket"; NETIMP=1; }
-done
-[ "$NETIMP" = "0" ] && ok "shim imports NO host socket symbols (no socket capability at all)"
+# CHECKED AGAINST EVERYTHING IT IMPORTS, not six hand-picked names. The old loop tested socket,
+# connect, sendto, recvfrom, getaddrinfo and gethostbyname; a shim importing send, recv, bind,
+# setsockopt, inet_addr or if_nametoindex would have passed it. Rovio's own engine imports ELEVEN
+# families beyond those six, which is what makes it the control: check_no_sockets.py fails unless the
+# control shows matches, so a broken scan cannot report a clean shim. (The first attempt at this scan
+# used `grep -EiX`; GNU grep's -X takes an argument and ate the pattern, and "0 matches" looked like
+# a result.)
+if [ "$NETIMP" != "2" ]; then
+  if python3 "$(dirname "$0")/check_no_sockets.py" \
+        "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" "$ENGINE_ORIG"; then
+    ok "shim imports NO network-capable symbol (scan validated against Rovio's engine)"
+  else
+    bad "the socket-import scan failed — see the lines above"; NETIMP=1
+  fi
+fi
 
 # TITLE CORRECTED (2026-07-28). This used to claim "the same build with only the mixer enabled",
 # which nothing here verifies - no check bounded how the two shims differ, and `nativeMixData`
