@@ -32,6 +32,27 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R12. The premise, reproduced: the original APK genuinely cannot install on 64-bit-only Android
+
+This project exists because Angry Birds Classic 8.0.3 "cannot be installed anymore". That was taken
+as given for the whole effort and never actually demonstrated — which makes it the oldest unchecked
+assumption in the repo. It fell out of building `emu_signature_clash.sh`, which needed the original
+APK installed somewhere:
+
+    # API 34 (x86_64), installing Rovio's untouched com.rovio.angrybirds@8.0.3.apk
+    Failure [INSTALL_FAILED_NO_MATCHING_ABIS: Failed to extract native libraries, res=-113]
+
+The original ships `armeabi-v7a` and `x86` and nothing 64-bit. A 64-bit-only Android has no ABI it
+can satisfy, so the package manager refuses it before any of the interesting questions — signatures,
+targetSdk, Play Protect — are even reached. The A56 is in exactly that position for the ARM side of
+that pair, which is the whole reason the shim exists.
+
+It also bounds what the port had to solve. The refusal is `NO_MATCHING_ABIS`, not a crash, not a
+missing-symbol failure, not a targetSdk floor: the original is a *complete, working* game whose only
+disqualification is the instruction set of its payloads. That is consistent with the approach taken —
+keep the engine byte-for-byte and re-host it — and inconsistent with the abandoned one, rebuilding
+1092 stripped NEON functions.
+
 ### R11. The other half of the GPU surface: the engine's one capability query, and what it decides
 
 R10 screened what the engine asks the driver to **compile**. This screens what the driver **tells the
