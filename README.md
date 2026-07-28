@@ -122,6 +122,16 @@ so survives the missing INTERNET permission. `emu_layer4_fcm_test.sh` proves it 
 the same build with the kill‑switch **removed** attempts token registration, the shipped build
 attempts it **zero** times. See `port/OPEN_FINDINGS.md`.
 
+**What the four layers do *not* cover, stated so "four layers" is not read as "everything".** They
+block what the app does *itself*. They cannot block the app asking **Android** to open something —
+`startActivity(ACTION_VIEW, "market://details?id=…")` is an IPC to the system, not a socket in this
+process, so no permission and no layer here intercepts it. The capability is present because
+`classes.dex` is byte‑for‑byte Rovio's, and the game does load its app‑rater. Measured
+(`emu_intent_probe.sh`, unfiltered logcat): **zero** outbound `VIEW`/`market://`/`http` intents
+across a full playthrough including a level end, with a built‑in positive control so that zero is a
+measurement rather than a blind spot. That bounds it to the path a player actually takes; it is not a
+proof the prompt can never appear. See `port/OPEN_FINDINGS.md` R13.
+
 Native Flurry / Rovio‑BI still gather data **locally**, but it is **sendless** — layer 1 denies every
 socket, so nothing collected can ever leave the device. (What you actually see in `logcat` is the bundled SDK's own resolver reading `/etc/hosts`
 over and over — 1851 times in one measured playthrough — plus `[net] l_socket -> hard-fail
