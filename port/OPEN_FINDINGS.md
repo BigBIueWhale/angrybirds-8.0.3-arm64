@@ -32,6 +32,33 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R7. Where the game's data actually goes — app-private only, so scoped storage never applies
+
+Traced from the run logs rather than assumed, because "old game on modern Android" usually means a
+storage-permission problem and this one has none.
+
+Every file the guest opens in a full playthrough resolves under exactly four roots:
+
+| root | opens (one run) | what |
+|---|---|---|
+| `/data/user/0/com.rovio.angrybirds/files/` | 74 | saves — `settings.lua`, `highscores.lua`, each written `.tmp` then renamed |
+| `/proc/cpuinfo`, `/proc/socinfo` | 3 + 3 | CPU probing at startup |
+| `/system/cpu`, `/system/soc` | 3 + 3 | ditto |
+
+**No `/sdcard`, no `/storage`, no `/mnt/sdcard` appears in any captured run.** That is why the app
+needs no storage permission at all, and why scoped storage — which broke a great many apps of this
+vintage on Android 11+ — is simply not in the picture: app-private internal storage was never
+restricted by it.
+
+Two consequences worth knowing:
+
+- Saves survive an **update-install** (same signer, same package) and are deleted by an
+  **uninstall**. That is the mechanism behind the signer check in `verify_claims.sh` and the
+  `INSTALL_FAILED_UPDATE_INCOMPATIBLE` row in `ONDEVICE.md`: a mismatched key forces an uninstall,
+  and the uninstall is what costs the saves — not the reinstall.
+- The `.tmp`-then-rename pattern means a save interrupted mid-write leaves the previous good file
+  intact, so a crash during save cannot corrupt progress.
+
 ### R6. The payload lookup depends on `extractNativeLibs` defaulting to true
 
 `load_engine_bytes()` finds the 32-bit engine by calling `dladdr()` on one of its own functions,
