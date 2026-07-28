@@ -60,6 +60,19 @@ $CC -shared -fPIC -O2 -DABSHIM_RELEASE $AUDIO_FLAG -Wno-unused -I/opt/unicorn/in
   -Wl,-z,max-page-size=16384 -o /tmp/shim.so
 echo "   arch: $(readelf -h /tmp/shim.so 2>/dev/null | sed -n 's/.*Machine: *//p') (must be AArch64)"
 echo "   exports: $(readelf --dyn-syms -W /tmp/shim.so 2>/dev/null | grep -cE ' (Java_com_rovio_|JNI_OnLoad$)') JNI entry points"
+# A build that emits a shim with no JNI entry points is a build that produces an APK which dies at
+# launch with UnsatisfiedLinkError, and until now it would have done so QUIETLY. `gen_thunks.py`'s
+# output is redirected with `>`, which truncates the generated file BEFORE the script runs, and the
+# `[ -f "$DEX" ] && python3 ... && echo` chain does not trip `set -e` when a command inside it fails
+# (set -e exempts non-final commands of an && list). So a failure there leaves an empty
+# jni_thunks.gen.c in the source tree, the compile succeeds because an empty C file is valid, and the
+# count is only PRINTED. Same shape as depermission.py reporting "0 neutralised" as a result.
+# Assert instead. This only adds a failure path: when it passes the artifact is byte-identical.
+JNIN=$(readelf --dyn-syms -W /tmp/shim.so 2>/dev/null | grep -cE ' (Java_com_rovio_|JNI_OnLoad$)')
+[ "${JNIN:-0}" -ge 8 ] || { echo "FATAL: shim exports only ${JNIN:-0} JNI entry points (expected ~73)."; \
+    echo "       jni_thunks.gen.c is $(wc -c < "$S/jni_thunks.gen.c" 2>/dev/null) bytes — if that is 0,"; \
+    echo "       gen_thunks.py failed and '>' had already truncated it. Refusing to emit an APK that"; \
+    echo "       would die at launch with UnsatisfiedLinkError."; exit 1; }
 
 echo "== 2/5 unpack original APK + strip network/tracking permissions (no phone-home) =="
 rm -rf "$WORK"; mkdir -p "$WORK"; (cd "$WORK" && unzip -q "$IN")
