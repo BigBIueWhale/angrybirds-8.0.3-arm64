@@ -53,6 +53,10 @@ static struct sobj *getobj(sched*S, uint32_t addr, int kind){
     unsigned b=(addr>>4)&255u;
     for(struct sobj*o=S->obj[b]; o; o=o->hnext) if(o->addr==addr) return o;
     struct sobj*o=(struct sobj*)calloc(1,sizeof *o);
+    /* Unchecked before: the very next line dereferenced this. Every guest mutex/cond/rwlock
+     * operation allocates through here on first use, so an OOM meant a NULL deref rather than a
+     * failed lock. Callers now propagate the failure - see the !mx / !cv / !o guards below. */
+    if(!o) return NULL;
     o->addr=addr; o->kind=kind; o->hnext=S->obj[b]; S->obj[b]=o; return o;
 }
 static void __attribute__((unused)) destroyobj(sched*S, uint32_t addr){  /* wired when mutex_destroy is */
@@ -157,6 +161,7 @@ static void grant_mutex(sched*S, struct sobj*mx, gthread*w){
 }
 static void mutex_release(sched*S, uint32_t m){
     struct sobj*mx=getobj(S,m,SOBJ_MUTEX);
+    if(!mx) return;
     gthread*w=wq_pop(&mx->waiters);
     if(w) grant_mutex(S,mx,w);
     else { mx->owner_id=0; mx->count=0; }
@@ -168,6 +173,9 @@ static void cond_release_one(sched*S, struct sobj*cv, gthread*w, uint32_t result
     /* w is leaving the cond wait (signalled or timed out); re-acquire its mutex */
     w->inject_val=result; w->inject_r0=1; w->wait_obj=NULL;
     struct sobj*mx=getobj(S,w->wait_mutex,SOBJ_MUTEX);
+    /* OOM re-acquiring the mutex on wake: leave the thread runnable rather than deref NULL. It
+     * proceeds without the lock, which is wrong but survivable; crashing here is neither. */
+    if(!mx){ w->wait_kind=WK_NONE; return; }
     if(mx->owner_id==0) grant_mutex(S,mx,w);
     else { w->wait_kind=WK_MUTEX; w->wait_obj=mx; wq_push(&mx->waiters,w); }
 }
@@ -490,6 +498,7 @@ void sched_yield_now(sched *S){
 
 int sched_mutex_lock(sched *S, uint32_t m, int trylock){
     struct sobj*mx=getobj(S,m,SOBJ_MUTEX);
+    if(!mx) return E_BUSY;   /* out of memory: report contention rather than crash */
     gthread*c=S->cur;
     if(mx->owner_id==0){ mx->owner_id=c->id; mx->count=1; return 0; }
     if(mx->owner_id==c->id){ mx->count++; return 0; } /* recursive-safe over-approximation */
@@ -500,6 +509,7 @@ int sched_mutex_lock(sched *S, uint32_t m, int trylock){
 }
 int sched_mutex_unlock(sched *S, uint32_t m){
     struct sobj*mx=getobj(S,m,SOBJ_MUTEX);
+    if(!mx) return 0;
     if(mx->owner_id!=S->cur->id) return E_PERM;
     if(mx->count>1){ mx->count--; return 0; }
     mutex_release(S,m);
@@ -508,8 +518,9 @@ int sched_mutex_unlock(sched *S, uint32_t m){
 
 int sched_cond_wait(sched *S, uint32_t c, uint32_t m, uint64_t deadline_ns){
     struct sobj*cv=getobj(S,c,SOBJ_COND);
+    if(!cv) return 0;
     /* release the mutex (hands off to any waiter) then block on the cond */
-    if(getobj(S,m,SOBJ_MUTEX)->owner_id==S->cur->id) mutex_release(S,m);
+    { struct sobj*mo=getobj(S,m,SOBJ_MUTEX); if(mo && mo->owner_id==S->cur->id) mutex_release(S,m); }
     S->cur->wait_mutex=m; S->cur->wait_kind=WK_COND; S->cur->wait_obj=cv;
     S->cur->deadline_ns=deadline_ns; S->cur->timed_out=0;
     wq_push(&cv->waiters, S->cur);
@@ -529,6 +540,7 @@ int sched_sleep(sched *S, uint64_t duration_ns){
 }
 int sched_cond_wake(sched *S, uint32_t c, int broadcast){
     struct sobj*cv=getobj(S,c,SOBJ_COND);
+    if(!cv) return 0;
     for(;;){
         gthread*w=wq_pop(&cv->waiters);
         if(!w) break;
@@ -541,6 +553,7 @@ int sched_cond_wake(sched *S, uint32_t c, int broadcast){
 
 int sched_rwlock_lock(sched *S, uint32_t rw, int write, int trylock){
     struct sobj*o=getobj(S,rw,SOBJ_RWLOCK);
+    if(!o) return E_BUSY;
     if(write){
         if(o->writer_id==0 && o->readers==0){ o->writer_id=S->cur->id; return 0; }
         if(trylock) return E_BUSY;
@@ -555,6 +568,7 @@ int sched_rwlock_lock(sched *S, uint32_t rw, int write, int trylock){
 }
 int sched_rwlock_unlock(sched *S, uint32_t rw){
     struct sobj*o=getobj(S,rw,SOBJ_RWLOCK);
+    if(!o) return 0;
     if(o->writer_id==S->cur->id){ o->writer_id=0; }
     else if(o->readers>0){ o->readers--; if(o->readers>0) return 0; }
     else return E_PERM;
@@ -570,6 +584,7 @@ int sched_rwlock_unlock(sched *S, uint32_t rw){
 
 int sched_once(sched *S, uint32_t once, uint32_t routine){
     struct sobj*o=getobj(S,once,SOBJ_ONCE);
+    if(!o) return 0;                                  /* OOM: treat as already-done rather than crash */
     if(o->once_state==2) return 0;
     if(o->once_state==1){                             /* another thread runs it: wait */
         S->cur->wait_kind=WK_ONCE; S->cur->wait_obj=o; wq_push(&o->waiters,S->cur);
