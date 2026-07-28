@@ -1,0 +1,60 @@
+# ab-emu-gms — x86_64 Android 14 (API 34) emulator rig **with Google Play Services**.
+#
+# WHY THIS TIER EXISTS
+# --------------------
+# Every other emulator here runs an AOSP `default` system image, which has **no GMS**. That left
+# exactly one de-phone-home layer untested — and it is the layer guarding the one path the others
+# cannot close.
+#
+# The four layers are: (1) no INTERNET permission, so the kernel refuses the app's sockets; (2) the
+# shim's libc hard-fails socket calls; (3) manifest billing/accounts/push neutralised; (4)
+# `manifest_firebase_off.py` injects `firebase_messaging_auto_init_enabled=false`.
+#
+# Layer 4 matters because **FCM registration is performed by Google Play Services on the app's
+# behalf** — it does not need the app's own INTERNET permission, so layers 1–3 cannot stop it. On an
+# emulator without GMS, Firebase never initialises at all (`Default FirebaseApp failed to
+# initialize`, `Google Play Store is missing.`), so the kill-switch is never put to the test.
+#
+# The Galaxy A56 **does** have GMS. This image reproduces that condition so layer 4 can actually be
+# exercised instead of merely asserted from the manifest. See port/OPEN_FINDINGS.md.
+#
+# `google_apis` (not `google_apis_playstore`) is deliberate: it ships Google Play Services — which is
+# what performs FCM registration and is therefore the thing under test — without the Play Store app.
+# The playstore variant additionally locks the system image to a non-writable state, which is
+# unhelpful here and buys nothing for this test.
+#
+#   docker build -f port/docker/Dockerfile.ab-emu-gms -t ab-emu-gms port/docker
+#
+# ---------------------------------------------------------------------------
+# NETWORK POLICY
+# ---------------------------------------------------------------------------
+# Building requires network (sdkmanager fetches the google_apis system image). Every RUN of the
+# image is launched `--network none`, exactly like the other tiers — which is itself part of the
+# test: if the app cannot reach the network and GMS cannot either, then any FCM registration attempt
+# still has to *appear* in logcat as an attempt, which is what we assert on.
+# Treat the build host as internet-reachable: never `-p`/`--publish`, never `--network host`.
+#
+# ---------------------------------------------------------------------------
+# REPRODUCIBILITY LIMITATION
+# ---------------------------------------------------------------------------
+# Inherits every float described in Dockerfile.ab-emu and Dockerfile.ab-emu-34, plus its own:
+# Google revises system images in place, so `system-images;android-34;google_apis;x86_64` is not a
+# fixed artifact. The revision actually installed is appended to /IMAGE_VERSIONS at build time, so
+# whatever produced a given result is always recoverable from the image itself.
+
+ARG BASE=ab-emu-34:latest
+FROM ${BASE}
+
+RUN yes | sdkmanager "system-images;android-34;google_apis;x86_64" >/tmp/sdkgms.log 2>&1
+
+RUN echo "no" | avdmanager create avd -n abgms \
+        -k "system-images;android-34;google_apis;x86_64" --force >/tmp/avdgms.log 2>&1
+
+# Fail the build rather than publish a broken image (same rule as ab-emu-34).
+RUN set -e; \
+    test -f "$HOME/.android/avd/abgms.avd/config.ini" || { echo "FATAL: AVD abgms was not created"; cat /tmp/avdgms.log; exit 1; }; \
+    test -f "$HOME/.android/avd/abtest34.avd/config.ini" || { echo "FATAL: inherited AVD abtest34 is missing"; exit 1; }; \
+    { echo -n "sysimg-34-gms  "; grep Pkg.Revision $ANDROID_SDK_ROOT/system-images/android-34/google_apis/x86_64/source.properties; } >> /IMAGE_VERSIONS; \
+    cat /IMAGE_VERSIONS
+
+CMD ["/bin/bash"]

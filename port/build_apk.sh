@@ -66,7 +66,16 @@ rm -rf "$WORK"; mkdir -p "$WORK"; (cd "$WORK" && unzip -q "$IN")
 python3 /work/port/depermission.py "$WORK/AndroidManifest.xml" "$WORK/AndroidManifest.xml" || true
 # Layer 4 (GMS-mediated): disable Firebase Cloud Messaging auto-init so it can't register a device
 # token via Google Play Services (which would phone home even without the app's INTERNET permission).
-python3 /work/port/manifest_firebase_off.py "$WORK/AndroidManifest.xml" "$WORK/AndroidManifest.xml"
+# ABSHIM_FIREBASE_CONTROL=1 SKIPS this injection and writes a separately-named APK. It exists
+# solely so the layer-4 test has a CONTROL: proving the kill-switch works requires showing that the
+# same build WITHOUT it does attempt FCM registration on a GMS device. Never set for a shipping
+# build - with the env unset this branch is not taken and the default output is byte-identical.
+if [ "${ABSHIM_FIREBASE_CONTROL:-0}" = 1 ]; then
+  echo "   !! CONTROL BUILD: skipping manifest_firebase_off.py (layer 4 DISABLED on purpose)"
+  OUT_APK="angrybirds-8.0.3-arm64-fbcontrol.apk"
+else
+  python3 /work/port/manifest_firebase_off.py "$WORK/AndroidManifest.xml" "$WORK/AndroidManifest.xml"
+fi
 
 echo "== 3/5 swap ABIs (arm64 shim in; 32-bit engine kept as extractable payload; other ABIs stripped) =="
 cd "$WORK"

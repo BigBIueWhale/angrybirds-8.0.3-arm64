@@ -108,10 +108,11 @@ maps every `abshim` log line to a diagnosis so one `adb logcat` pinpoints anythi
    Cloud Messaging auto‑registration (the one phone‑home the missing INTERNET permission can't stop,
    since Google Play Services does that network *for* the app) and Facebook local event collection.
 
-Layers 1–3 are verified at runtime. **Layer 4 is not** — it exists for the GMS‑mediated FCM
-registration that layers 1–3 cannot stop, and the test emulators have no Google Play Services, so
-nothing here exercises it. What *is* checked is that the kill‑switch `<meta-data>` is present in
-the shipped manifest. See `port/OPEN_FINDINGS.md`.
+**All four layers are verified at runtime.** Layer 4 needed a Google Play Services emulator to
+test at all (`Dockerfile.ab-emu-gms`), because FCM registration is done by GMS *for* the app and
+so survives the missing INTERNET permission. `emu_layer4_fcm_test.sh` proves it differentially:
+the same build with the kill‑switch **removed** attempts token registration, the shipped build
+attempts it **zero** times. See `port/OPEN_FINDINGS.md`.
 
 Native Flurry / Rovio‑BI still gather data **locally**, but it is **sendless** — layer 1 denies every
 socket, so nothing collected can ever leave the device. (What you actually see in `logcat` is the bundled SDK's own resolver reading `/etc/hosts`

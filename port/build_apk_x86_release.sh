@@ -44,7 +44,16 @@ echo "   exports: $(readelf --dyn-syms -W /tmp/shim_x86.so 2>/dev/null | grep -c
 echo "== 2/5 unpack + de-phone-home =="
 rm -rf "$WORK"; mkdir -p "$WORK"; (cd "$WORK" && unzip -q "$IN")
 python3 /work/port/depermission.py "$WORK/AndroidManifest.xml" "$WORK/AndroidManifest.xml" || true
-python3 /work/port/manifest_firebase_off.py "$WORK/AndroidManifest.xml" "$WORK/AndroidManifest.xml"
+# ABSHIM_FIREBASE_CONTROL=1 skips the layer-4 injection and renames the output, so the layer-4
+# test has a control to compare against. Never set for a normal build; with the env unset the
+# default output is byte-identical.
+X86R_APK="angrybirds-8.0.3-x86shim-release.apk"
+if [ "${ABSHIM_FIREBASE_CONTROL:-0}" = 1 ]; then
+  echo "   !! CONTROL BUILD: skipping manifest_firebase_off.py (layer 4 DISABLED on purpose)"
+  X86R_APK="angrybirds-8.0.3-x86shim-fbcontrol.apk"
+else
+  python3 /work/port/manifest_firebase_off.py "$WORK/AndroidManifest.xml" "$WORK/AndroidManifest.xml"
+fi
 
 echo "== 3/5 swap ABIs: x86_64 shim in; 32-bit engine as emulated payload; strip other ABIs =="
 cd "$WORK"
@@ -87,6 +96,6 @@ KS=/work/port/debug.ks
 [ -f "$KS" ] || keytool -genkeypair -keystore "$KS" -storepass android -keypass android \
   -alias d -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=AngryBirdsShim" >/dev/null 2>&1
 apksigner sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
-  --out "$OUTDIR/angrybirds-8.0.3-x86shim-release.apk" /tmp/al_x86.apk
-echo "DONE -> $OUTDIR/angrybirds-8.0.3-x86shim-release.apk"
-unzip -l "$OUTDIR/angrybirds-8.0.3-x86shim-release.apk" | grep -E 'lib/x86_64|classes.dex'
+  --out "$OUTDIR/$X86R_APK" /tmp/al_x86.apk
+echo "DONE -> $OUTDIR/$X86R_APK"
+unzip -l "$OUTDIR/$X86R_APK" | grep -E 'lib/x86_64|classes.dex'
