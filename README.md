@@ -4,8 +4,8 @@
 cannot execute the game's 32‑bit ARM code — with every phone‑home and network access removed — via a
 fully reproducible, offline Docker pipeline.**
 
-The game plays and wins levels — boot → slingshot physics → level‑complete → next level, on two
-Android generations. The APK is authentic (the game code is byte‑for‑byte Rovio's original 8.0.3),
+The game plays and wins levels — boot → slingshot physics → level‑complete → next level, on **three**
+Android generations, including Android 16 — the phone's own OS version. The APK is authentic (the game code is byte‑for‑byte Rovio's original 8.0.3),
 signed for sideload, and installs on modern Android including 16 KB‑page devices.
 
 **Read this before believing the screenshots:** that gameplay was validated with the *same shim

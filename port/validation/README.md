@@ -410,6 +410,30 @@ one line beyond the window), and reported the class clean. It now carries a **po
 if it cannot see the known instance, it says the scan is broken instead of reporting zero. A detector
 must be shown to fire before its silence counts as evidence.
 
+### Never edit a script while a run is executing it
+
+On 2026-07-28 an Android 16 playthrough logged its wait phase twice —
+
+```
+== wait for game render (frame[601]+) ==
+  card at ~180s frame[601]
+== wait for game render (frame[601]+) ==
+  card at ~5s frame[601]
+```
+
+— from a script containing exactly one such block. The cause was not the script: I edited
+`emu_modern_playthrough.sh` while a container was executing it. **bash reads a script incrementally
+by byte offset**, so inserting lines shifts the offsets under the running interpreter and it
+re-enters or skips a region. The run completed and reported a win, but it was produced by a program
+that no longer matched any file on disk, so it is not evidence of anything.
+
+The rule: while any container is running a validation script, that script is frozen. Check
+`docker ps` first. If an edit cannot wait, stop the run, edit, and start again — a discarded run
+costs twenty minutes, an untrustworthy one pollutes the evidence base indefinitely.
+
+This was a known hazard, noted earlier in the same session when the capture-chain scripts were
+deliberately left alone for exactly this reason, and then violated anyway.
+
 ### The win is now scored, not eyeballed
 
 Every playthrough used to end with `win check: SCREENSHOT ONLY`, and `validate_all.sh` excludes the
