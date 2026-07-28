@@ -8,11 +8,16 @@ source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fi
 # fixed sleep, and boot-to-frame[601] has been observed at ~565s.
 ( sleep 2100; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
-OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/modplay.txt"; : >"$LOG"
-ABLOG="$OUT/modplay_abshim.txt"; : >"$ABLOG"
+# AVD and output prefix are overridable so the SAME playthrough can be run on the GMS tier
+# (ABSHIM_AVD=abgms ABSHIM_OUTPFX=modplaygms) without overwriting the AOSP-tier evidence. Defaults
+# reproduce the original behaviour exactly.
+AVD="${ABSHIM_AVD:-abtest34}"
+PFX="${ABSHIM_OUTPFX:-modplay}"
+OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/${PFX}.txt"; : >"$LOG"
+ABLOG="$OUT/${PFX}_abshim.txt"; : >"$ABLOG"
 say(){ echo "$@" | tee -a "$LOG"; }
-say "== boot API 34 (abtest34) =="
-emulator -avd abtest34 -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
+say "== boot API 34 ($AVD) =="
+emulator -avd "$AVD" -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
          -gpu swiftshader_indirect -partition-size 6144 -wipe-data >/tmp/emu34.log 2>&1 &
 adb wait-for-device
 for i in $(seq 1 200); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null|tr -d '\r')" = 1 ] && break; sleep 2; done
@@ -30,10 +35,10 @@ for s in $(seq 1 130); do sleep 5
   [ -n "$fn" ] && [ "$fn" -ge 601 ] && { say "  card at ~$((s*5))s frame[$fn]"; break; }
 done
 sleep 4
-adb exec-out screencap -p > "$OUT/modplay_1_dialog.png" 2>/dev/null
+adb exec-out screencap -p > "$OUT/${PFX}_1_dialog.png" 2>/dev/null
 say "== dismiss 'built for older Android' dialog (tap OK) =="
 adb shell input tap 490 237; sleep 1; adb shell input tap 490 237; sleep 3
-adb exec-out screencap -p > "$OUT/modplay_2_afterdialog.png" 2>/dev/null
+adb exec-out screencap -p > "$OUT/${PFX}_2_afterdialog.png" 2>/dev/null
 say "== play: start card + 3 slingshot drags (proven API-25 sequence) =="
 adb shell input tap 390 266; sleep 4; adb shell input tap 390 266; sleep 12
 adb shell input swipe 207 118 110 150 700; sleep 8
@@ -49,7 +54,7 @@ adb shell input swipe 207 118 118 136 700
 #  the other seven playthrough scripts share ONE implementation instead of eight copies that
 #  can drift apart. Behaviour is unchanged: +120 frames, 300s cap, loud warning if unmet.)
 settle_frames "$ABLOG" 120 300
-adb exec-out screencap -p > "$OUT/modplay_3_end.png" 2>/dev/null
+adb exec-out screencap -p > "$OUT/${PFX}_3_end.png" 2>/dev/null
 say "== RESULTS (modern-Android full play) =="
 say "  install:           ok"
 # NOTE (2026-07-27): a 'levelComplete' grep-count was REMOVED from here. It counted
@@ -57,7 +62,7 @@ say "  install:           ok"
 # log lines per file, emitted BEFORE frame[1] — not level wins. It read "8" identically in
 # runs that won and runs that never cleared a pig, so it never measured anything. No abshim
 # log marker distinguishes a win; the END SCREENSHOT is the only authority.
-say "  win check:         SCREENSHOT ONLY -> modplay_3_end.png (a win shows 'LEVEL CLEARED' + stars + score)"
+say "  win check:         SCREENSHOT ONLY -> ${PFX}_3_end.png (a win shows 'LEVEL CLEARED' + stars + score)"
 say "  levelCompleteStars asset preloads (NOT a win signal): $(grep -ac 'levelCompleteStars' "$ABLOG" 2>/dev/null)"
 say "  h_fatal:           $(grep -ac '\[h_fatal\]' "$ABLOG" 2>/dev/null)  (0 = no crash)"
 say "  s-construct-guard: $(grep -ac 's-construct-null-guard' "$ABLOG" 2>/dev/null)  (level-end fix firing)"

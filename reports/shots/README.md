@@ -43,6 +43,7 @@ is given from the run that produced them and is marked `(by run, not hash)`.
 | `PROOF_12_postfix_no_regression.png` | No regression after the fix round | x86shim-release | 34 | *(by run, not hash)* |
 | `PROOF_13_heapfix_still_wins.png` | Still wins **after the allocator fix** | x86shim-release | 25 | `emu_playthrough_release.sh` |
 | `PROOF_14_heapfix_api34_wins.png` | Allocator fix holds on modern Android | x86shim-release | 34 | *(by run, not hash)* |
+| `PROOF_16_win_with_gms.png` | **Wins on modern Android with Google Play Services present** — the closest reachable match to the A56's environment (API 34 + GMS + W^X + targetSdk-26 install policy). Every other win proof is from a GMS-less AOSP image | x86shim-release | 34 (GMS) | `ABSHIM_AVD=abgms ABSHIM_OUTPFX=modplaygms emu_modern_playthrough.sh` |
 | `PROOF_15_win_on_reproducible_proxy.png` | Wins on the **bit-reproducible** proxy build | x86shim-release | 34 | `emu_modern_playthrough.sh` |
 | `PROOF_release_render.png` | The release-gated build renders | x86shim-release | 25 | `release_interim` capture |
 | `PROOF_release_bird_launched.png` | The release-gated build launches a bird | x86shim-release | 25 | `release_launch` capture |
@@ -86,3 +87,9 @@ renders, plays, scores, wins, and progresses without crashing.
 They do **not** establish frame pacing under a real GPU, audio continuity on real audio hardware,
 or behaviour on the A56's Exynos 1580 specifically. Those need the physical device
 (`port/ONDEVICE.md`).
+
+One gap that *has* since been closed: every win proof except `PROOF_16` comes from an AOSP image
+with **no Google Play Services**, which is not the A56's situation. `PROOF_16` is the same
+playthrough on a GMS-equipped API-34 image, and the shim log for that run shows 0
+token-registration attempts across the whole game — so de-phone-home layer 4 holds during real
+play, not only at launch.
