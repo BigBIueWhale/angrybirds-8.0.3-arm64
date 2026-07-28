@@ -597,6 +597,37 @@ of them are load-bearing parts of the pipeline rather than helpers:
 They were not broken and not untracked — simply undiscoverable, which is its own defect in a repo
 whose whole argument is that a reader can check the claims.
 
+### `shader_screen.py` — the only surface the emulator cannot stand in for
+
+The GPU is one of two genuinely device-first surfaces, and shader compilation is its likeliest
+failure: everything here renders under SwiftShader, which is lenient, while a conformant
+Mali/Xclipse driver is not. The shaders cannot be read statically — there is no `.vsh`/`.fsh` among
+the 3217 asset entries and no GLSL string in the engine, because they are **assembled at runtime**
+from a preprocessor-driven uber-shader. The only place the final text exists is the shim's
+`glShaderSource` bridge, which dumps it under `#ifndef ABSHIM_RELEASE`.
+
+`port/validation/shader_screen.py` reassembles that dump and screens it. What makes it trustworthy
+is what it refuses to do:
+
+- **Completeness before analysis.** Each shader's chunks must reassemble to exactly the byte length
+  the bridge reported; anything short is excluded and named. A screen over four verified shaders is
+  worth more than one over twenty unverified.
+- **A sanity check on the sample itself.** If no shader contains `gl_FragColor`, `gl_Position` or
+  `attribute`, it refuses outright — a renderer's shader set cannot lack all three, so that means the
+  capture is wrong, not that the shaders are clean.
+- **Vertex and fragment held to different rules.** GLES 2.0 §4.5.3 gives the vertex language default
+  precisions; only the fragment language has none. An earlier version applied the fragment rule to
+  both and reported legal `float w` / `mat4 bonetm` declarations as risks.
+
+Self-tested in both directions: it refuses the known-truncated capture (*"NOTHING TO SCREEN — this is
+not a pass"*) and accepts the verified one.
+
+    python3 port/validation/shader_screen.py reports/shots/<capture>_abshim.txt
+
+Three partial measurements preceded the first real result, each producing a plausible number — see
+`port/OPEN_FINDINGS.md` R10. They are recorded because how a number was obtained is part of whether
+it means anything.
+
 ### Shared libraries
 
 One implementation each, sourced by the scripts — because a fix pasted into eight scripts is a fix

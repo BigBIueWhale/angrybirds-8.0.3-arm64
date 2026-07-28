@@ -289,7 +289,11 @@ DEF(h_glShaderSource){ REAL(void,(uint32_t,int,const char*const*,const int*),"gl
      * which reads like "no portability risks" and actually meant "no data". Emit the whole thing in
      * pieces small enough that logcat cannot truncate them, tagged so they reassemble in order. */
     { static int n=0;
-      if(n++ < 8){
+      /* 64, not 8. The first capture caught only the four shaders compiled during boot; this is an
+       * uber-shader whose variants are selected by #define combination, so gameplay compiles more of
+       * them. Screening the boot subset and calling it "the shaders" would be the same
+       * partial-measurement error as the %.700s truncation, one level up. */
+      if(n++ < 64){
           for(int i=0;i<cnt && i<2;i++){
               const char *t = hs[i] ? hs[i] : "";
               int L = (int)strlen(t);
