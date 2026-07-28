@@ -410,6 +410,42 @@ one line beyond the window), and reported the class clean. It now carries a **po
 if it cannot see the known instance, it says the scan is broken instead of reporting zero. A detector
 must be shown to fire before its silence counts as evidence.
 
+### The win is now scored, not eyeballed
+
+Every playthrough used to end with `win check: SCREENSHOT ONLY`, and `validate_all.sh` excludes the
+play tests for exactly that reason — "their screenshots must be looked at, not scored". That was the
+last manual verification in the project.
+
+It was manual for a real reason, re-confirmed rather than assumed: **nothing in the log distinguishes
+a win.** A winning and a non-winning run of the same script produce identical `levelCompleteStars=8`
+and `once-complete=6` counts, because those are asset *preloads* — which is precisely what the
+scripts already warned. The decision has to come from the pixels.
+
+`win_detect.py` makes it, using a pure-Python PNG decoder (no PIL in any image; `zlib` is enough).
+The level-end modal dims the whole scene and shows gold stars:
+
+| | gold frac | dark frac | mean luminance |
+|---|---|---|---|
+| win screens (9 labelled) | 0.0571–0.0573 | **0.523–0.526** | **57.8–58.1** |
+| gameplay / menus (6) | 0.000–0.0795 | 0.0005–0.045 | 187–214 |
+
+`dark` separates by more than 10× and luminance by more than 3×, so the thresholds sit mid-gap rather
+than fitted to the samples. Gold alone would **not** work — a launched bird scores 0.0795, higher
+than any win — so it is a supporting criterion, never the test.
+
+**The failure it exists to prevent:** a crashed or blank app renders black — `dark=1.0`, `lum=0` —
+satisfying both dimming criteria *more* comfortably than a real win. Scoring that as a win would turn
+the worst possible outcome into a green tick. The gold-star floor stops it, verified against a
+synthetic all-black PNG rather than argued. That floor is deliberately loose (0.010 against an
+observed 0.057) because every labelled win here is a 3-star clear and a 1-star clear shows about a
+third of the gold; a snug threshold would have rejected a genuine win.
+
+Two things fell out of building it. The detector disagreed with one of my labels —
+`PROOF_6_levelend_survived.png`, which I had listed as a non-win — and it was right: that image shows
+LEVEL CLEARED with 3 stars and 43700. And running it over the stored end screenshots showed which
+scripts actually finish on a win (`audiomod`, `audioplay`, `playthroughR`, `playthrough`) and which
+end mid-level by design (`audio_end`, `deeper_end`), so the check was added only to the former.
+
 ### `mutation_test.sh` — proving the gate can fail
 
 `verify_claims.sh` is the file every claim in this repo leans on, and a gate nobody has watched fail
