@@ -25,8 +25,24 @@ Not defects — limits of the environment. Stated so they are never implied to b
 - **The physical Galaxy A56 run.** Everything is validated on emulators (API 25 and API 34, x86 with
   the shim in real ART). The A56's Exynos 1580 specifically is untested. See `ONDEVICE.md`.
 - **Frame pacing under a real GPU.** All rendering evidence is SwiftShader software rendering.
+  Narrowed rather than merely restated: R4 measured the rasteriser at 5–7% of frame time, and R4b
+  confirmed that independently — 12.3× the pixels costs only 25% more frame time, implying a ~2%
+  fill share. So the phone's GPU replaces a *small* slice and **single-thread CPU sets the frame
+  rate**. What remains genuinely unknown is that CPU term on Exynos 1580 cores, not the GPU term.
+- **Whether Mali/Xclipse accepts what SwiftShader accepted.** The specific residual, now that R10
+  and R11 have bounded it, and the most likely way this port fails on the device:
+  - the **22 screened shaders** compile here; every float declaration is precision-qualified and no
+    `#version`/`#extension`/`dFdx`/`texture2DLod`/`gl_FragDepth` appears, but only the device's
+    compiler decides (R10);
+  - the **`GL_EXTENSIONS` answer**. The engine branches on three names; the rig advertises two of
+    them and not `GL_OES_vertex_buffer_object`. If the A56 advertises that one, the engine takes a
+    VBO path nothing here has run. This is now a one-command `diff` on the device against
+    `reports/gl_extensions_rig.txt` — see `ONDEVICE.md` and R11.
 - **Continuous audio on real audio hardware.** The audio variant plays through and wins on the
   proxy, but sustained playback needs real hardware.
+- **Whether the app-rater ever fires.** R13: an `ACTION_VIEW`/`market://` intent is the one route out
+  that no de-phone-home layer can block, it is measured at **zero** across a full playthrough, and
+  raters typically gate on session count or elapsed days — which one automated run cannot represent.
 
 ---
 
