@@ -59,8 +59,19 @@ unmodified, inside an ARM32→ARM64 emulation shim (Unicorn). targetSdk 26, self
   emulated compilation. So: treat the guest heap as **measured identical across architectures
   today**, while noting the figure has moved before and is worth re-measuring rather than cited.
 
-**On first launch you'll see a "This app was built for an older version of Android" dialog** — that
-is normal for a targetSdk=26 app; tap through it (the game still runs). **What only the A56 itself
+**On first launch the A56 will show you TWO system dialogs, stacked.** Both are normal and neither
+means anything is wrong:
+
+1. **"Viewing full screen — to exit, swipe down from the top of your screen"** → tap **Got it**.
+   This is Android 16's immersive-mode notice. It appears *on top*, so dismiss it first.
+2. **"This app was built for an older version of Android"** → tap **OK**. Normal for a
+   targetSdk=26 app; the game runs fine.
+
+The second dialog is the well-known one. The first only exists on Android 16 — it does not appear
+on Android 14 — and it was found by running the playthrough on an API 36 image rather than assuming
+API 34 generalised. It matters more than it looks: while it is up it swallows every touch, so the
+game appears frozen and unresponsive until it is dismissed. Verified end to end on API 36 with GMS
+(`PROOF_18`: LEVEL CLEARED, 3 stars, 42920). **What only the A56 itself
 can settle:** real-hardware frame-rate under the emulation lock, and the real Mali/Xclipse GPU's
 shader-compile path (the emulator uses software SwiftShader). This guide maps every `abshim` log
 line to a diagnosis so one `adb logcat` run pinpoints anything device-specific.

@@ -1,0 +1,54 @@
+# ab-emu-36 — Android **16** (API 36) + Google Play Services. The A56's actual OS version.
+#
+# WHY THIS TIER EXISTS
+# --------------------
+# Every "modern Android" claim in this project was measured on API 34 (Android 14). The Galaxy A56
+# runs **Android 16 / API 36**. API 34 was a reasonable proxy — it shares the W^X regime and the
+# targetSdk-26 install policy that matter most — but "validated on modern Android" reads as a claim
+# about the user's phone, and the honest way to make that claim is to test the version the phone
+# actually runs.
+#
+# `google_apis` (rather than `default`) because the A56 has Google Play Services, and because that
+# is what makes de-phone-home layer 4 testable at all — FCM registration is performed by GMS on the
+# app's behalf, so an image without GMS cannot exercise it. See Dockerfile.ab-emu-gms.
+#
+# This is the closest reachable match to the target device: right OS version, right GMS situation,
+# right install policy. What it still is not: the Exynos 1580, a real GPU, or real audio hardware.
+# See port/OPEN_FINDINGS.md.
+#
+#   docker build -f port/docker/Dockerfile.ab-emu-36 -t ab-emu-36 port/docker
+#   docker run --rm --network none --device /dev/kvm --group-add "$(getent group kvm|cut -d: -f3)" \
+#       -v "$PWD":/work -e ABSHIM_AVD=ab36 -e ABSHIM_OUTPFX=modplay36 \
+#       ab-emu-36 bash /work/port/validation/emu_modern_playthrough.sh
+#
+# ---------------------------------------------------------------------------
+# NETWORK POLICY
+# ---------------------------------------------------------------------------
+# Building requires network (sdkmanager fetches the android-36 system image). Every RUN of the image
+# is launched `--network none`, like every other tier. Treat the build host as internet-reachable:
+# never `-p`/`--publish`, never `--network host`.
+#
+# ---------------------------------------------------------------------------
+# REPRODUCIBILITY LIMITATION
+# ---------------------------------------------------------------------------
+# Inherits every float described in Dockerfile.ab-emu / ab-emu-34, plus its own: Google revises
+# system images in place, so `system-images;android-36;google_apis;x86_64` is not a fixed artifact.
+# The installed revision is appended to /IMAGE_VERSIONS at build time, so whatever produced a given
+# result stays recoverable from the image itself.
+
+ARG BASE=ab-emu-34:latest
+FROM ${BASE}
+
+RUN yes | sdkmanager "system-images;android-36;google_apis;x86_64" >/tmp/sdk36.log 2>&1
+
+RUN echo "no" | avdmanager create avd -n ab36 \
+        -k "system-images;android-36;google_apis;x86_64" --force >/tmp/avd36.log 2>&1
+
+# Fail the build rather than publish a broken image (same rule as every other tier).
+RUN set -e; \
+    test -f "$HOME/.android/avd/ab36.avd/config.ini" || { echo "FATAL: AVD ab36 was not created"; cat /tmp/avd36.log; exit 1; }; \
+    grep -q "google_apis" "$HOME/.android/avd/ab36.avd/config.ini" || { echo "FATAL: ab36 is not a google_apis AVD"; exit 1; }; \
+    { echo -n "sysimg-36-gms  "; grep Pkg.Revision $ANDROID_SDK_ROOT/system-images/android-36/google_apis/x86_64/source.properties; } >> /IMAGE_VERSIONS; \
+    cat /IMAGE_VERSIONS
+
+CMD ["/bin/bash"]
