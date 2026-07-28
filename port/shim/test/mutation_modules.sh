@@ -92,31 +92,30 @@ case_run() {
     elif [ "$rc" -eq 9 ]; then
         echo "OK (mutation refused to compile — still a detection)"; PASS=$((PASS+1))
     elif [ "$rc" -ne 0 ]; then
-        echo "OK (test exits $rc)"; PASS=$((PASS+1))
+        if [ "${GAPMODE:-0}" = 1 ]; then
+            echo "OK — gap now CLOSED (a test was added; update the comment above this case)"
+        else
+            echo "OK (test exits $rc)"
+        fi
+        PASS=$((PASS+1))
+    elif [ "${GAPMODE:-0}" = 1 ]; then
+        echo "OPEN GAP (documented) — no test in the suite catches this"; GAPS=$((GAPS+1))
     else
         echo "*** NOT DETECTED *** test still exits 0 with the invariant broken"; MISSED=$((MISSED+1))
     fi
     rm -rf "$WORK"
 }
 
-GAPS=0
+GAPS=0; GAPMODE=0
 # A case for a mutation the suite is KNOWN not to catch. Reported as an open gap rather than a
 # failure — the fact is documented, and a red run every time would train people to ignore this.
 # Its detection status is still checked: if a future test closes the gap, this says so.
-case_run_gap() {
-    local name="$1"
-    local out; out=$(case_run "$@" 2>&1)
-    if printf '%s' "$out" | grep -q "NOT DETECTED"; then
-        printf '  %-16s OPEN GAP (documented) — no test in the suite catches this\n' "$name"
-        # NO MISSED adjustment: case_run ran inside $( ), a subshell, so its increments never
-        # reached this shell in the first place. Decrementing here drove the count to -2 and made
-        # the verdict claim undetected mutations that did not exist.
-        GAPS=$((GAPS+1))
-    else
-        printf '%s\n' "$out"
-        printf '  %-16s (gap now CLOSED — update the comment above this case)\n' "$name"
-    fi
-}
+# Runs a case whose mutation the suite is KNOWN not to catch. NOT a wrapper around $(case_run ...):
+# that ran in a SUBSHELL, so its counter increments never reached this shell (the totals went wrong),
+# and a case filtered out by $ONLY produced no output, which the grep then read as "gap now CLOSED"
+# for a case that never ran. Instead it sets a mode flag that case_run itself honours, so the filter,
+# the counters and the reporting all stay in one place.
+case_run_gap() { GAPMODE=1; case_run "$@"; GAPMODE=0; }
 
 echo "== module mutation test: break one invariant, confirm that module's test fails =="
 
@@ -173,20 +172,23 @@ case_run gl_sizes   gl_sizes   "bridge_gl.c cpu.c galloc.c marshal.c format.c" b
 case_run quarantine galloc_quarantine "galloc.c" galloc.c \
   's/#define QUARANTINE_N 131072u/#define QUARANTINE_N 0u/'
 
-# KNOWN GAP (2026-07-28), kept as a standing reminder rather than deleted. Verified against the FULL
-# suite, not just this module: removing the GT_BLOCKED transition is caught by NOTHING in
-# run_tests.sh. test_sched drives pthread_create/join and a cond_wait handoff, and both still pass —
-# so the blocked-state bookkeeping that the deadlock detector depends on is unasserted. Closing it
-# needs a test that parks a thread with no runnable peer and expects the detector to fire; that is a
-# real test to design, not a one-liner, so it is recorded here instead of faked.
-case_run_gap sched      sched      "cpu.c loader.c dispatch.c sched.c galloc.c elf32.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c" sched.c \
-  's/else                      r->state=GT_BLOCKED;//'
+# CORRECTION (2026-07-28): this was first recorded as an open gap — "removing the GT_BLOCKED
+# transition is caught by nothing". That was wrong, and the mistake is worth keeping. test_sched
+# already HAS a deadlock test (T6: a worker cond_waits with no signaller while main blocks in
+# pthread_join) and it does assert S.fatal. The original mutation deleted ONE `else` branch that T6's
+# particular scenario does not depend on — another path still marks the thread blocked — so it was an
+# EQUIVALENT MUTANT, not missing coverage. "The suite did not notice" and "the suite does not cover
+# it" are different claims, and only the second is a gap.
+#
+# Retargeted at the detector itself, which is what the test actually asserts.
+case_run sched      sched      "cpu.c loader.c dispatch.c sched.c galloc.c elf32.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c" sched.c \
+  's/S->fatal=1; snprintf(S->fatal_msg/S->fatal=0; snprintf(S->fatal_msg/'
 
-# KNOWN GAP (2026-07-28), same treatment. Zeroing the SP saved into the guest's jmp_buf is caught by
-# NOTHING in the suite: test_longjmp's guest returns almost immediately after the longjmp, so a
-# bogus restored SP is never dereferenced before the test ends. A test that touches the stack after
-# longjmp would close it.
-case_run_gap longjmp    longjmp    "cpu.c loader.c dispatch.c sched.c galloc.c elf32.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c" dispatch.c \
+# GAP CLOSED 2026-07-28. Zeroing the SP saved into the guest's jmp_buf used to be caught by NOTHING:
+# test_longjmp's guest returns almost immediately after the longjmp, so a bogus restored SP is never
+# dereferenced before the test ends, and a real guest would only fault on its next push.
+# test_longjmp.c now asserts SP directly against its setjmp-time value, so this is a live case.
+case_run longjmp    longjmp    "cpu.c loader.c dispatch.c sched.c galloc.c elf32.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c" dispatch.c \
   's/uc_reg_read(cc->uc,UC_ARM_REG_SP,&v); gm_wr32(&cc->mem,jb+32,v);/gm_wr32(\&cc->mem,jb+32,0u);/'
 
 # The BR-table bridges (memcpy/malloc/free/str*) live in dispatch.c, NOT in bridge_libc.c, so

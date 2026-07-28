@@ -61,6 +61,17 @@ int main(void){
     CK(r9!=0x2f,"instruction after bl longjmp was NOT executed (control redirected)");
     CK(pc==RG_RET,"returned to RG_RET");
 
+    /* THE STACK POINTER. jmp_buf[32] holds SP, and h_longjmp writes it back into the CPU — but
+     * nothing here ever checked it, so the whole SP save/restore was unasserted: mutation_modules.sh
+     * showed that storing 0 into that slot instead of the real SP left this test (and the entire
+     * module suite) passing. It goes unnoticed because this guest returns almost immediately after
+     * the longjmp and so never dereferences the restored SP; a real guest would fault on its next
+     * push. Assert it directly rather than hoping a later access trips over it.
+     * Gap found and closed 2026-07-28. */
+    uint32_t sp_after=0; uc_reg_read(cpu.uc,UC_ARM_REG_SP,&sp_after);
+    CK(sp_after==sp,"stack pointer restored by longjmp to its setjmp-time value");
+    if (sp_after!=sp) printf("    sp=0x%x want 0x%x\n", sp_after, sp);
+
     cpu_destroy(&cpu);
     printf(fails? "\n=== %d FAILURE(S) ===\n":"\n=== ALL PASS ===\n", fails);
     return fails?1:0;
