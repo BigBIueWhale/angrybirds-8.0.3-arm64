@@ -98,6 +98,12 @@ produces no shim log at all:
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | A previous install signed with a different key | `adb uninstall com.rovio.angrybirds` first. Rebuilds keep the same signer (`port/debug.ks`), so this only happens across a genuinely different build |
 | `INSTALL_FAILED_NO_MATCHING_ABIS` | The device rejected the native libs | Confirm `adb shell getprop ro.product.cpu.abi` → `arm64-v8a`. This APK ships **only** `lib/arm64-v8a/` |
 
+**All three install forms were tested on Android 16 itself** (`port/validation/emu_install_commands.sh`):
+`adb install <apk>`, a bare `pm install <apk>` with no flags at all, and `adb install -r` to update
+over a previous install — all three succeed. Worth stating because every other script here installs
+with the internal `pm install -r -d` form, so until now the command that was tested was not the
+command that was published.
+
 `adb install` needs USB debugging enabled (Settings → Developer options) and the RSA prompt
 accepted on the phone. Use **USB**, not `adb tcpip` — see the network note in
 `port/validation/README.md` for why.
