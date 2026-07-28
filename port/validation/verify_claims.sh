@@ -198,6 +198,23 @@ for bogus in "call\[1\] nativeInit" "render\[N\] GL draws" "render\[1\] GL draws
   fi
 done
 
+echo "== CLAIM: no capture script can silently overwrite another's provenance row =="
+# This bug has been made TWICE: a script parameterised by ABSHIM_OUTPFX ($PFX) writes its
+# screenshots under that prefix but passes a FIXED label to record_build, so running it on a second
+# AVD overwrites the first run's row and two different sets of evidence end up sharing one
+# provenance entry. Both times it was caught by reading the manifest afterwards, which is luck, not
+# process. The coupling is implicit in the source, so check it mechanically instead.
+BADLBL=""
+for f in port/validation/emu_*.sh; do
+  [ -e "$f" ] || continue
+  grep -q 'record_build' "$f" || continue
+  grep -qE '^PFX=' "$f" || continue                      # not parameterised -> a fixed label is fine
+  lbl=$(grep -oE 'record_build "\$APK" "[^"]*"' "$f" | head -1 | sed 's/.*"\(.*\)"$/\1/')
+  [ "$lbl" = '$PFX' ] || BADLBL="$BADLBL $(basename "$f")(label=$lbl)"
+done
+[ -z "$BADLBL" ] && ok "every parameterised capture script labels its provenance with \$PFX" \
+                 || bad "these take \$PFX but record a FIXED provenance label:$BADLBL"
+
 echo "== CLAIM: the screenshots were captured on builds that still exist =="
 # Screenshots have gone stale silently twice: PROOF_2/3/4 showed a binary that no longer existed,
 # and PROOF_10 (the audio variant's only evidence) predated a session of shim changes while a bulk
