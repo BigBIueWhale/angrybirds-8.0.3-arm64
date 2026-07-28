@@ -13,7 +13,8 @@
 #   1. host test suite      x86, ASan+UBSan, 10 module + 7 device tests + the coverage hard-gate
 #   2. arm64 cross suite    the SAME 17 tests on AArch64 — the ABI the phone uses — plus binary
 #                           architecture assertions
-#   3. verify_claims        every documented claim re-checked against the shipped artifact
+#   3. allocation compare   the guest's allocation sequence, x86 vs AArch64, at two depths
+#   4. verify_claims        every documented claim re-checked against the shipped artifact
 #
 # What this does NOT cover, and why:
 #   - the emulator play/win/progression tests (`emu_*.sh`) need /dev/kvm, take 20-40 minutes each,
@@ -45,7 +46,7 @@ need_image(){   # $1=image  $2=dockerfile
     && { echo "  built $1"; return 0; } || { fail "could not build $1"; return 1; }
 }
 
-stage "1/3 host test suite (x86, ASan+UBSan, + coverage hard-gate)"
+stage "1/4 host test suite (x86, ASan+UBSan, + coverage hard-gate)"
 if need_image ab-hosttest port/docker/Dockerfile.ab-hosttest; then
   OUT=$(docker run --rm --network none -v "$PWD":/work -w /work ab-hosttest \
           bash port/shim/test/run_tests.sh 2>&1)
@@ -54,7 +55,7 @@ if need_image ab-hosttest port/docker/Dockerfile.ab-hosttest; then
   echo "$OUT" | grep -q "COVERAGE OK" && pass "every engine import is bridged" || fail "coverage gate"
 fi
 
-stage "2/3 arm64 cross suite (the same tests on AArch64 — the phone's ABI)"
+stage "2/4 arm64 cross suite (the same tests on AArch64 — the phone's ABI)"
 if need_image ab-arm64x port/docker/Dockerfile.ab-arm64x; then
   OUT=$(docker run --rm --network none -v "$PWD":/work -w /work ab-arm64x \
           bash port/validation/arm64_cross_test.sh 2>&1)
@@ -63,7 +64,20 @@ if need_image ab-arm64x port/docker/Dockerfile.ab-arm64x; then
   echo "$OUT" | grep -q "ARM64 CROSS TEST PASSED" && pass "arm64 suite" || fail "arm64 suite"
 fi
 
-stage "3/3 documented claims vs the shipped artifact"
+stage "3/4 guest allocation sequence: x86 vs AArch64"
+# Wired in because anything not run here goes stale - which is how the claim this checks became
+# wrong twice (first "bit-identical across hosts", false; then a true-but-unrepeatable
+# "7792 of 7793"). It needs both images, so it is skipped rather than failed if either is absent.
+if docker image inspect ab-hosttest >/dev/null 2>&1 && docker image inspect ab-arm64x >/dev/null 2>&1; then
+  OUT=$(bash port/validation/alloc_trace_compare.sh 2>&1)
+  echo "$OUT" | grep -E "^  \[ OK \]|^  \[FAIL\]|^  \[DIFF\]" | sed 's/^/  /'
+  echo "$OUT" | grep -q "\[FAIL\]\|\[DIFF\]" && fail "allocation sequence differs between hosts" \
+                                                 || pass "allocation sequence identical on both hosts"
+else
+  echo "    needs both ab-hosttest and ab-arm64x"; fail "allocation comparison (image missing)"
+fi
+
+stage "4/4 documented claims vs the shipped artifact"
 if [ ! -f out/angrybirds-8.0.3-arm64.apk ]; then
   echo "    no artifact yet — run port/reproduce.sh first"; fail "verify_claims (no artifact)"
 elif need_image ab-port port/docker/Dockerfile.ab-port; then
