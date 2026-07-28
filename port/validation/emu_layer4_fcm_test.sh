@@ -31,6 +31,7 @@
 # That is fine and is not what is being measured — the question is whether the app's Firebase
 # messaging component AUTO-INITIALISES and tries. An attempt is visible in logcat either way.
 set +e
+source "$(dirname "$0")/lib_install.sh"
 ( sleep 3000; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 OUT=/work/reports/shots; mkdir -p "$OUT"
 LOG="$OUT/layer4_fcm${ABSHIM_OUTPFX:+_$ABSHIM_OUTPFX}.txt"; : >"$LOG"
@@ -79,9 +80,10 @@ run_one(){   # $1=label  $2=apk  $3=outfile
   say ""
   say "== $label =="
   adb uninstall com.rovio.angrybirds >/dev/null 2>&1
-  adb push "$apk" /data/local/tmp/ab.apk >/dev/null 2>&1
+  # see lib_install.sh — was a bare retry that could not distinguish "package service not up
+  # yet" from "the APK was rejected", and reported the first as the second.
   local inst=fail
-  for t in 1 2 3 4; do adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | grep -q Success && { inst=ok; break; }; sleep 4; done
+  if install_apk "$apk" 4; then inst=ok; fi
   say "  install=$inst"
   [ "$inst" = ok ] || { bad "$label failed to install"; return 1; }
   # Let the package manager finish tearing down the PREVIOUS install's task before launching.

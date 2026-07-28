@@ -35,6 +35,7 @@ set +e
 AVD="${ABSHIM_AVD:-abtest34}"
 PFX="${ABSHIM_OUTPFX:-jniexc}"
 source "$(dirname "$0")/lib_settle.sh"
+source "$(dirname "$0")/lib_install.sh"
 source "$(dirname "$0")/lib_metrics.sh"
 ( sleep 2400; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
@@ -54,9 +55,10 @@ adb wait-for-device
 for i in $(seq 1 200); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null|tr -d '\r')" = 1 ] && break; sleep 2; done
 sleep 10
 adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
-adb push "$APK" /data/local/tmp/ab.apk >/dev/null 2>&1
-INST=fail
-for t in 1 2 3 4; do adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | grep -q Success && { INST=ok; break; }; sleep 4; done
+# see lib_install.sh: this used to be a bare 4x retry on ANY failure, which neither waits for the
+# package service to be publishable nor tells a transient service error apart from a real
+# rejection. Both cost a 15-minute capture run on 2026-07-28.
+if install_apk "$APK" 4; then INST=ok; else INST=fail; fi
 say "install=$INST"; [ "$INST" = ok ] || { say DONE; adb emu kill; exit 0; }
 
 adb logcat -c >/dev/null 2>&1; adb logcat -G 64M >/dev/null 2>&1
