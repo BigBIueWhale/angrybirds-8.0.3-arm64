@@ -145,6 +145,15 @@ run_mod elf32             "$SRC/elf32.c"
 run_mod utf               "$SRC/utf.c"
 run_mod ctype_tables      "$SRC/ctype_tables.c"
 run_mod fdtable           "$SRC/fdtable.c"
+# GL scratch-size contract on AArch64 too: the guard is pure integer arithmetic, which is exactly
+# the kind of thing that can differ between architectures if a width or a cast is wrong.
+echo
+$CC -w -O2 -iquote "$SRC" -I"$USRC/include" -D_GNU_SOURCE -DRTLD_DEFAULT=0 "$T/test_gl_sizes.c" \
+    "$SRC/bridge_gl.c" "$SRC/cpu.c" "$SRC/galloc.c" "$SRC/marshal.c" "$SRC/format.c" \
+    -Wl,--start-group $UL -Wl,--end-group -lpthread -lm -ldl -o /tmp/t_glsz 2>/dev/null
+if [ -x /tmp/t_glsz ]; then
+  timeout 600 $QEMU /tmp/t_glsz >/dev/null 2>&1 && ok "gl_sizes contract on AArch64" || bad "gl_sizes FAILED on AArch64"
+else bad "gl_sizes did not link for AArch64"; fi
 
 echo
 [ "$FAIL" = 0 ] && echo "ARM64 CROSS TEST PASSED" || echo "ARM64 CROSS TEST FAILED"

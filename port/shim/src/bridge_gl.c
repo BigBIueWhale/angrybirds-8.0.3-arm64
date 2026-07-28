@@ -52,7 +52,10 @@ static uint8_t *tmp(size_t n){
  * is a legitimate answer (a 0-width or 0-height texture is legal GL) and must be distinguishable
  * from a refusal - an earlier version folded both into "return 0", which would have silently
  * dropped zero-sized calls that previously reached the driver. */
-static int gsize3(uint64_t a, uint64_t b, uint64_t c, uint32_t *out){
+/* External linkage so test/test_gl_sizes.c can link against it, but HIDDEN visibility so it does
+ * not enter the shipped .so's dynamic symbol table - testability should not enlarge the ABI. */
+__attribute__((visibility("hidden")))
+int gl_gsize3(uint64_t a, uint64_t b, uint64_t c, uint32_t *out){
     uint64_t v = a*b*c;
     if(v > GL_SCRATCH_MAX) return 0;
     *out = (uint32_t)v; return 1;
@@ -235,16 +238,16 @@ DEF(h_glBufferSubData){ REAL(void,(uint32_t,long,long,const void*),"glBufferSubD
 DEF(h_glTexImage2D){ REAL(void,(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*),"glTexImage2D");
     uint32_t tgt=W; int lvl=(int)W,ifmt=(int)W,w=(int)W,ht=(int)W,bd=(int)W; uint32_t fmt=W,ty=W,px=W;
     void*h=0; uint32_t n=0;
-    if(px){ if(!gsize3((uint32_t)w,bpp(fmt,ty),(uint32_t)ht,&n)) return 0; h=tmp(n?n:1); if(!h) return 0; RD(c,px,h,n);} f(tgt,lvl,ifmt,w,ht,bd,fmt,ty,h); return 0; }
+    if(px){ if(!gl_gsize3((uint32_t)w,bpp(fmt,ty),(uint32_t)ht,&n)) return 0; h=tmp(n?n:1); if(!h) return 0; RD(c,px,h,n);} f(tgt,lvl,ifmt,w,ht,bd,fmt,ty,h); return 0; }
 DEF(h_glTexSubImage2D){ REAL(void,(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*),"glTexSubImage2D");
     uint32_t tgt=W; int lvl=(int)W,xo=(int)W,yo=(int)W,w=(int)W,ht=(int)W; uint32_t fmt=W,ty=W,px=W;
     void*h=0; uint32_t n=0;
-    if(px){ if(!gsize3((uint32_t)w,bpp(fmt,ty),(uint32_t)ht,&n)) return 0; h=tmp(n?n:1); if(!h) return 0; RD(c,px,h,n);} f(tgt,lvl,xo,yo,w,ht,fmt,ty,h); return 0; }
+    if(px){ if(!gl_gsize3((uint32_t)w,bpp(fmt,ty),(uint32_t)ht,&n)) return 0; h=tmp(n?n:1); if(!h) return 0; RD(c,px,h,n);} f(tgt,lvl,xo,yo,w,ht,fmt,ty,h); return 0; }
 DEF(h_glCompressedTexImage2D){ REAL(void,(uint32_t,int,uint32_t,int,int,int,int,const void*),"glCompressedTexImage2D");
     uint32_t tgt=W; int lvl=(int)W; uint32_t ifmt=W; int w=(int)W,ht=(int)W,bd=(int)W,isz=(int)W; uint32_t data=W;
     void*h=0; if(data){ h=tmp(isz); if(!h) return 0; RD(c,data,h,isz);} f(tgt,lvl,ifmt,w,ht,bd,isz,h); return 0; }
 DEF(h_glUniformMatrix4fv){ REAL(void,(int,int,uint8_t,const float*),"glUniformMatrix4fv");
-    int loc=(int)W,cnt=(int)W; uint8_t tr=(uint8_t)W; uint32_t v=W; uint32_t n=0; if(!gsize3((uint32_t)cnt,16,4,&n)) return 0; float*h=(float*)tmp(n?n:1); if(!h) return 0; RD(c,v,h,n); f(loc,cnt,tr,h); return 0; }
+    int loc=(int)W,cnt=(int)W; uint8_t tr=(uint8_t)W; uint32_t v=W; uint32_t n=0; if(!gl_gsize3((uint32_t)cnt,16,4,&n)) return 0; float*h=(float*)tmp(n?n:1); if(!h) return 0; RD(c,v,h,n); f(loc,cnt,tr,h); return 0; }
 DEF(h_glShaderSource){ REAL(void,(uint32_t,int,const char*const*,const int*),"glShaderSource");
     uint32_t sh=W; int cnt=(int)W; uint32_t strp=W,lenp=W;
     /* cnt and every length come from the guest. A negative or absurd cnt made calloc fail (or be

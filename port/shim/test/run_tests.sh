@@ -63,6 +63,7 @@ run elf32        "$SRC/elf32.c"
 run utf          "$SRC/utf.c"
 run ctype_tables "$SRC/ctype_tables.c"
 run fdtable      "$SRC/fdtable.c"
+
 # Phase A (mode-agnostic core) COMPLETE — 9/9 modules.
 
 # ---- Phase B device-layer tests (need Unicorn; emulate ARM32 on x86) ----
@@ -111,6 +112,21 @@ if [ -f "$UNI/lib/libunicorn.a" ]; then
 else
   echo "== boot: SKIP (set ABSHIM_UNICORN to a dir with include/ + lib/libunicorn.a) =="
 fi
+
+# GL scratch-size contract. bridge_gl.c needs its whole dependency set to link, but the test only
+# exercises gl_gsize3 - the guard that stops a guest-supplied width/height/count from overflowing
+# into a scratch buffer smaller than what the driver is then told to read. Nothing tested the GL
+# bridge before this; a near-miss regression there was caught by reading code, not by a test.
+echo "== gl_sizes =="
+if [ -f "$UNI/lib/libunicorn.a" ]; then
+  $CC -w -O2 -fsanitize=address,undefined -fno-sanitize-recover=all -I"$SRC" \
+      -D_GNU_SOURCE -DRTLD_DEFAULT=0 -I"$UNI/include" "$HERE/test_gl_sizes.c" \
+      "$SRC/bridge_gl.c" "$SRC/cpu.c" "$SRC/galloc.c" "$SRC/marshal.c" "$SRC/format.c" \
+      "$UNI/lib/libunicorn.a" -lpthread -lm -ldl -o "$OUT/test_gl_sizes" && "$OUT/test_gl_sizes"
+else
+  echo "  (skipped: needs ABSHIM_UNICORN for bridge_gl's dependencies)"
+fi
+echo
 
 echo "== coverage (every engine UND FUNC bridged? — see RUNTIME_BRIDGES.md) =="
 python3 "$HERE/coverage_check.py"    # HARD GATE: every engine UND FUNC must resolve to a bridge
