@@ -65,4 +65,15 @@ RUN set -e; \
     { echo -n "sysimg-34      "; grep Pkg.Revision $ANDROID_SDK_ROOT/system-images/android-34/default/x86_64/source.properties; } >> /IMAGE_VERSIONS; \
     cat /IMAGE_VERSIONS
 
+# python3 for the pixel-scored win check (port/validation/win_detect.py). Without it win_check()
+# reports COULD NOT CHECK and defers — correct, but it means the one result that proves the game
+# actually WON is not scored during the run that produces it. The detector needs nothing beyond the
+# standard library (its PNG decoder uses zlib), so python3-minimal is enough.
+#
+# Appended at the END on purpose: it adds one small layer on top of the cached SDK/AVD layers rather
+# than invalidating them, so a rebuild is seconds rather than a full image build.
+RUN apt-get update && apt-get install -y --no-install-recommends python3-minimal \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -c "import zlib,struct; print('python3 + zlib OK')"
+
 CMD ["/bin/bash"]
