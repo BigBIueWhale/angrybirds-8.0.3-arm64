@@ -53,7 +53,15 @@ The result is loaded by ART like any native library; from Android's point of vie
 
 ## Download & install
 
-Grab **`angrybirds-8.0.3-arm64.apk`** from the [latest release](../../releases/latest) and sideload it:
+**There is no published release, so build the APK — it takes one command and is fully offline:**
+
+```bash
+bash port/reproduce.sh          # -> out/angrybirds-8.0.3-arm64.apk
+```
+
+The build is deterministic: it reproduces `27548721a456ea99295469c30c247e3f9519878a3d40abb817a148801af04851`
+byte-for-byte from a fresh clone, so you can check you got the same artifact this README describes.
+Then sideload it:
 
 ```bash
 adb install -r angrybirds-8.0.3-arm64.apk        # or copy to the phone and install via the Files app
@@ -206,7 +214,11 @@ not a shim bug; the A56's real audio hardware drains it. See `port/ONDEVICE.md` 
 
 ---
 
-## Release notes — v1.0.0
+## Release notes — *prepared, not published*
+
+> No GitHub release or tag exists for this repository. The notes below are the **draft** body,
+> kept in sync with `RELEASE_NOTES.md`, which carries the publish commands. They describe what a
+> v1.0.0 release *would* say — not something you can download.
 
 First official release of the arm64 port of Angry Birds Classic 8.0.3 for AArch64‑only devices
 (target: Samsung Galaxy A56 / Exynos 1580).
