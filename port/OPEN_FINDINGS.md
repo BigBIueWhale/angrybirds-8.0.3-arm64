@@ -32,6 +32,27 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R5. What the shipped APK can actually do — the full permission set, before and after
+
+Measured from both manifests rather than described, because "no phone-home" is a claim about what is
+*absent* and those are the claims that rot quietly.
+
+| original 8.0.3 | shipped arm64 | effect |
+|---|---|---|
+| `android.permission.INTERNET` | `android.permission.XNTERNET` | unresolvable → **no socket may be opened by the process at all** |
+| `android.permission.GET_ACCOUNTS` | `android.permission.XET_ACCOUNTS` | unresolvable → no account enumeration |
+| `com.android.vending.BILLING` | `com.android.vending.XILLING` | unresolvable → no in-app purchase path |
+| `android.permission.WAKE_LOCK` | `android.permission.WAKE_LOCK` | **kept** — normal protection level, auto-granted, keeps the screen awake while playing |
+| `com.sec.android.airview.HOVER` | `com.sec.android.airview.HOVER` | **kept** — a Samsung hover-UI hint, not a capability |
+
+So the installed app holds exactly one real capability, `WAKE_LOCK`, and **nothing at
+`dangerous` protection level** — installing prompts for no runtime permission at all.
+
+The mangling is length-preserving (first letter flipped) so the AXML string pool needs no offset
+fixups; `depermission.py` explains why. `verify_claims.sh` asserts the absence of every live
+network/billing/account/push permission, and `mutation_test.sh` proves that check fails when Rovio's
+original manifest is restored.
+
 ### R0. Bug classes swept across the whole shim
 
 Recorded here because otherwise it takes reading fifteen commits to learn what was actually
