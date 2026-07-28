@@ -28,6 +28,21 @@ producing `27548721a456ea99295469c30c247e3f9519878a3d40abb817a148801af04851` —
 the artifact built here. That is the claim that actually matters to a reader, and it is the one
 this repo previously got wrong: several entry points read files that exist only after a build.
 
+**Re-verified after the build scripts changed (2026-07-28, later).** `build_apk.sh` gained two
+guards that day — a JNI-export floor and a `script_paths.json` sanity check — and a build script
+that changes is exactly when a reproducibility claim stops being evidence and becomes a memory. So
+the whole path was run again from a **genuinely fresh `git clone`**: 172 tracked files, no `out/`,
+no `work803/`, nothing pre-staged. `bash port/reproduce.sh` decompressed the input, gated its
+sha256, extracted the engine, built the image, converted offline and verified the result —
+producing `27548721a456ea99295469c30c247e3f9519878a3d40abb817a148801af04851`, byte-identical to the
+artifact built here, with `ALL CHECKED CLAIMS HOLD` inside the clone.
+
+Two checks behaved correctly *because* it was a clone rather than in spite of it: all 65
+doc-referenced files resolved and every script was reachable by full path, while the 12 screenshot
+provenance rows reported **"reference variants not built here (normal on a fresh clone)"** rather
+than claiming stale evidence — the distinction between *cannot ask* and *the answer is bad* that
+this file's checks were rewritten to preserve.
+
 **And the documented path itself is run, not assumed.** On 2026-07-28 `bash port/reproduce.sh`
 was executed exactly as published — inputs prepared and sha256-gated, image built, conversion run
 offline, artifact verified — and produced
