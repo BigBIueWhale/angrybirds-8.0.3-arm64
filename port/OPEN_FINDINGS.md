@@ -293,7 +293,9 @@ Measured across the 16 `TEXTS_*.dat`:
 - but Arabic **glyphs** appear in only **two**: `TEXTS_LANGUAGE_SELECTION.dat` (24 sequences) and
   `TEXTS_MARKETING.dat` (254). Hebrew: **zero**, anywhere.
 
-So nine files declare Arabic and carry no Arabic text. The practical shape of an RTL run is
+So nine files declare Arabic and carry no Arabic text — and the core one does not even declare it:
+`TEXTS_BASIC.dat`, the 589 800-byte file holding the game's main strings, lists exactly ten languages
+and `ar_AR` is not among them. The practical shape of an RTL run is
 therefore: the language-selection screen can render Arabic, marketing strings can, and the rest of
 the game falls back — while Android independently swaps in the 15 `ldrtl` drawables for the Java
 surface. None of that is a *port* concern (the shim marshals bytes; it does not shape text), and the
