@@ -46,6 +46,17 @@
 # recoverable from the image itself.
 #
 #   docker build -f port/docker/Dockerfile.ab-emu-arm64 -t ab-emu-arm64 port/docker
+#
+# ---------------------------------------------------------------------------
+# NOT VERIFIED BY REBUILD
+# ---------------------------------------------------------------------------
+# This recipe was reconstructed from the build transcript and cross-checked against the running
+# image's ENV and AVD config, but it has NOT been rebuilt and diffed against ab-emu-arm64:latest.
+# That is a deliberate call rather than an oversight: the image is UNUSABLE on an x86_64 host (the
+# emulator refuses arm64 system images outright — see the note above and port/OPEN_FINDINGS.md),
+# so spending a ~2 GB download verifying a recipe for an image that cannot run would be poor use
+# of the effort. Said plainly here so nobody mistakes 'a Dockerfile exists' for 'this is verified'.
+# The images that DO matter are verified: see the reproducibility note in Dockerfile.ab-port.
 
 FROM ubuntu:22.04
 

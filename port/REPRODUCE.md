@@ -20,6 +20,12 @@ from-scratch toolchain : 9da84326e1f2b82acba9b50ecec56207f58afcfc97306acb167257a
 cached toolchain       : 9da84326e1f2b82acba9b50ecec56207f58afcfc97306acb167257a4c0d094a4
 ```
 
+**The toolchain image itself is verified, not assumed.** On 2026-07-28 the committed
+`Dockerfile.ab-port` was rebuilt from scratch with `--no-cache` into `ab-port:verify`, and the
+deliverable rebuilt with that image came out **byte-identical** to the one built by the
+long-lived `ab-port:latest`. So reproducibility runs all the way down: committed Dockerfile →
+toolchain image → `build_apk.sh` → the exact APK that ships, with no step taken on trust.
+
 The toolchain resolved independently to the same versions — apksigner 0.9 (deb 31.0.2-1),
 cmake 3.22.1, NDK 26.3.11579264, Unicorn 7c5db941 — so the one genuine drift risk (apksigner and
 zipalign come from `apt`, and a newer apksigner would emit a different signature block and change
