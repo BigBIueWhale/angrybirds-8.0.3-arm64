@@ -59,3 +59,24 @@ PYEOF
     fi
     return 0
 }
+
+# require_build_tools — assert the image really carries the packaging toolchain.
+#
+# WHY IT LIVES HERE. build_apk.sh had this check inline and the five x86 proxies did not, even
+# though all six sign, align and zip with the same tools. That is the same drift that left the
+# proxies with a weak script_paths guard: a safety check added to one copy of six. Every build
+# script already sources this file, so putting the check here makes it one implementation reachable
+# from all of them without a new file to remember.
+#
+# The failure it prevents is a stale or wrong ab-port image producing a confusing mid-build error —
+# or, worse, a silent fallback to reaching out to apt in a build that is supposed to be offline.
+require_build_tools() {
+    local missing="" t
+    for t in apksigner zipalign zip unzip keytool; do
+        command -v "$t" >/dev/null 2>&1 || missing="$missing $t"
+    done
+    [ -z "$missing" ] && return 0
+    echo "FATAL: image is missing build tools:$missing" >&2
+    echo "       rebuild it: docker build -t ab-port -f port/docker/Dockerfile.ab-port ." >&2
+    return 1
+}

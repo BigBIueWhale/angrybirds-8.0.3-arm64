@@ -58,10 +58,7 @@ fi
 # port/docker/Dockerfile.ab-port). This conversion does NO network of its own — it is
 # meant to run fully offline (docker run --network none). Fail loudly if a tool is
 # missing (a stale/wrong image), rather than silently reaching out to apt.
-missing=""
-for t in apksigner zipalign zip unzip keytool; do command -v "$t" >/dev/null 2>&1 || missing="$missing $t"; done
-[ -n "$missing" ] && { echo "FATAL: image is missing build tools:$missing" >&2
-  echo "       rebuild it: docker build -t ab-port -f port/docker/Dockerfile.ab-port ." >&2; exit 1; }
+require_build_tools || exit 1
 
 echo "== 1/5 build arm64 shim (.so) — hardened modular implementation =="
 S=/work/port/shim/src

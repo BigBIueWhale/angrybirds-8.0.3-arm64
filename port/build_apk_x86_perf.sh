@@ -24,6 +24,7 @@ IN=/work/apks/com.rovio.angrybirds@8.0.3.apk
 # Prepare untracked inputs from the committed .xz (fresh-clone safe) — see prepare_inputs.sh
 . /work/port/prepare_inputs.sh
 REPO=/work prepare_inputs || exit 1
+require_build_tools || exit 1
 ENGINE=/work/work803/libv7/libAngryBirdsClassic.so
 OUTDIR=/work/out; mkdir -p "$OUTDIR"
 WORK=/tmp/apkwork_x86
