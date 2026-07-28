@@ -32,6 +32,33 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R0. Bug classes swept across the whole shim
+
+Recorded here because otherwise it takes reading fifteen commits to learn what was actually
+audited, and "we looked at X and found nothing" is as useful as "we found a bug in X".
+
+Every one of these was found by **sweeping for a pattern**, not by chasing a symptom. Nothing here
+produced a visible failure first — the game played and won throughout.
+
+| class | swept | found |
+|---|---|---|
+| ignored `uc_mem_read`/`uc_mem_write` results | all modules | `m_read`/`m_write` fed callers stack residue; **12 real failures per run**, measured |
+| byte-at-a-time guest string readers | all modules | **6** readers with uninitialised `ch` continuing a scan on stack garbage — the `m_read` fix covered one path into the class, not the class |
+| allocations dereferenced without a NULL check | 38 sites | `handle_table` pools ×3, `sched`'s `getobj`, `fdt_create`, `idmap_grow`, `fstr_put` |
+| guest-controlled sizes reaching a host allocation or copy | JNI + GL | `Set/Get<T>ArrayRegion` `len*esz` wrapped in 32 bits; `NewString` `len*2`; `glTexImage2D` `w*bpp*h`; `glUniformMatrix4fv` `cnt*64` |
+| guest-controlled indices into fixed tables | all modules | **none** — `g_va[]`, fd, and thread tables were all already bounded |
+| realloc that corrupts its own state on failure | all modules | `tmp()`, `g_idxbuf`, `g_vabuf`, `idmap_grow` recorded a capacity their buffer no longer had |
+
+Two of these were regressions **introduced during this work**, not pre-existing: changing `tmp()` to
+return NULL without updating its 19 callers, and a first version of the GL size guard that folded
+"legitimately zero" into "refused", which would have silently dropped 0×0 textures. Both were
+caught before shipping — the first by sweeping, the second by asking what a zero-sized call does.
+Neither had a test that would have caught it, which is why `test_gl_sizes.c` now exists.
+
+Where a sweep found nothing, that is recorded above rather than omitted. A class that was checked
+and came back clean is a different statement from one that was never checked, and only one of them
+justifies confidence.
+
 ### R1. The ~2046 unreadable `E Lua` lines are an **engine** bug, faithfully reproduced
 
 **Resolution: not our defect. No change made, and none should be made.**
