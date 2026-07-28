@@ -40,6 +40,14 @@ is given from the run that produced them and is marked `(by run, not hash)`.
 | `PROOF_9_modern_android_level2.png` | Advances into level 2 on modern Android | x86shim-release | 34 | `emu_modern_progress.sh` |
 | `PROOF_10_audio_levelwin.png` | The **audio variant** plays through and wins, with the mixer actually running (`nativeMixData` called) | x86shim-audio | 25 | `emu_audio_playthrough.sh` |
 | `PROOF_17_audio_win_modern.png` | The audio variant wins on **modern Android** as well — previously it was only ever proven on API 25 | x86shim-audio | 34 | `emu_audio_modern.sh` |
+
+`PROOF_18_shader_set_closed.png`
+: **LEVEL CLEARED on the shader-dump build** — the run that closed OPEN_FINDINGS R10. Built
+  `-DABSHIM_RELEASE -DABSHIM_SHADERDUMP` (release configuration plus only the `glShaderSource` dump),
+  it played boot → menu → level load → three slingshot shots → frame 1801 → this win, and compiled
+  **exactly the same 22 shader programs** as the boot+load capture. That is what establishes the
+  shader screen covers what the game actually compiles rather than one phase of it: gameplay adds no
+  variant. Scored by `port/validation/win_detect.py` (gold 0.0571, dark 0.5247, lum 58.0), not by eye.
 | `PROOF_11_modern_win_reproduced_in_repo.png` | The modern-Android win reproduced from the in-repo rig. **HISTORICAL** — same reason; superseded by `PROOF_15` | x86shim-release (build unknown) | 34 | — | |
 | `PROOF_12_postfix_no_regression.png` | No regression after that fix round. **HISTORICAL** — a point-in-time check; superseded by `PROOF_15`/`PROOF_16` | x86shim-release (build unknown) | 34 | — | |
 | `PROOF_13_heapfix_still_wins.png` | Still wins **after the allocator fix** | x86shim-release | 25 | `emu_playthrough_release.sh` |
