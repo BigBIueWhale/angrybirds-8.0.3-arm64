@@ -27,7 +27,7 @@ say "  android $(adb shell getprop ro.build.version.release 2>/dev/null|tr -d '\
 adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
 adb push "$APK" /data/local/tmp/ab.apk >/dev/null 2>&1
 adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | grep -q Success && say "install=ok" || { say "install FAIL"; say DONE; adb emu kill; exit 0; }
-record_build "$APK" "modplay"
+record_build "$APK" "$PFX"   # follows ABSHIM_OUTPFX, so an abgms run records "modplaygms" and does NOT overwrite the AOSP row
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
 adb shell monkey -p com.rovio.angrybirds -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1

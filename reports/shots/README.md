@@ -99,10 +99,16 @@ Everything else is produced by a committed script and records the sha256 of the 
 into `provenance.tsv` at capture time, so `verify_claims.sh` can tell you when an image has fallen
 behind its build.
 
-As of the 2026-07-28 re-run, six capture labels are recorded and **all six match the current
-build** — `interactive`, `playthrough`, `emu_fatal` (x86shim), `modplay`, `modprog`
-(x86shim-release) and `audioplay` (x86shim-audio). The proofs they produce were regenerated and
-looked at in the same pass.
+As of the 2026-07-28 re-run, **ten capture labels are recorded and all ten match the current
+build**: `interactive`, `playthrough`, `emu_fatal` (x86shim); `modplay`, `modplaygms`, `modprog`,
+`progR`, `playthroughR` (x86shim-release); `audioplay`, `audiomod` (x86shim-audio). Every proof
+they produce was regenerated and looked at in the same pass.
+
+`modplay` and `modplaygms` come from the *same* script — `emu_modern_playthrough.sh` with
+`ABSHIM_AVD=abgms` — and are deliberately separate rows. The first version of this recorded a fixed
+label, so the GMS run silently overwrote the AOSP row and the two proofs shared one provenance
+entry. The label now follows `ABSHIM_OUTPFX`, which is what actually ties a row to the files a run
+wrote.
 
 ## What these do NOT prove
 
