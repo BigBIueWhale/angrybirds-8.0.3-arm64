@@ -459,7 +459,40 @@ static uint32_t resolve_guest(const char*name){
     return a;
 }
 
+#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
+/* Time spent INSIDE the shim per Java->native entry, and by subtraction the time spent OUTSIDE it.
+ * shim_call is the only door from ART into this port, so the gap between one return and the next
+ * entry is precisely the Java side: GLSurfaceView's eglSwapBuffers, SwiftShader's rasterisation and
+ * any vsync wait - none of which the shim can see from within. Timing the bridge (gl_try) showed
+ * only that our marshalling is negligible; this is what actually splits "the port's cost" from
+ * "everything else in the frame". Wrapper rather than inline timers because shim_call has many
+ * return paths and instrumenting each one would eventually miss one. */
+/* THREAD-LOCAL. shim_call is entered from several ART threads (render, audio, lifecycle), so
+ * process-wide accumulators overlap: a first version summed them and reported IN 93% + OUT 65% =
+ * 158% of wall time, which is impossible and is exactly how you notice the model is wrong. Each
+ * thread now accounts separately, and the perf line reports the thread that emits it - the render
+ * thread - so IN + OUT is a partition of that thread's wall time and must total ~100%. */
+static __thread uint64_t g_in_ns = 0, g_out_ns = 0, g_calls = 0, g_last_exit = 0;
+uint64_t shim_in_ns(void){ return g_in_ns; }
+uint64_t shim_out_ns(void){ return g_out_ns; }
+uint64_t shim_entries(void){ return g_calls; }
+static uint64_t sc_now(void){
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+    return (uint64_t)ts.tv_sec*1000000000ull + (uint64_t)ts.tv_nsec;
+}
+static jvalue shim_call_inner(JNIEnv *env, jobject thiz, const char *name, const char *shorty, jvalue *args, int nargs);
 jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty, jvalue *args, int nargs){
+    uint64_t t0 = sc_now();
+    if (g_last_exit) g_out_ns += t0 - g_last_exit;
+    jvalue r = shim_call_inner(env, thiz, name, shorty, args, nargs);
+    uint64_t t1 = sc_now();
+    g_in_ns += t1 - t0; g_last_exit = t1; g_calls++;
+    return r;
+}
+static jvalue shim_call_inner(JNIEnv *env, jobject thiz, const char *name, const char *shorty, jvalue *args, int nargs){
+#else
+jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty, jvalue *args, int nargs){
+#endif
     jvalue ret; memset(&ret,0,sizeof ret);
     if(!G.ready) return ret;
     g_cur_native = name;                                        /* DIAG watchdog: which native entry is executing */
@@ -535,24 +568,29 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
     { size_t ln=strlen(name);
       int isframe = ln>=12 && (!strcmp(name+ln-12,"nativeRender") || !strcmp(name+ln-12,"nativeUpdate"));
       if(isframe){ static unsigned rf; static unsigned long d0;
-#ifndef ABSHIM_RELEASE
+#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
         /* Emulation share of wall time, sampled with the frame log. Separates the port's own cost
          * from the rasteriser's, which is what SwiftShader-based numbers cannot do. */
         { extern uint64_t gl_bridge_ns(void); extern uint64_t gl_bridge_calls(void);
-          static uint64_t w0=0, g0=0, c0=0; static int prim=0;
+          static uint64_t w0=0, g0=0, c0=0, i0=0, o0=0, e0=0; static int prim=0;
+          extern uint64_t shim_in_ns(void); extern uint64_t shim_out_ns(void); extern uint64_t shim_entries(void);
           struct timespec _ts; clock_gettime(CLOCK_MONOTONIC,&_ts);
           uint64_t wn=(uint64_t)_ts.tv_sec*1000000000ull+(uint64_t)_ts.tv_nsec;
           uint64_t gn=gl_bridge_ns(), cn=gl_bridge_calls();
-          if(!prim){ prim=1; w0=wn; g0=gn; c0=cn; }
+          if(!prim){ prim=1; w0=wn; g0=gn; c0=cn; i0=shim_in_ns(); o0=shim_out_ns(); e0=shim_entries(); }
           else if((rf % 300u)==0u && wn>w0){
               uint64_t dw=wn-w0, dg=gn-g0;
               /* dw - dg is everything that is NOT the GL bridge: ARM32 emulation, the other
                * bridges, and the scheduler. Under SwiftShader dg is mostly software rasterisation,
                * which a real GPU would not charge us for. */
-              LOG("[perf] frames=%u  wall=%llums  GLbridge=%llums (%llu%%)  non-GL=%llums (%llu%%)  glcalls=%llu",
-                  rf, (unsigned long long)(dw/1000000ull), (unsigned long long)(dg/1000000ull),
-                  (unsigned long long)(dg*100ull/dw), (unsigned long long)((dw-dg)/1000000ull),
-                  (unsigned long long)((dw-dg)*100ull/dw), (unsigned long long)(cn-c0));
+              uint64_t di = shim_in_ns()-i0, dou = shim_out_ns()-o0;
+              LOG("[perf] frames=%u wall=%llums | IN-shim=%llums (%llu%%) of which GLbridge=%llums | OUT-shim(Java swap/vsync)=%llums (%llu%%) | entries=%llu",
+                  rf, (unsigned long long)(dw/1000000ull),
+                  (unsigned long long)(di/1000000ull), (unsigned long long)(di*100ull/dw),
+                  (unsigned long long)(dg/1000000ull),
+                  (unsigned long long)(dou/1000000ull), (unsigned long long)(dou*100ull/dw),
+                  (unsigned long long)(shim_entries()-e0));
+              i0=shim_in_ns(); o0=shim_out_ns(); e0=shim_entries();
               w0=wn; g0=gn; c0=cn;
           } }
 #endif

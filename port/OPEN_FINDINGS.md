@@ -8,42 +8,7 @@ below, with the evidence, so the same question is not re-investigated from scrat
 
 ## Open
 
-### 2. Where per-frame time actually goes is still only half-measured
-
-**Status:** partially resolved. One half is now measured; the other cannot be split with the
-instrumentation that exists.
-
-The release notes used to say the per-frame cost had "only been measured under software rendering,
-where the rasteriser dominates" — an assumption, not a measurement. Measured properly (non-release
-builds only, timer at `gl_try`'s single dispatch point):
-
-```
-frames=600  wall=17066ms  GLbridge=47ms (0%)  non-GL=17019ms (99%)  glcalls=97956
-frames=900  wall=16936ms  GLbridge=34ms (0%)  non-GL=16901ms (99%)  glcalls=66265
-```
-
-**The GL bridge — our argument marshalling plus the driver calls we forward — is ~0.3% of wall
-time.** That rules out the bridge as a bottleneck, which is worth knowing: it is the part of the
-render path this port is responsible for.
-
-**What it does NOT establish** is that emulation dominates the other 99.7%. `eglSwapBuffers` does
-not appear anywhere in the shim: the Java side owns the EGL surface and the swap via GLSurfaceView,
-so SwiftShader's actual rasterisation happens outside the measured window, on the ART side. The
-remaining time is ARM32 emulation *plus* the Java-side swap, and this instrumentation cannot
-separate them.
-
-A first attempt got this wrong in a more interesting way. Timing `uc_emu_start` looked like the
-obvious way to measure emulation, and it reported a constant call count across samples while frames
-advanced — because **after boot the guest's entire render loop runs inside one long-lived
-`uc_emu_start`**, with the bridges invoked from hooks during it. A timer around it measures the
-whole run. That architectural fact is why the measurement had to be inverted to time the bridge
-instead.
-
-Splitting the remaining 99.7% would need a timer on the Java side of the swap, which is where a
-real GPU would change the answer — and is therefore best done on the device rather than under
-SwiftShader.
-
-### 3. Not verifiable from this machine
+### 2. Not verifiable from this machine
 
 Not defects — limits of the environment. Stated so they are never implied to be covered.
 
@@ -93,6 +58,44 @@ Neither had a test that would have caught it, which is why `test_gl_sizes.c` now
 Where a sweep found nothing, that is recorded above rather than omitted. A class that was checked
 and came back clean is a different statement from one that was never checked, and only one of them
 justifies confidence.
+
+### R4. Where per-frame time goes — measured, and the documented assumption was wrong
+
+The release notes said the per-frame cost had "only been measured under software rendering, **where
+the rasteriser dominates**". That second clause was an assumption. Measured, it is false.
+
+Measured on the **release configuration** (`build_apk_x86_perf.sh`: `-DABSHIM_RELEASE` so none of the
+heavy diagnostics are present, plus `-DABSHIM_PERF` for the two timers), four consecutive
+steady-state samples on API 34:
+
+```
+frames=1800 wall=12047ms | IN-shim=11110ms (92%) of which GLbridge=107ms | OUT-shim=940ms  (7%)
+frames=2100 wall=12793ms | IN-shim=11790ms (92%) of which GLbridge=109ms | OUT-shim=1008ms (7%)
+frames=2400 wall=12270ms | IN-shim=11312ms (92%) of which GLbridge=109ms | OUT-shim=949ms  (7%)
+frames=2700 wall=12915ms | IN-shim=11872ms (91%) of which GLbridge=108ms | OUT-shim=1038ms (8%)
+```
+
+- **~92% of frame time is inside the shim** — ARM32 emulation plus the bridges.
+- **~0.9% is the GL bridge** — this port's marshalling and the driver calls it forwards.
+- **~7–8% is outside the shim** — GLSurfaceView's `eglSwapBuffers`, SwiftShader's rasterisation and
+  any vsync wait.
+
+So **the emulation dominates and the rasteriser does not**, even under a software rasteriser. The
+practical consequence for the A56: a real GPU replaces a ~7% slice, so the phone's **CPU**
+single-thread performance is what determines the frame rate here, not its GPU. ~40 ms/frame
+(~24–25 fps) on this x86 host is a data point, **not** a prediction for the A56 — different CPU,
+different memory system.
+
+**Two wrong measurements preceded this one**, both caught by the numbers being impossible rather
+than by testing:
+
+1. Timing `uc_emu_start` reported a **constant call count** while frames advanced. After boot the
+   guest's whole render loop runs inside **one long-lived `uc_emu_start`**, bridges invoked from
+   hooks during it — so the timer measured the entire run. The measurement had to be inverted.
+2. Process-wide accumulators reported **IN 93% + OUT 65% = 158%** of wall time. `shim_call` is
+   entered from several ART threads, so summing their durations double-counts. The accounting is
+   now `__thread`, and the sanity check is that **entries == frames** (300 per 300) and IN + OUT
+   ≈ 100%.
 
 ### R1. The ~2046 unreadable `E Lua` lines are an **engine** bug, faithfully reproduced
 

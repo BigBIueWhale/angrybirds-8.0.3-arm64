@@ -363,7 +363,7 @@ static const struct { const char*n; glh h; } GLT[] = {
 };
 
 /* Handle a gl* call if known: pulls args, forwards, sets r0. Returns 1 if handled. */
-#ifndef ABSHIM_RELEASE
+#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
 /* Time spent INSIDE the GL bridge, i.e. in the real driver plus our marshalling - everything that
  * is NOT emulating ARM32. Measuring the emulation directly does not work: after boot the guest's
  * whole render loop runs inside ONE long-lived uc_emu_start, and the bridges are called from hooks
@@ -381,11 +381,11 @@ static uint64_t gl_now_ns(void){
 int gl_try(cpu_t *c, const char *name, mcur *cur){
     (void)h_1u; (void)h_glBind2;
     for(int i=0; GLT[i].n; i++) if(!strcmp(GLT[i].n,name)){
-#ifndef ABSHIM_RELEASE
+#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
         uint64_t _g0 = gl_now_ns();
 #endif
         uint64_t r = GLT[i].h(c, cur);
-#ifndef ABSHIM_RELEASE
+#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
         g_gl_ns += gl_now_ns() - _g0; g_gl_n++;
 #endif
         uint32_t lo=(uint32_t)r; uc_reg_write(c->uc, UC_ARM_REG_R0, &lo);
