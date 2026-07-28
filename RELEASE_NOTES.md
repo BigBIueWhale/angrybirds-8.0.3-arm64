@@ -52,10 +52,10 @@ Both are signed with the same key, so either update‑installs over the other wi
 | | |
 |---|---|
 | **Plays & wins** | slingshot → correct Box2D arc → pig structure collapses → scores → "LEVEL CLEARED" → advances into the next level *(x86_64 proxy build)* |
-| **Two Android generations** | full playthrough + win on Android 7.1 (API 25) *and* Android 14 (API 34); multi‑level + save persistence *(x86_64 emulators)* |
+| **Three Android generations, incl. the phone's own** | full playthrough + win on Android 7.1 (API 25), Android 14 (API 34) **and Android 16 (API 36) — the A56's actual OS version, with Google Play Services present**; multi‑level progression + save persistence re‑verified on API 36 *(x86_64 emulators)* |
 | **Authentic** | game engine, `libjs`, `libadcolony`, `classes.dex` byte‑for‑byte identical to Rovio's original 8.0.3 |
 | **Modern Android** | targetSdk 26 installs; `libm` linked; ELF **16 KB‑page aligned** (loads on 16 KB‑page devices too); JIT runs under W^X |
-| **No phone‑home** | four independent layers; **zero egress** verified |
+| **No phone‑home** | four independent layers, **all four verified at runtime on Android 16**. The app's own pid performs **zero** name resolution or socket work (measured by pid — the DNS failures in a full `logcat` belong to the emulator's NetworkMonitor); the shipped shim **imports no socket symbols at all**; and the FCM kill‑switch is proven *differentially* — the same build without it attempts token registration, this one attempts it zero times |
 | **Reproducible** | version‑pinned toolchain (NDK r26d + Unicorn @ fixed commit); bit‑identical rebuilds; whole image→APK pipeline reproduces the exact deliverable |
 | **Falsifiable** | the emulator images and every test script that produced the evidence are in the repo (`port/docker/`, `port/validation/`) — the results can be re‑run, not just believed |
 
@@ -87,7 +87,12 @@ The authentic 8.0.3 input APK (SHA‑256 `0580c3d3…`), the full shim source, t
 
 ## Known limitations
 
-- **Not yet run on real arm64 hardware** — see *Scope of validation*.
+- **Not yet run on real arm64 hardware** — see *Scope of validation*. This is not a matter of
+  effort: the Android emulator refuses arm64 system images on an x86_64 host outright
+  (*"Avd's CPU Architecture 'arm64' is not supported by the QEMU2 emulator on x86_64 host"*), so
+  it genuinely requires the device. What does cover the arm64 side is the full test suite run on
+  AArch64 under qemu-user — 20/20, including the engine load and all 125 C++ constructors — plus
+  a byte-identical guest allocation sequence between x86 and AArch64 at two depths.
 - Real‑time frame‑rate under the emulation lock, and the real Mali/Xclipse GPU's shader‑compile path, can only be confirmed on the physical A56 (validation uses software SwiftShader, which is itself the dominant cost in emulator frame timings and so does not predict on‑device rates).
 - The engine performs roughly 900–1750 heap operations per frame in steady‑state play (measured),
   but the per‑frame cost of the emulation itself has only been measured under software rendering,
