@@ -253,8 +253,16 @@ adb shell dumpsys package com.rovio.angrybirds | grep -i "permission\." | grep -
    `com.facebook.sdk.AutoLogAppEventsEnabled=false` (stops Facebook's local event collection).
    Native Flurry / Rovio-BI still gather locally but it's **sendless** (layer 1 denies every socket).
 
-Storage permission is kept, so saves persist across launches (validated: `settings.lua`/
-`highscores.lua` written and reloaded). The SDKs still initialise (no crash) but phone home nowhere.
+**Saves persist, and not for the reason this document used to give.** It said "storage permission
+is kept, so saves persist". `WRITE_EXTERNAL_STORAGE` *is* kept, but that is not why: measured on
+Android 16, all 48 files the game writes land in **app-private internal storage**
+(`/data/data/com.rovio.angrybirds/files/…`, including `settings.lua` and `highscores.lua`), and
+**none** touch external storage. App-private storage needs no permission at all, which is also why
+tightening scoped-storage rules across Android versions cannot break saves here. Verified by
+relaunch on API 36: 48 files written, 40 read back on the second launch, 125/125 constructors,
+`h_fatal=0`, process alive.
+
+The SDKs still initialise (no crash) but phone home nowhere.
 
 **You may see the engine repeatedly read `/etc/hosts` + `/dev/urandom` and attempt sockets in
 `logcat` — this is NOT a leak.** Those are a bundled analytics/networking SDK's own resolver

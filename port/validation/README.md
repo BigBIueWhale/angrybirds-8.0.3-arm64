@@ -228,7 +228,7 @@ PROOF mapping verified by md5 against the source screenshots, not by filename.
 | `emu_modern_test.sh` | abtest34 / 34 | x86shim-release | `modern34_*` — modern-Android boot; caught the missing `-lm` |
 | `emu_modern_playthrough.sh` | abtest34 / 34 | x86shim-release | `modplay_3_end.png` → **PROOF_8** *(original source overwritten)*; re-run 2026-07-27 → **PROOF_11** (win, 44500) |
 | `emu_modern_progress.sh` | abtest34 / 34 | x86shim-release | `modprog_2_level2.png` → **PROOF_9** |
-| `emu_save_test.sh` | abtest34 / 34 | x86shim-release | `save_*` — save persistence across restart |
+| `emu_save_test.sh` | abtest34 / 34, or **ab36 / 36** via `ABSHIM_AVD=ab36 ABSHIM_OUTPFX=save36` | x86shim-release | save/relaunch persistence. On API 36 it also established that all writes are app-PRIVATE (no external storage), so scoped-storage changes cannot break saves |
 | `emu_audio_test.sh` | abtest / 25 | x86shim-audio | `audio_*` — audio-build boot |
 | `emu_audio_playthrough.sh` | abtest / 25 | x86shim-audio | `audioplay_end.png` → **PROOF_10** (audio level win) |
 | `emu_audio_modern.sh` | abtest34 / 34 | x86shim-audio | `audiomod_*` — audio on API 34 |

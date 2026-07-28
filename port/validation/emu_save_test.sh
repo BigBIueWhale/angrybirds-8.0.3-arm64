@@ -6,11 +6,15 @@ set +e
 source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
 ( sleep 1550; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
-OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/save.txt"; : >"$LOG"
+# AVD/prefix overridable so the SAME save test can run on the API 36 tier (the A56's actual OS,
+# where storage rules are strictest) without overwriting the API 34 evidence.
+AVD="${ABSHIM_AVD:-abtest34}"
+PFX="${ABSHIM_OUTPFX:-save}"
+OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/${PFX}.txt"; : >"$LOG"
 AB1="$OUT/save_ab1.txt"; AB2="$OUT/save_ab2.txt"
 say(){ echo "$@" | tee -a "$LOG"; }
 say "== boot API 34 (fresh wipe-data) =="
-emulator -avd abtest34 -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
+emulator -avd "$AVD" -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
          -gpu swiftshader_indirect -partition-size 6144 -wipe-data >/tmp/emu34.log 2>&1 &
 adb wait-for-device
 for i in $(seq 1 200); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null|tr -d '\r')" = 1 ] && break; sleep 2; done
@@ -50,7 +54,7 @@ adb logcat -s abshim > "$AB2" 2>/dev/null & C2=$!
 adb shell monkey -p com.rovio.angrybirds -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
 for s in $(seq 1 110); do sleep 5; fn=$(grep -aoE 'frame\[[0-9]+\]' "$AB2" 2>/dev/null|tail -1|grep -oE '[0-9]+'); [ -n "$fn" ]&&[ "$fn" -ge 200 ]&&break; done
 sleep 6
-adb exec-out screencap -p > "$OUT/save_relaunch.png" 2>/dev/null
+adb exec-out screencap -p > "$OUT/${PFX}_relaunch.png" 2>/dev/null
 kill $C2 2>/dev/null
 say "== RESULTS (save persistence on modern Android) =="
 say "  1st-launch saves written:  $NF private files"
