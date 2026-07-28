@@ -532,7 +532,7 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
      * upstream GameLua _Rep corruption that may hand nativeMixData a bad methodID), NO-OP the native
      * mix so the render path is unblocked and draws>0 becomes reachable. Silent audio; gate-cleaned
      * with the diag hooks before the deliverable. */
-    /* AUDIO: default silent (no-op) — the correct shipping choice. -DABSHIM_AUDIO is a WIP research
+    /* AUDIO: default silent (no-op) — the correct shipping choice. -DABSHIM_AUDIO is an EXPERIMENTAL
      * build (cont.119): it runs the mixer + enables the BEL-release in jni_block_do_cb, which DOES
      * break the cont.118 cross-thread deadlock (0 WATCHDOG freezes, mixer loop runs, blocking calls
       * return).
