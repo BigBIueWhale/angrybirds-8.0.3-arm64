@@ -1,5 +1,19 @@
 # Runtime libc/GL bridge coverage — the gap between "boots" and "plays"
 
+> **STATUS: this is the 2026-07-25 PLAN, kept for its reasoning. Its numbers are superseded.**
+> The gap it describes is closed: `run_tests.sh`'s coverage hard-gate reports **`UNBRIDGED (would
+> UNIMPL->0 at runtime): 0`** and *COVERAGE OK — every engine import resolves to a bridge*, against
+> the 187 unbridged imports counted below. Read the priorities and the rationale; do not read the
+> counts as current.
+>
+> One item was planned and deliberately **not** done, which matters when reading the file sections:
+> "wire to the existing `fdtable` + `format` modules". `format` was wired in (`fmt_to_guest`,
+> `fmt_to_guest_va`, `fmt_to_host` — 8 production call sites). **`fdtable` was not**, and it has no
+> production callers at all; `bridge_file.c` passes the guest's path to the host `fopen`/`open`
+> verbatim instead. So the phrases "ONE sandbox dir" and "under the sandbox" below describe the plan,
+> not the shim — what actually confines the app is Android's own UID sandbox. See
+> `port/OPEN_FINDINGS.md` R8.
+
 **Finding (2026-07-25):** the engine has **343 UND FUNC imports**; the dispatch `BR[]`
 table + `gl_try` + `asset_try` currently bridge **156**. **187 are UNBRIDGED** and
 today hit the `UNIMPL→0` path (silent wrong value). The 125 init_array ctors pass with

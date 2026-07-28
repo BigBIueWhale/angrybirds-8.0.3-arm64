@@ -1,6 +1,22 @@
 /* test_fdtable.c — host test for the fd table + sandbox path router.
- * The containment cases are security-critical: a guest path must NEVER resolve
- * to a host path outside the sandbox root. */
+ *
+ * READ THIS BEFORE COUNTING THESE PASSES AS COVERAGE. The module under test is NOT wired into the
+ * shipped shim. Every exported function of fdtable.c — fdt_create/destroy/alloc/get/free/live,
+ * fd_route, fd_sandbox_resolve — has zero callers anywhere in port/shim/src outside the module
+ * itself. (Contrast handle_table.c, the live JNI handle table, called throughout: ht_new_ref 14
+ * times, ht_resolve 10.) Production file I/O is bridge_file.c's f_fopen/f_open, which hand the
+ * guest's path to the host verbatim, with no routing, no sandbox root and no /proc special-casing.
+ *
+ * So the containment cases below do NOT establish that the shim contains a path escape. This header
+ * used to read "the containment cases are security-critical: a guest path must NEVER resolve to a
+ * host path outside the sandbox root", which states a property of the ARTIFACT that the artifact
+ * does not have. What actually confines the app is Android's own UID sandbox, and the engine is
+ * Rovio's own code rather than adversarial input — see port/OPEN_FINDINGS.md R8.
+ *
+ * The tests are kept: the module is still compiled into the shim (it is in MODS), and if it is ever
+ * wired up these are the cases that would have to hold. They are labelled — in the OUTPUT, not just
+ * here — because a green check for code the product never calls is assurance about nothing, and the
+ * output is what someone reads when they count passes. */
 #include "fdtable.h"
 #include <stdio.h>
 #include <string.h>
@@ -9,7 +25,9 @@ static int fails=0;
 #define CK(c,msg) do{ if(!(c)){ printf("  FAIL: %s\n",msg); fails++; } }while(0)
 
 static void t_fdtable(void){
-    printf("[fd table]\n");
+    printf("[fd table]  (NOTE: fdtable.c is not wired into the shipped shim — no caller in\n");
+    printf("             port/shim/src; production I/O is bridge_file.c. These passes are not\n");
+    printf("             coverage of the shim's real file path. See OPEN_FINDINGS.md R8.)\n");
     fdtable*t=fdt_create();
     CK(fdt_live(t)==0,"start empty");
     int a=fdt_alloc(t,FDK_FILE,(void*)0x1000,7);
@@ -37,7 +55,9 @@ static void rescheck(const char*path,const char*want){
     if(rc==0){ CK(!strncmp(out,"/sb",3) && (out[3]=='/'||out[3]==0),"stays under /sb"); }
 }
 static void t_containment(void){
-    printf("[sandbox containment — escape attempts must be neutralised]\n");
+    /* "must be neutralised" was a claim about the shim. It is a claim about fd_route(), which the
+     * shim does not call — so the wording says whose property it is. */
+    printf("[sandbox containment — fd_route() neutralises escapes; UNUSED by the shim]\n");
     rescheck("a/b/c",              "/sb/a/b/c");
     rescheck("a/../b",             "/sb/b");
     rescheck("./x/./y",            "/sb/x/y");

@@ -244,6 +244,36 @@ That is not a guarantee, and it stays listed as device-only. But it is the oppos
 "validated on a proxy, unknown on the target" caveat, so it should not be read as an outstanding
 risk of the same kind as the GPU driver.
 
+**`/proc/meminfo`: the code is in the binary and never runs.** `cpuinfo` is not the only host-derived
+input the engine could take. `libAngryBirdsClassic.so` also carries `/proc/meminfo` and `MemTotal:`
+as adjacent strings (0xa2cef8 / 0xa2cf08) — the open-and-scan-for-total-RAM shape — which would make
+**memory size** a second such input, and an emulator's RAM is not the A56's 8 GB. If the engine
+derived texture quality or a heap budget from it, the phone would take a branch nothing here has run.
+
+Measured instead of assumed: across every capture, `/proc/cpuinfo` is opened **95** times (69
+`fopen` + 26 `open`) and `/proc/meminfo` **zero** times.
+
+That null is load-bearing, so the ways it could be wrong are enumerated rather than waved off.
+`bridge_file.c` logs `fopen` and `open`; it does **not** log `openat`, which would be an invisible
+route. But the engine's dynamic imports are `fopen`, `freopen` and `open` — there is no `openat`
+among them, and `libjs.so` imports only `open` — so no unlogged path exists for it to have used. The
+`MemTotal:` code is present and was not executed in any run: boot, tutorial, win and level 2, across
+API 25, 34 and 36. And if the phone ever does take it, `/proc/meminfo` passes through to the real
+file exactly as `cpuinfo` does, so the engine would read the A56's true memory rather than an
+emulator's — the same favourable direction as the rest of this finding.
+
+**A note on what the module tests actually cover.** It is not only `fd_route` that has no callers:
+*every* exported function of `fdtable.c` — `fdt_create`, `fdt_destroy`, `fdt_alloc`, `fdt_get`,
+`fdt_free`, `fdt_live`, `fd_route`, `fd_sandbox_resolve` — has **zero** references in
+`port/shim/src` outside the module itself, while the live JNI table `handle_table.c` is called
+throughout (`ht_new_ref` 14×, `ht_resolve` 10×). The module is nonetheless compiled into the shipped
+shim (it is listed in `MODS`), and `test_fdtable.c` exercises it with assertions that pass and are
+counted in *ALL MODULE TESTS PASSED* — among them `escape -> contained sandbox`, which reads like a
+property of the shim and is not one: production `f_fopen` hands the guest's path to the host `fopen`
+verbatim. Nothing misbehaves as a result — the app runs inside Android's own UID sandbox and the
+engine is not adversarial input — but a green test for a module the product never calls is assurance
+about nothing, and it is recorded here rather than left for someone counting passing checks.
+
 ### R7. Where the game's data actually goes — app-private only, so scoped storage never applies
 
 Traced from the run logs rather than assumed, because "old game on modern Android" usually means a
