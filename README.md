@@ -193,8 +193,17 @@ SHA‑256s.)
 ## Optional: audio‑enabled variant
 
 The default APK is **silent** (the audio mixer is a no‑op) — that's the fully‑validated shipped build.
-An experimental audio build (`ABSHIM_AUDIO=1 bash port/build_apk.sh` → `…-arm64-audio.apk`; build it,
-there is no release to download it from) is validated **crash‑free and plays+wins a level with audio active** on API 25 and 34.
+An experimental audio build is validated **crash‑free and plays+wins a level with audio active** on API 25 and 34:
+
+```bash
+docker run --rm --network none -v "$PWD":/work ab-port \
+    env ABSHIM_AUDIO=1 bash /work/port/build_apk.sh    # -> out/angrybirds-8.0.3-arm64-audio.apk
+```
+
+(There is no release to download it from, and it must run **inside** `ab-port` — `port/build_apk.sh`
+needs the pinned NDK, which exists only in that image. `port/reproduce.sh` is the one script you run
+on the host, because it drives docker itself.)
+
 What can't be settled off‑device is *continuous* playback: the validation emulator's own host audio
 backend won't initialize headless, so the AudioTrack buffer never drains — an emulator limitation,
 not a shim bug; the A56's real audio hardware drains it. See `port/ONDEVICE.md` to try it.
