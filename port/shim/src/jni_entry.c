@@ -1062,7 +1062,21 @@ static void diag_append(uc_engine*uc, uint64_t a, uint32_t s, void*u){
  * src+len-1 -> wild -> UC_ERR overrun -> nativeInit abandoned -> draws=0. Any real copy length is
  * < 256MB (< RG_HEAP=0x50000000); a len in [RG_HEAP, 0x80000000) is unambiguously a corrupt heap
  * pointer, so CLAMP it to 0 (skip the copy — the device-info string becomes empty, non-fatal) to keep
- * nativeInit alive. TEMPORARY band-aid: the real fix is the upstream _Rep corruption (see memory U118). */
+ * nativeInit alive.
+ *
+ * STATUS 2026-07-28: this was written as a TEMPORARY band-aid, with the note that "the real fix is
+ * the upstream _Rep corruption". THE REAL FIX LANDED — the galloc quarantine now withholds freed
+ * blocks, so the stale write that corrupted the COW _Rep lands harmlessly and the corrupt length is
+ * never produced. Measured rather than assumed: `[guard-memcpy]` has fired **0 times across all 22
+ * captured runs**, while the guards that are genuinely load-bearing fire constantly over the same
+ * logs (s-construct-null-guard 69, empty-json-guard 107).
+ *
+ * So it is NOT a band-aid any more, and calling it one would send a reader hunting an upstream bug
+ * that no longer exists. It is kept as a bounded safety net: the clamp is unreachable unless that
+ * corruption class returns, it cannot fire on a legitimate length (any real copy is < 256 MB, below
+ * RG_HEAP), and the A56's different timing and memory layout are exactly the conditions under which
+ * a heap-corruption class could resurface. Deleting it would change a bit-reproducible, play-tested
+ * deliverable to remove code that costs one compare on a path that never triggers. */
 static void diag_memcpy(uc_engine*uc, uint64_t a, uint32_t s, void*u){
     (void)a;(void)s;(void)u;
     uint32_t len=0; uc_reg_read(uc,UC_ARM_REG_R2,&len);
