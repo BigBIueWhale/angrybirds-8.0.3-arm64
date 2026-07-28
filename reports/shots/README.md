@@ -92,6 +92,11 @@ Everything else is produced by a committed script and records the sha256 of the 
 into `provenance.tsv` at capture time, so `verify_claims.sh` can tell you when an image has fallen
 behind its build.
 
+As of the 2026-07-28 re-run, six capture labels are recorded and **all six match the current
+build** — `interactive`, `playthrough`, `emu_fatal` (x86shim), `modplay`, `modprog`
+(x86shim-release) and `audioplay` (x86shim-audio). The proofs they produce were regenerated and
+looked at in the same pass.
+
 ## What these do NOT prove
 
 Every image here comes from an **emulator**: API 25 or API 34, x86 with the shim in real ART, or
