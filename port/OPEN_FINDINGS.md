@@ -283,11 +283,22 @@ first time the phone's actual bucket has been loaded at all.
 
 **One configuration axis remains unexercised: `ldrtl`.** The APK ships 15 right-to-left drawables,
 selected only when the device locale is RTL (Arabic, Hebrew, Persian). Every run here is `en-US`. The
-blast radius is small and worth stating precisely rather than alarming: the game's own UI is drawn by
-the engine from `assets/`, which has no RTL variants at all — its text comes from the
-locale-independent `TEXTS_*.dat` (see above) — so `ldrtl` can only affect the thin Java-side surface
-(splash, dialogs) that Android composes from `res/`. It ships those resources, so it was built for
-that case; it simply has not been run in it here.
+blast radius needs stating precisely, and the first version of this paragraph got it wrong. It said
+`ldrtl` "can only affect the thin Java-side surface", on the reasoning that the engine draws its own
+UI from `assets/`, which ships no RTL variants. The files have no RTL variants; the *content* does.
+Measured across the 16 `TEXTS_*.dat`:
+
+- **`ar_AR` is a declared language in 11 of the 16 files** — Arabic is offered, alongside
+  `de_DE en_EN es_ES fr_FR it_IT ja_JA/ja_JP pt_BR/pt_PT ru_RU zh_CN zh_TW`;
+- but Arabic **glyphs** appear in only **two**: `TEXTS_LANGUAGE_SELECTION.dat` (24 sequences) and
+  `TEXTS_MARKETING.dat` (254). Hebrew: **zero**, anywhere.
+
+So nine files declare Arabic and carry no Arabic text. The practical shape of an RTL run is
+therefore: the language-selection screen can render Arabic, marketing strings can, and the rest of
+the game falls back — while Android independently swaps in the 15 `ldrtl` drawables for the Java
+surface. None of that is a *port* concern (the shim marshals bytes; it does not shape text), and the
+APK ships the resources for it, so it was built for the case. It has simply never been run in it
+here, and saying "no RTL variants at all" overstated how settled that was.
 
 **Locale does not route the engine to different files either.** The same question, asked of the other
 setting that varies per device: the rig runs `en-US`, the phone may not. There *are* per-locale
