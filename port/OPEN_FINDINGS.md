@@ -48,7 +48,15 @@ bridge, so a `#ifndef ABSHIM_RELEASE` dump was added there. **The shipped APK is
 rebuilt byte-identical, and `strings` confirms `[shader-src]` is present in the diagnostic shim and
 absent from the release one.
 
-Captured on API 34, four shaders, **each verified complete by byte count before being screened**
+**The set is reproducible, which is the strongest completeness evidence available without the
+device.** Two independent captures — one from the full diagnostic build, one from a release-speed
+build carrying only `-DABSHIM_SHADERDUMP` — produced **the same 22 unique shader programs with
+byte-identical hashes** (0 unique to either). So the set is deterministic and build-independent: the
+diagnostic build's extra logging does not change which shaders the engine compiles. All 22 screen
+clean; 11 vertex and 11 fragment, and genuinely distinct variants (fragment declaration counts differ:
+32, 35, 36).
+
+Originally captured on API 34, four shaders, **each verified complete by byte count before being screened**
 (9150, 6008, 9132, 5990 — chunks reassembled to exactly the length the bridge reported):
 
 | shader | kind | float-typed declarations | **unqualified** | `#extension` |
