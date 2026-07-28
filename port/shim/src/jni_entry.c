@@ -535,11 +535,24 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
     /* AUDIO: default silent (no-op) — the correct shipping choice. -DABSHIM_AUDIO is a WIP research
      * build (cont.119): it runs the mixer + enables the BEL-release in jni_block_do_cb, which DOES
      * break the cont.118 cross-thread deadlock (0 WATCHDOG freezes, mixer loop runs, blocking calls
-     * return) — but then CRASHES with a __stack_chk_fail in nativeResume, because dropping the coarse
-     * BEL lets render run concurrently and the shim's shared state (handle table / marshal buffers,
-     * which the single-BEL model assumed serialized) races. Finishing audio needs full concurrency
-     * safety on that shared state = a major redesign of the validated render path, unvalidatable
-     * headless -> deferred. Default build is byte-identical to the silent deliverable. See task #35. */
+      * return).
+      *
+      * STATUS CORRECTED 2026-07-28. This comment used to end "but then CRASHES with a __stack_chk_fail
+      * in nativeResume ... deferred". THAT CRASH NO LONGER OCCURS — the note described a state the
+      * code had already moved past. Measured across all three captured audio runs (audioplay,
+      * audiomod, audio): `nativeMixData ENABLED` appears 8x in each, so the mixer really is running,
+      * with stack_chk_fail = 0 and h_fatal = 0 in every one. The variant plays and wins with audio
+      * active (PROOF_10, PROOF_17).
+      *
+      * A stale "this crashes, work deferred" note is worse than none: it tells the next reader that a
+      * SHIPPED variant is broken while evidence in the same repo shows it working, and it contradicts
+      * RELEASE_NOTES.md, which offers the audio APK as crash-free.
+      *
+      * WHAT REMAINS OPEN is narrower and device-only: whether playback is CONTINUOUS on real hardware.
+      * The emulator's audio backend cannot init headless, so the buffer never drains there — silence or
+      * stutter on the host proves nothing either way. See OPEN_FINDINGS R9.
+      *
+      * The default (silent) build remains the shipping choice, byte-identical to the deliverable. */
     if(name && strstr(name,"nativeMixData")){
 #ifndef ABSHIM_AUDIO
         static int am=0; if(am++<3) LOG("[audio-isolate] nativeMixData no-op (unblock render thread; BEL/audio fix pending)"); return ret;
