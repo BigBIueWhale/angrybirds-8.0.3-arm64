@@ -231,6 +231,22 @@ PYEOF
     rm -rf "$tmp"; return 0
 }
 
+
+# Put a 32-bit ABI directory back. On a device supporting both ABIs Android could then load Rovio's
+# ORIGINAL ARM32 engine instead of the shim — which an AArch64-only core cannot execute at all.
+mut_strayabi() {
+    local tree="$1"
+    local apk="$tree/out/angrybirds-8.0.3-arm64.apk"
+    local tmp; tmp=$(mktemp -d)
+    mkdir -p "$tmp/lib/armeabi-v7a"
+    ( cd "$tmp" && unzip -o -q "$apk" lib/arm64-v8a/libjs32.so 2>/dev/null \
+        && cp lib/arm64-v8a/libjs32.so lib/armeabi-v7a/libjs.so ) || { rm -rf "$tmp"; return 1; }
+    rm -f "$apk.new"; cp "$apk" "$apk.new"
+    ( cd "$tmp" && zip -q "$apk.new" lib/armeabi-v7a/libjs.so ) || { rm -rf "$tmp"; return 1; }
+    rm -f "$apk"; mv "$apk.new" "$apk"
+    rm -rf "$tmp"; return 0
+}
+
 echo "== mutation test: break each guarantee, confirm the gate says so =="
 case_run diagnostics   "diagnostic string(s) leaked into release"       mut_diagnostics
 case_run perf          "contains perf instrumentation"                  mut_perf
@@ -242,6 +258,7 @@ case_run stale         "capture(s) are from builds that are no longer current" m
 case_run missing_proof "the index names proofs that do not exist"     mut_missing_proof
 case_run extra_proof   "proofs exist that the index never describes"    mut_extra_proof
 
+case_run stray_abi     "stray ABI directories survived the strip"      mut_strayabi
 case_run identity      "identity CHANGED by the conversion"           mut_identity
 case_run doc_hash      "documented SHA-256 does not match the artifact"  mut_dochash
 case_run signer        "signed by an UNEXPECTED key"                     mut_signer

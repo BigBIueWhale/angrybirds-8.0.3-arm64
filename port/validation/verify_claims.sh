@@ -190,6 +190,26 @@ else
   skip "signing/alignment (no apksigner on PATH, no ab-port image)"
 fi
 
+echo "== CLAIM: only arm64-v8a native libs ship (the other ABIs were stripped) =="
+# build_apk.sh removes lib/armeabi-v7a, lib/x86, lib/armeabi and lib/arm64-v8a before installing the
+# shim + payloads, and nothing verified the removal actually happened. A surviving lib/armeabi-v7a
+# would be worse than dead weight on a phone that supports both ABIs: Android picks by ABI
+# preference, and if it chose the 32-bit directory it would load Rovio's ORIGINAL ARM32
+# libAngryBirdsClassic.so instead of the shim — on an AArch64-only core that cannot execute it at
+# all, which is the entire problem this project exists to solve. The A56 is arm64-only so it would
+# pick arm64-v8a regardless, but a check that only holds because of the target device's ABI list is
+# not a check.
+ABIS=$(unzip -l "$APK" 2>/dev/null | grep -oE 'lib/[a-z0-9_-]+/' | sort -u | tr -d ' ')
+NLIB=$(unzip -l "$APK" 2>/dev/null | grep -cE 'lib/[a-z0-9_-]+/.+\.so')
+if [ -z "$ABIS" ]; then
+  bad "no native libs found in $APK at all"
+elif [ "$ABIS" = "lib/arm64-v8a/" ]; then
+  ok "only arm64-v8a ships ($NLIB libs: shim + the 3 emulated 32-bit payloads)"
+else
+  bad "stray ABI directories survived the strip: $(printf '%s' "$ABIS" | tr '\n' ' ')"
+fi
+
+
 echo "== CLAIM: the conversion preserves the app's identity (package + version) =="
 # The whole premise is "the SAME app, re-hosted" — so it must still BE that app. Nothing checked it.
 # depermission.py rewrites strings inside this very manifest (INTERNET -> XNTERNET, length-preserving),
