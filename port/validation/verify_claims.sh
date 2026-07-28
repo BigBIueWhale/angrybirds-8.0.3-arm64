@@ -190,6 +190,39 @@ else
   skip "signing/alignment (no apksigner on PATH, no ab-port image)"
 fi
 
+echo "== CLAIM: every JNI entry point the engine exports has a thunk in the shim =="
+# coverage_check.py guards the native->bridge direction: every UND FUNC the engine imports resolves
+# to real code. This is the OTHER direction, and nothing checked it: every Java_com_rovio_* symbol
+# the ORIGINAL engine exports must also be exported by the shim, because ART resolves native methods
+# by symbol name against the loaded .so.
+#
+# A missing thunk does not fail at load. It fails the first time Java calls THAT method — which for a
+# rarely-used entry point could be deep into gameplay, as an UnsatisfiedLinkError with no earlier
+# warning. gen_thunks.py generates the set from the engine's own exports, so they agree by
+# construction; this asserts the construction actually held for the shipped binary.
+# The ORIGINAL engine is already extracted to $T/o by the authenticity check above; reuse it rather
+# than referencing an $ENGINE_SO that this script never defines. (The first version did exactly that,
+# which would have made the check skip silently — the right outcome for an undefined input, but the
+# wrong check.)
+ENG_ORIG="$T/o/lib/armeabi-v7a/libAngryBirdsClassic.so"
+if [ -f "$ENG_ORIG" ] && [ -f "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" ]; then
+  readelf --dyn-syms -W "$ENG_ORIG" 2>/dev/null | grep -oE 'Java_com_rovio_[A-Za-z0-9_]+' | sort -u > "$T/eng_jni.txt"
+  readelf --dyn-syms -W "$T/n/lib/arm64-v8a/libAngryBirdsClassic.so" 2>/dev/null \
+      | grep -oE 'Java_com_rovio_[A-Za-z0-9_]+' | sort -u > "$T/shim_jni.txt"
+  MISSING=$(comm -23 "$T/eng_jni.txt" "$T/shim_jni.txt" | tr '\n' ' ')
+  NE=$(wc -l < "$T/eng_jni.txt"); NS=$(wc -l < "$T/shim_jni.txt")
+  if [ "$NE" -eq 0 ]; then
+    bad "found no Java_com_rovio_* exports in the engine — the scan is broken, not the shim"
+  elif [ -z "$MISSING" ]; then
+    ok "all $NE engine JNI entry points have thunks in the shim ($NS exported)"
+  else
+    bad "shim is MISSING thunks for engine natives (UnsatisfiedLinkError when Java calls them): $MISSING"
+  fi
+else
+  skip "JNI thunk coverage (need the extracted engine and the shipped shim)"
+fi
+
+
 echo "== CLAIM: native libs are EXTRACTED to disk (the shim finds its payload by path) =="
 # load_engine_bytes() locates the 32-bit engine by calling dladdr() on one of its own functions,
 # taking the directory of the shim's own .so, and open()ing "libengine32.so" beside it. That only
