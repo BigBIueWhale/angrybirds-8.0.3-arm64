@@ -347,7 +347,30 @@ prints `SKIP: engine .so not found` and **returns 0**. The harness now supplies 
 and treats a self-skip as its own outcome, because a test that skipped proves nothing in either
 direction and must never be counted as a run.
 
-**2026-07-28: 6/6 module mutations detected, 0 skipped**, and the real suite still passes.
+**2026-07-28: 12/12 module mutations detected, 0 skipped, plus 2 documented open gaps.**
+
+A third gap was closed after checking each undetected mutation against the FULL suite rather than
+just its own module — which is the right question, since coverage can live in a different test:
+
+- **`h_memcpy` returning without copying** IS caught, by the boot/ctors device tests that run the
+  real engine. It is not caught by `test_libc`, because the BR-table bridges live in `dispatch.c`
+  while that test drives `libc_try` in `bridge_libc.c`. Coverage existed; the case was mis-attributed.
+- **`QUARANTINE_N = 0` was caught by nothing at all.** That is the use-after-free protection — the
+  fix for the session-long `std::string` UAF that crashed the game at level end — and disabling it
+  outright left every test green. `test_galloc_quarantine.c` now asserts a freed block is withheld
+  across 64 same-size allocations, with an unquarantined control proving the check is
+  quarantine-specific rather than an allocator habit.
+
+**Two gaps remain open and are reported as such by the suite** (an `OPEN GAP` line, not a failure —
+a red run for a known fact trains people to ignore the tool):
+
+| gap | why it is open |
+|---|---|
+| `sched`'s `GT_BLOCKED` transition | `test_sched` drives `pthread_create`/`join` and a `cond_wait` handoff; both pass with the transition removed, so the bookkeeping the deadlock detector depends on is unasserted. Closing it needs a test that parks a thread with no runnable peer and expects the detector to fire. |
+| `longjmp`'s saved SP | zeroing the SP stored into the guest's `jmp_buf` goes unnoticed because the test's guest returns almost immediately after the `longjmp`, so a bogus SP is never dereferenced. A test that touches the stack afterwards would close it. |
+
+Both are real tests to design rather than one-liners, so they are recorded honestly instead of
+papered over.
 
 ### `mutation_test.sh` — proving the gate can fail
 

@@ -43,7 +43,11 @@ PASS=0; MISSED=0; SKIPPED=0
 build_run() {                          # $1=tree $2=module $3=extra srcs
     local tree="$1" mod="$2" extra="$3"
     local S="$tree/port/shim/src" H="$tree/port/shim/test" O; O=$(mktemp -d)
-    cc -w -O2 -DRTLD_DEFAULT=0 -I"$S" "$H/test_$mod.c" $extra -lpthread -lm -o "$O/t" 2>"$O/cc.log" || {
+    # Modules that touch cpu.c/bridge_gl.c need Unicorn, exactly as run_tests.sh links them. The
+    # vendored tree is used from THIS copy so a mutation to it would be picked up too.
+    local UNI="$tree/port/shim/vendor/unicorn" ULIB="" UINC=""
+    if [ -f "$UNI/lib/libunicorn.a" ]; then ULIB="$UNI/lib/libunicorn.a"; UINC="-I$UNI/include"; fi
+    cc -w -O2 -DRTLD_DEFAULT=0 -I"$S" $UINC "$H/test_$mod.c" $extra $ULIB -lpthread -lm -ldl -o "$O/t" 2>"$O/cc.log" || {
         echo "BUILDFAIL"; rm -rf "$O"; return 9; }
     # Point tests that need the engine at THIS tree's copy. Without it test_elf32 falls back to a
     # hardcoded host path, does not find it, prints "SKIP: engine .so not found" and RETURNS 0 — so
@@ -95,6 +99,25 @@ case_run() {
     rm -rf "$WORK"
 }
 
+GAPS=0
+# A case for a mutation the suite is KNOWN not to catch. Reported as an open gap rather than a
+# failure — the fact is documented, and a red run every time would train people to ignore this.
+# Its detection status is still checked: if a future test closes the gap, this says so.
+case_run_gap() {
+    local name="$1"
+    local out; out=$(case_run "$@" 2>&1)
+    if printf '%s' "$out" | grep -q "NOT DETECTED"; then
+        printf '  %-16s OPEN GAP (documented) — no test in the suite catches this\n' "$name"
+        # NO MISSED adjustment: case_run ran inside $( ), a subshell, so its increments never
+        # reached this shell in the first place. Decrementing here drove the count to -2 and made
+        # the verdict claim undetected mutations that did not exist.
+        GAPS=$((GAPS+1))
+    else
+        printf '%s\n' "$out"
+        printf '  %-16s (gap now CLOSED — update the comment above this case)\n' "$name"
+    fi
+}
+
 echo "== module mutation test: break one invariant, confirm that module's test fails =="
 
 # galloc: the size-class formula. chunk must be align16(n)+16 so payload >= align16(n); dropping the
@@ -124,10 +147,60 @@ case_run format     format     "format.c marshal.c" format.c \
 case_run ctype      ctype_tables "ctype_tables.c" ctype_tables.c \
   's/T_ctype\[c+1\] = classify(c);/T_ctype[c+1] = 0;/'
 
+# marshal: the AAPCS 8-byte alignment rule. An i64/double must start on an EVEN core register;
+# dropping the round-up hands every bridge the wrong half of a 64-bit argument. This is the module
+# every other bridge sits on, so a silent defect here is the worst case in the shim.
+case_run marshal    marshal    "marshal.c" marshal.c \
+  's/if (c->ncrn & 1) c->ncrn++;//'
+
+# jni_arg: JNI argument assembly on top of marshal + the handle table.
+case_run jni_arg    jni_arg    "jni_argbuild.c marshal.c handle_table.c" jni_argbuild.c \
+  's/uint32_t cell = ap + (uint32_t)n \* 8u;/uint32_t cell = ap + (uint32_t)n * 4u;/'
+
+# fdtable: fds 0,1,2 are reserved; allocating from 0 hands out stdin/stdout as ordinary files.
+case_run fdtable    fdtable    "fdtable.c" fdtable.c \
+  's/for (int i = 3; i < t->n; i++)/for (int i = 0; i < t->n; i++)/'
+
+# gl_sizes: the overflow guard that stops a guest-supplied w*h*count from exceeding the scratch
+# buffer the driver is then told to read. Written after a near-miss found by reading code, not by a
+# test — so it had better be able to fail.
+case_run gl_sizes   gl_sizes   "bridge_gl.c cpu.c galloc.c marshal.c format.c" bridge_gl.c \
+  's/if(v > GL_SCRATCH_MAX) return 0;//'
+
+# galloc_quarantine: the held-block window IS the use-after-free protection — the fix for the
+# session-long std::string UAF. Collapsing it to zero means a freed block is reusable immediately,
+# which is exactly the pre-fix behaviour.
+case_run quarantine galloc_quarantine "galloc.c" galloc.c \
+  's/#define QUARANTINE_N 131072u/#define QUARANTINE_N 0u/'
+
+# KNOWN GAP (2026-07-28), kept as a standing reminder rather than deleted. Verified against the FULL
+# suite, not just this module: removing the GT_BLOCKED transition is caught by NOTHING in
+# run_tests.sh. test_sched drives pthread_create/join and a cond_wait handoff, and both still pass —
+# so the blocked-state bookkeeping that the deadlock detector depends on is unasserted. Closing it
+# needs a test that parks a thread with no runnable peer and expects the detector to fire; that is a
+# real test to design, not a one-liner, so it is recorded here instead of faked.
+case_run_gap sched      sched      "cpu.c loader.c dispatch.c sched.c galloc.c elf32.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c" sched.c \
+  's/else                      r->state=GT_BLOCKED;//'
+
+# KNOWN GAP (2026-07-28), same treatment. Zeroing the SP saved into the guest's jmp_buf is caught by
+# NOTHING in the suite: test_longjmp's guest returns almost immediately after the longjmp, so a
+# bogus restored SP is never dereferenced before the test ends. A test that touches the stack after
+# longjmp would close it.
+case_run_gap longjmp    longjmp    "cpu.c loader.c dispatch.c sched.c galloc.c elf32.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c" dispatch.c \
+  's/uc_reg_read(cc->uc,UC_ARM_REG_SP,&v); gm_wr32(&cc->mem,jb+32,v);/gm_wr32(\&cc->mem,jb+32,0u);/'
+
+# The BR-table bridges (memcpy/malloc/free/str*) live in dispatch.c, NOT in bridge_libc.c, so
+# test_libc — which drives libc_try — never sees them. Running the FULL suite against this mutation
+# showed it IS caught (by the boot/ctors device tests, which run the real engine), so the coverage
+# exists; it simply is not this module's. Attributed to ctors, where the detection actually happens.
+case_run memcpy_br  ctors      "cpu.c loader.c dispatch.c sched.c galloc.c elf32.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c" dispatch.c \
+  's/static uint64_t h_memcpy (dispatch_t\*d,mcur\*c){ heap_pin(d,"before","memcpy");/static uint64_t h_memcpy (dispatch_t*d,mcur*c){ return 0;/'
+
 echo
-echo "  detected: $PASS   NOT detected: $MISSED   skipped: $SKIPPED"
+echo "  detected: $PASS   NOT detected: $MISSED   skipped: $SKIPPED   documented gaps: $GAPS"
 # A skip is not a pass — same rule as mutation_test.sh, which once printed success on a run where
 # nothing executed.
+[ "$GAPS" -gt 0 ] && echo "  ($GAPS documented gap(s): a mutation no test in the suite catches — see the comments above those cases)"
 if [ "$MISSED" -ne 0 ]; then
     echo "  SOME MODULE MUTATIONS WENT UNDETECTED — those tests pass vacuously"; exit 1
 elif [ "$PASS" -eq 0 ]; then

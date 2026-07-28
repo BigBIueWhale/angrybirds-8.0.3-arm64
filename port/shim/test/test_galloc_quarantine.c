@@ -63,6 +63,58 @@ static int fails=0;
 /* Op mix flags — isolate which entry point breaks the invariant under quarantine. */
 enum { OP_REALLOC=1, OP_CALLOC=2, OP_HUGE=4 };
 
+/* Does the quarantine actually HOLD a freed block? Everything else in this file asks whether
+ * galloc_check stays consistent WITH a quarantine configured; nothing asked whether the quarantine
+ * does its job. That gap was found on 2026-07-28 by mutation_modules.sh: setting QUARANTINE_N to 0
+ * — disabling the use-after-free protection outright — left the ENTIRE module suite passing.
+ *
+ * That protection is not incidental. It is the fix for the session-long std::string UAF that
+ * crashed the game at level end: a block written while quarantined has a live stale pointer, so its
+ * address is never reclaimed and the stale write lands harmlessly. Silently losing it would bring
+ * back a crash that took a long time to find, with every test still green.
+ *
+ * The invariant asserted here is the weakest one that is still meaningful: while a freed block is
+ * inside the quarantine window, a subsequent same-size allocation must NOT be handed that address
+ * back. With the window at 0 the allocator reuses it immediately and this fails. */
+static void t_quarantine_holds(void){
+    const uint32_t BASE=0x50000000u, ARENA=8u*1024*1024;
+    hostmem hm; guest_mem *m = make_mem(&hm, BASE, ARENA);
+    galloc *a = galloc_create(m, BASE, ARENA);
+    galloc_set_quarantine(a, 4096);
+    printf("[quarantine actually holds freed blocks]\n");
+
+    uint32_t p = galloc_malloc(a, 64);
+    if (!p){ printf("  FAIL: initial malloc\n"); fails++; return; }
+    galloc_free(a, p);
+    int reused = 0;
+    for (int i = 0; i < 64; i++){                 /* well inside a 4096-op window */
+        uint32_t q = galloc_malloc(a, 64);
+        if (q == p){ reused = 1; break; }
+    }
+    if (reused){
+        printf("  FAIL: a freed block was handed back while quarantined — UAF protection is OFF\n");
+        fails++;
+    } else {
+        printf("  ok: freed block withheld across 64 same-size allocations\n");
+    }
+
+    /* And the complement: with NO quarantine the address is expected to come straight back, so the
+     * check above is testing the quarantine rather than some unrelated allocator habit. */
+    hostmem hm2; guest_mem *m2 = make_mem(&hm2, BASE, ARENA);
+    galloc *b = galloc_create(m2, BASE, ARENA);
+    uint32_t r = galloc_malloc(b, 64);
+    galloc_free(b, r);
+    uint32_t r2 = galloc_malloc(b, 64);
+    if (r2 != r) printf("  note: unquarantined heap did not reuse immediately (allocator policy)\n");
+    else         printf("  ok: unquarantined heap reuses at once, so the test above is quarantine-specific\n");
+
+    /* Both arenas must be released. This file is compiled with ASan and -fno-sanitize-recover, so a
+     * leak is a hard failure — the first version of this test leaked 22 MB across the two 8 MB
+     * arenas and broke the suite. Mirrors run_mix's teardown below. */
+    galloc_destroy(a); free(hm.buf);  free(m);
+    galloc_destroy(b); free(hm2.buf); free(m2);
+}
+
 static void run_mix(const char *name, uint32_t qn, unsigned long nops, int mix){
     const uint32_t BASE=0x50000000u, ARENA=192u*1024*1024;
     hostmem hm; guest_mem *m = make_mem(&hm, BASE, ARENA);
@@ -132,6 +184,8 @@ static void run_case(const char *name, uint32_t qn, unsigned long nops){
 }
 
 int main(void){
+    t_quarantine_holds();
+
     printf("galloc_check() on a QUARANTINED heap — nothing but galloc touches the arena,\n"
            "so ANY failure below is a diagnostic defect, not guest corruption.\n\n");
 
