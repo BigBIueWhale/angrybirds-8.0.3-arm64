@@ -99,6 +99,27 @@ else
 fi
 
 say
+say "== R5: what the OS actually grants this app =="
+# R5 claimed "nothing at dangerous protection level". The shipped manifest declares
+# WRITE_EXTERNAL_STORAGE, which IS dangerous — so the claim needed measuring, not restating.
+# `dumpsys package` splits requested / install / runtime permissions; print all three.
+adb shell dumpsys package com.rovio.angrybirds 2>/dev/null | tr -d '\r' \
+  | awk '/requested permissions:/{r=1;next} /install permissions:|runtime permissions:|User 0:/{r=0} r&&NF{print "   requested: "$0}' \
+  | head -20 | tee -a "$LOG"
+adb shell dumpsys package com.rovio.angrybirds 2>/dev/null | tr -d '\r' \
+  | awk '/install permissions:/{i=1;next} /runtime permissions:|User 0:|declared permissions:/{i=0} i&&NF{print "   granted(install): "$0}' \
+  | head -12 | tee -a "$LOG"
+RT=$(adb shell dumpsys package com.rovio.angrybirds 2>/dev/null | tr -d '\r' \
+  | awk '/runtime permissions:/{i=1;next} /^\s*$|User [1-9]/{i=0} i&&NF{print}' | head -12)
+say "   runtime permissions: ${RT:-<none>}"
+STOR=$(printf '%s' "$RT" | grep -ci 'EXTERNAL_STORAGE')
+if [ "${STOR:-0}" -eq 0 ]; then
+    say "   [ OK ] no EXTERNAL_STORAGE runtime grant — the declared dangerous permission is not held"
+else
+    say "   [note] EXTERNAL_STORAGE appears in the runtime set: $(printf '%s' "$RT" | grep -i EXTERNAL_STORAGE)"
+fi
+
+say
 say "== ONDEVICE.md: the ABI check it tells the user to run =="
 A=$(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r')
 say "   adb shell getprop ro.product.cpu.abi -> $A"

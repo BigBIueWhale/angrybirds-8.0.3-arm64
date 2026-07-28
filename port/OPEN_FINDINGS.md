@@ -572,26 +572,51 @@ Worth knowing if the loader is ever changed: reading the payload from inside the
 `AAssetManager`/zip path rather than `open()`, and is the alternative if extraction ever stops being
 the default.
 
-### R5. What the shipped APK can actually do — the full permission set, before and after
+### R5. What the shipped APK can actually do — declared vs *granted*, measured on Android 16
 
-Measured from both manifests rather than described, because "no phone-home" is a claim about what is
-*absent* and those are the claims that rot quietly.
+Measured from both manifests and from the device, because "no phone-home" is a claim about what is
+*absent*, and those are the claims that rot quietly. This entry previously listed **3** mangled
+permissions and **2** kept, and asserted "nothing at `dangerous` protection level". All three of
+those were wrong, and the last one was wrong in the direction that matters.
 
-| original 8.0.3 | shipped arm64 | effect |
-|---|---|---|
-| `android.permission.INTERNET` | `android.permission.XNTERNET` | unresolvable → **no socket may be opened by the process at all** |
-| `android.permission.GET_ACCOUNTS` | `android.permission.XET_ACCOUNTS` | unresolvable → no account enumeration |
-| `com.android.vending.BILLING` | `com.android.vending.XILLING` | unresolvable → no in-app purchase path |
-| `android.permission.WAKE_LOCK` | `android.permission.WAKE_LOCK` | **kept** — normal protection level, auto-granted, keeps the screen awake while playing |
-| `com.sec.android.airview.HOVER` | `com.sec.android.airview.HOVER` | **kept** — a Samsung hover-UI hint, not a capability |
+**Mangled — 10, not 3.** `depermission.py` flips the first letter, which is length-preserving so the
+AXML string pool needs no offset fixups:
 
-So the installed app holds exactly one real capability, `WAKE_LOCK`, and **nothing at
-`dangerous` protection level** — installing prompts for no runtime permission at all.
+| original 8.0.3 | shipped arm64 |
+|---|---|
+| `android.permission.INTERNET` | `android.permission.XNTERNET` |
+| `android.permission.ACCESS_NETWORK_STATE` | `android.permission.XCCESS_NETWORK_STATE` |
+| `android.permission.GET_ACCOUNTS` | `android.permission.XET_ACCOUNTS` |
+| `com.android.vending.BILLING` | `com.android.vending.XILLING` |
+| `com.android.vending.INSTALL_REFERRER` | `com.android.vending.XNSTALL_REFERRER` |
+| `com.google.android.c2dm.permission.RECEIVE` | `…XECEIVE` |
+| `com.google.android.c2dm.permission.REGISTRATION` | `…XEGISTRATION` |
+| `com.google.android.c2dm.permission.SEND` | `…XEND` |
+| `com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE` | `…XIND_GET_INSTALL_REFERRER_SERVICE` |
+| `com.rovio.angrybirds.permission.C2D_MESSAGE` | `…X2D_MESSAGE` |
 
-The mangling is length-preserving (first letter flipped) so the AXML string pool needs no offset
-fixups; `depermission.py` explains why. `verify_claims.sh` asserts the absence of every live
-network/billing/account/push permission, and `mutation_test.sh` proves that check fails when Rovio's
-original manifest is restored.
+**Kept:** `WAKE_LOCK`, `WRITE_EXTERNAL_STORAGE`, `INSTALL_PACKAGES`, `com.sec.android.airview.HOVER`,
+`com.sec.android.airview.enable`.
+
+**`WRITE_EXTERNAL_STORAGE` is `dangerous`, so the old "nothing at dangerous protection level" was
+false.** `ONDEVICE.md` had it right and this entry did not. What settles it is not the declaration
+but the grant, so that was measured on API 36 — the A56's own OS:
+
+| | |
+|---|---|
+| granted at install | **exactly two**: `android.permission.WAKE_LOCK`, and `com.rovio.angrybirds.permission.X2D_MESSAGE` — the app's *own* mangled, self-declared permission, which grants it nothing |
+| runtime permissions | **all `granted=false`** — `WRITE_EXTERNAL_STORAGE`, `READ_EXTERNAL_STORAGE`, `POST_NOTIFICATIONS`, `ACCESS_MEDIA_LOCATION`, and the four `READ_MEDIA_*` that Android 16 auto-expands a legacy app's storage request into |
+| every mangled name | appears under *requested* and in **no** granted list — they resolve to nothing, exactly as intended |
+
+So the app holds **one** real capability, `WAKE_LOCK`. The dangerous permission is declared and **not
+held**: targetSdk 26 means runtime permissions must be requested, and the game never asks — which is
+consistent with R7's independent measurement that all 48 files it writes are app-private and none
+touch external storage.
+
+`verify_claims.sh` asserts the absence of every live network/billing/account/push permission, and
+`mutation_test.sh` proves that check fails when Rovio's original manifest is restored.
+`emu_doc_verify.sh` now records the on-device grant state so the *declared vs granted* distinction
+stays measured rather than argued.
 
 ### R0. Bug classes swept across the whole shim
 
