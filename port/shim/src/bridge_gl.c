@@ -95,8 +95,8 @@ static void gl_setup_client(cpu_t*c, uint32_t vhi){
     for(int i=0;i<GL_MAX_VA;i++) if(g_va[i].en && g_va[i].client){
         uint32_t str = g_va[i].stride ? (uint32_t)g_va[i].stride : (uint32_t)g_va[i].size*gl_tsz(g_va[i].type);
         uint32_t bytes = vhi*str; if(!bytes) continue;
-        if(bytes>g_vabufsz[i]){ g_vabufsz[i]=bytes; g_vabuf[i]=realloc(g_vabuf[i],bytes); }
-        if(!g_vabuf[i]){ g_vabufsz[i]=0; continue; }
+        if(bytes>g_vabufsz[i]){ uint8_t *nb=realloc(g_vabuf[i],bytes); if(!nb) continue; g_vabuf[i]=nb; g_vabufsz[i]=bytes; }
+        if(!g_vabuf[i]) continue;
         RD(c, g_va[i].gptr, g_vabuf[i], bytes);
         if(vap) vap((uint32_t)i,g_va[i].size,g_va[i].type,g_va[i].norm,g_va[i].stride,g_vabuf[i]);
     }
@@ -183,7 +183,11 @@ DEF(h_glDrawElements){ REAL(void,(uint32_t,int,uint32_t,const void*),"glDrawElem
     if(cnt<=0){ f(mode,cnt,ty,(const void*)(size_t)off); return 0; }
     const void *idxp=(const void*)(size_t)off; uint32_t isz=gl_isz(ty);
     if(g_elembuf==0){                                   /* client-side indices: copy guest -> host */
-        uint32_t ib=(uint32_t)cnt*isz; if(ib>g_idxbufsz){ g_idxbufsz=ib; g_idxbuf=realloc(g_idxbuf,ib); }
+        uint32_t ib=(uint32_t)cnt*isz;
+        /* Same shape as the tmp() bug fixed earlier: the size was raised BEFORE the realloc, so a
+         * failure left g_idxbufsz claiming a capacity the (now NULL) buffer did not have, and every
+         * later smaller request skipped the realloc and found NULL forever. Commit only on success. */
+        if(ib>g_idxbufsz){ uint8_t *nb=realloc(g_idxbuf,ib); if(nb){ g_idxbuf=nb; g_idxbufsz=ib; } }
         if(g_idxbuf){ RD(c,off,g_idxbuf,ib); idxp=g_idxbuf; }
     }
     if(gl_any_client()){

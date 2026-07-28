@@ -18,11 +18,22 @@ struct handle_table {
     hent     *idmap; uint32_t idmap_cap, idmap_len;   /* real_id -> id token */
 };
 
+/* POOL_FULL: no slot could be allocated. Callers map it to HT_NULL, which every consumer of this
+ * table already handles (it is what a NULL object yields). Previously the realloc result was
+ * assigned straight into p->v and then indexed on the next line, so an allocation failure meant a
+ * NULL dereference AND the loss of the old buffer. This is the JNI token table - it grows with live
+ * refs, so on a memory-pressured phone the failure is reachable rather than theoretical. */
+#define POOL_FULL 0xffffffffu
 static uint32_t pool_alloc(pool *p, void *real, const void *desc){
     uint32_t idx;
     if (p->fl_len) idx = p->fl[--p->fl_len];
     else {
-        if (p->n >= p->cap){ p->cap = p->cap ? p->cap*2 : 16; p->v = (slot*)realloc(p->v, p->cap*sizeof(slot)); }
+        if (p->n >= p->cap){
+            uint32_t nc = p->cap ? p->cap*2 : 16;
+            slot *nv = (slot*)realloc(p->v, (size_t)nc*sizeof(slot));
+            if (!nv) return POOL_FULL;          /* old p->v and p->cap stay valid */
+            p->v = nv; p->cap = nc;
+        }
         idx = p->n++;
     }
     p->v[idx].real = real; p->v[idx].desc = desc; p->v[idx].used = 1;
@@ -31,7 +42,15 @@ static uint32_t pool_alloc(pool *p, void *real, const void *desc){
 static void pool_free(pool *p, uint32_t idx){
     if (idx >= p->n || !p->v[idx].used) return;
     p->v[idx].used = 0; p->v[idx].real = NULL; p->v[idx].desc = NULL;
-    if (p->fl_len >= p->fl_cap){ p->fl_cap = p->fl_cap ? p->fl_cap*2 : 16; p->fl = (uint32_t*)realloc(p->fl, p->fl_cap*sizeof(uint32_t)); }
+    /* If the free-list cannot grow, drop this index rather than dereference NULL. The slot is
+     * already marked unused, so the only cost is that it is not reused - a leak of one table entry,
+     * not a crash, and not a correctness error. */
+    if (p->fl_len >= p->fl_cap){
+        uint32_t nc = p->fl_cap ? p->fl_cap*2 : 16;
+        uint32_t *nf = (uint32_t*)realloc(p->fl, (size_t)nc*sizeof(uint32_t));
+        if (!nf) return;
+        p->fl = nf; p->fl_cap = nc;
+    }
     p->fl[p->fl_len++] = idx;
 }
 
@@ -76,10 +95,18 @@ uint32_t ht_new_ref(handle_table *t, int kind, void *real){
     if (!real) return HT_NULL;
     if (kind < HK_LOCAL || kind > HK_WEAK) return HT_NULL;
     uint32_t idx = pool_alloc(&t->p[kind], real, NULL);
+    if (idx == POOL_FULL) return HT_NULL;      /* out of memory -> behave as a null ref */
     uint32_t tok = ((uint32_t)kind << 28) | idx;
     if (kind == HK_LOCAL){
-        if (t->frame_len >= t->frame_cap){ t->frame_cap = t->frame_cap ? t->frame_cap*2 : 32; t->frame = (uint32_t*)realloc(t->frame, t->frame_cap*sizeof(uint32_t)); }
-        t->frame[t->frame_len++] = tok;
+        /* The local-ref frame records tokens so they can be released together. If it cannot grow,
+         * the ref stays valid but will not be auto-released on frame pop - a bounded leak, chosen
+         * over dereferencing a NULL frame array. */
+        if (t->frame_len >= t->frame_cap){
+            uint32_t nc = t->frame_cap ? t->frame_cap*2 : 32;
+            uint32_t *nf = (uint32_t*)realloc(t->frame, (size_t)nc*sizeof(uint32_t));
+            if (nf){ t->frame = nf; t->frame_cap = nc; }
+        }
+        if (t->frame_len < t->frame_cap) t->frame[t->frame_len++] = tok;
     }
     return tok;
 }
@@ -108,6 +135,7 @@ uint32_t ht_intern_id(handle_table *t, void *real_id, const void *desc){
     uint32_t existing = idmap_get(t, real_id);
     if (existing) return existing;
     uint32_t idx = pool_alloc(&t->p[HK_ID], real_id, desc);
+    if (idx == POOL_FULL) return HT_NULL;
     uint32_t tok = ((uint32_t)HK_ID << 28) | idx;
     if (t->idmap_cap == 0 || t->idmap_len*4 >= t->idmap_cap*3) idmap_grow(t);
     idmap_put_raw(t, real_id, tok);
