@@ -317,9 +317,14 @@ echo "== CLAIM: no capture script can silently overwrite another's provenance ro
 BADLBL=""
 for f in port/validation/emu_*.sh; do
   [ -e "$f" ] || continue
-  grep -q 'record_build' "$f" || continue
+  # Strip comments FIRST. This tested `grep -q record_build`, which matches any MENTION of it —
+  # including a comment in emu_perf_split.sh explaining that the script deliberately does NOT call
+  # it. That script was duly flagged for a "fixed label" it never records. A check that fires on
+  # prose about the check is one people learn to ignore. Only a real call on a code line counts.
+  code=$(grep -vE '^[[:space:]]*#' "$f")
+  printf '%s' "$code" | grep -q 'record_build' || continue
   grep -qE '^PFX=' "$f" || continue                      # not parameterised -> a fixed label is fine
-  lbl=$(grep -oE 'record_build "\$APK" "[^"]*"' "$f" | head -1 | sed 's/.*"\(.*\)"$/\1/')
+  lbl=$(printf '%s' "$code" | grep -oE 'record_build "\$APK" "[^"]*"' | head -1 | sed 's/.*"\(.*\)"$/\1/')
   [ "$lbl" = '$PFX' ] || BADLBL="$BADLBL $(basename "$f")(label=$lbl)"
 done
 [ -z "$BADLBL" ] && ok "every parameterised capture script labels its provenance with \$PFX" \
