@@ -507,6 +507,7 @@ drift a reader can see.
 | `port/validation/alloc_trace_compare.sh` | diff the guest's allocation sequence between x86 and AArch64. |
 | `port/validation/arm64_cross_test.sh` | the arm64 ABI validation, CROSS-compiled on x86 and executed under qemu-user. |
 | `port/validation/arm64_unicorn_test.sh` | Build Unicorn 2.1.4 (same commit as the APK) for arm64-Linux + run the shim's engine-load |
+| `port/validation/axml_identity.py` | read the package name and versionName from the `<manifest>` element of a binary AXML, resolved through the resource map |
 | `port/validation/axml_sdk.py` | read minSdkVersion / targetSdkVersion straight out of a binary AndroidManifest.xml. |
 | `port/validation/capture_stock.sh` | Boot ab-emu, install the ORIGINAL unmodified ARM APK (runs via houdini), let it render a level |
 | `port/validation/emu_arm64_real_artifact.sh` | run THE ACTUAL DELIVERABLE on a real ARM64 Android runtime. |

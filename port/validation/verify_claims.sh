@@ -190,6 +190,42 @@ else
   skip "signing/alignment (no apksigner on PATH, no ab-port image)"
 fi
 
+echo "== CLAIM: the conversion preserves the app's identity (package + version) =="
+# The whole premise is "the SAME app, re-hosted" — so it must still BE that app. Nothing checked it.
+# depermission.py rewrites strings inside this very manifest (INTERNET -> XNTERNET, length-preserving),
+# and a targeting bug there could alter the package name as easily as a permission. The consequence
+# is user-visible and quiet: an APK declaring a different package installs as a SEPARATE app rather
+# than an update, so `adb install -r` would not replace what is on the phone, and a changed
+# versionName would make the artifact stop matching the 8.0.3 it claims to be.
+#
+# Compared against the ORIGINAL APK rather than a pasted constant, so this states what it means —
+# the conversion changed neither — and cannot rot the way the documented audio SHA-256 did.
+pkgver() {   # $1 = apk ; echoes "<package> <versionName>" from the <manifest> element
+  # NOT `strings | grep -m1 '[0-9]+\.[0-9]+\.[0-9]+'`. That was the first version and it reported
+  # "com.rovio.angrybirds 25.3.1" — the first x.y.z-looking entry in the string pool, which is a
+  # bundled library's version, not the app's. It compared EQUAL between the original and the
+  # converted APK, so the check passed while measuring the wrong thing entirely. The pool has no
+  # ordering guarantee; identity has to be read from the <manifest> element's attributes, resolved
+  # through the resource map — which is what axml_identity.py does.
+  local d; d=$(mktemp -d)
+  unzip -p "$1" AndroidManifest.xml > "$d/m.bin" 2>/dev/null
+  python3 port/validation/axml_identity.py "$d/m.bin" 2>/dev/null
+  rm -rf "$d"
+}
+if [ -f "$ORIG" ] && [ -f "$APK" ]; then
+  O=$(pkgver "$ORIG"); N=$(pkgver "$APK")
+  if [ -z "$O" ] || [ -z "$N" ]; then
+    bad "could not resolve package/versionName from the manifests (orig='$O' shipped='$N')"
+  elif [ "$O" = "$N" ]; then
+    ok "identity preserved: $N (identical to Rovio's original)"
+  else
+    bad "identity CHANGED by the conversion: original='$O' shipped='$N' — this would install as a different app"
+  fi
+else
+  skip "app identity (need both the original APK and the deliverable)"
+fi
+
+
 echo "== CLAIM: every SHA-256 printed in the docs matches the artifact =="
 # RELEASE_NOTES.md tells a reader to verify their download against a SHA-256 block. Nothing checked
 # that those digests were true. On 2026-07-28 the audio variant's documented hash was
