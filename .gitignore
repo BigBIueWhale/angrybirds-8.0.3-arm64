@@ -28,6 +28,7 @@
 /reports/shots/*
 !/reports/shots/PROOF_*.png
 !/reports/shots/README.md
+!/reports/shots/provenance.tsv
 
 # --- local scratch / downloaded tools / venv / crash dumps ---
 /venv/

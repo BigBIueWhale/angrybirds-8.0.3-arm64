@@ -5,7 +5,8 @@
 # under W^X, and PLAYS with audio active WITHOUT a crash on the A56's OS generation. Audio ENABLED
 # (no -no-audio; QEMU_AUDIO_DRV=none so AudioTrack still inits). Dismisses the deprecated-sdk dialog.
 set +e
-source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
+source "$(dirname "$0")/lib_settle.sh"
+source "$(dirname "$0")/lib_provenance.sh"   # frame-based settle (replaces flaky fixed sleeps)
 ( sleep 1600; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-audio.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/audiomod.txt"; : >"$LOG"
@@ -23,6 +24,7 @@ say "  android $(adb shell getprop ro.build.version.release 2>/dev/null|tr -d '\
 adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
 adb push "$APK" /data/local/tmp/ab.apk >/dev/null 2>&1
 adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | grep -q Success && say "install=ok" || { say "install FAIL"; say DONE; adb emu kill; exit 0; }
+record_build "$APK" "audiomod"
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
 adb shell monkey -p com.rovio.angrybirds -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1

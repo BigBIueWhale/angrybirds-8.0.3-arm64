@@ -198,6 +198,35 @@ for bogus in "call\[1\] nativeInit" "render\[N\] GL draws" "render\[1\] GL draws
   fi
 done
 
+echo "== CLAIM: the screenshots were captured on builds that still exist =="
+# Screenshots have gone stale silently twice: PROOF_2/3/4 showed a binary that no longer existed,
+# and PROOF_10 (the audio variant's only evidence) predated a session of shim changes while a bulk
+# docs sweep kept the hash printed beside it looking current. lib_provenance.sh now makes each
+# capture record the sha256 of the APK it actually installed, so that question can be ASKED.
+#
+# Deliberately NOT a hard failure: regenerating every proof after each shim change is hours of
+# emulator time, and a gate people learn to ignore is worse than no gate. Instead stale evidence is
+# counted and NAMED in the verdict, exactly like a skip - neither may read as a pass.
+PROV=reports/shots/provenance.tsv
+if [ ! -f "$PROV" ]; then
+  skip "screenshot provenance (no $PROV yet - re-run the emu_*.sh captures to populate it)"
+else
+  STALE=""; CUR=0
+  while IFS="$(printf '\t')" read -r lbl sha apk; do
+    [ -n "$lbl" ] || continue
+    if [ ! -f "out/$apk" ]; then STALE="$STALE\n           - $lbl: built from $apk, which no longer exists"; continue; fi
+    now=$(sha256sum "out/$apk" 2>/dev/null | cut -d' ' -f1)
+    if [ "$now" = "$sha" ]; then CUR=$((CUR+1))
+    else STALE="$STALE\n           - $lbl: captured on ${sha:0:12}…, $apk is now ${now:0:12}…"; fi
+  done < "$PROV"
+  [ "$CUR" -gt 0 ] && ok "$CUR capture(s) match the current build"
+  if [ -n "$STALE" ]; then
+    STALECNT=$(printf "%b" "$STALE" | grep -c "^ *-")
+    printf "  [STALE] %s capture(s) are from builds that are no longer current:%b\n" "$STALECNT" "$STALE"
+    STALEMSG="$STALECNT screenshot capture(s) predate the current build"
+  fi
+fi
+
 echo "== CLAIM: the screenshot index describes exactly the proofs that exist =="
 # PROOF_2/3/4 silently went stale for a day: they showed a binary that no longer existed, and
 # nothing noticed because nothing recorded what they were supposed to show. reports/shots/README.md
@@ -224,6 +253,7 @@ fi
 [ "${CLEANUP_ORIG:-0}" = "1" ] && rm -f "$ORIG"
 echo
 if [ "$FAIL" = "0" ]; then
+  [ -n "$STALEMSG" ] && echo "NOTE: $STALEMSG — regenerate them, or read them as historical."
   if [ "$SKIPPED" = "0" ]; then echo "ALL CHECKED CLAIMS HOLD"
   else
     [ "$SKIPPED" = "1" ] && W="check was" || W="checks were"

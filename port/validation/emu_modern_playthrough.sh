@@ -3,7 +3,8 @@
 # PLAYS+WINS (not just boots) on modern Android. Dismisses the DeprecatedTargetSdkVersionDialog
 # first (tap OK), then runs the same proven tutorial play sequence (coords transfer: 640x320).
 set +e
-source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
+source "$(dirname "$0")/lib_settle.sh"
+source "$(dirname "$0")/lib_provenance.sh"   # frame-based settle (replaces flaky fixed sleeps)
 # watchdog raised 1450 -> 2100s: the frame-based settle below can add up to 300s over the old
 # fixed sleep, and boot-to-frame[601] has been observed at ~565s.
 ( sleep 2100; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
@@ -26,6 +27,7 @@ say "  android $(adb shell getprop ro.build.version.release 2>/dev/null|tr -d '\
 adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
 adb push "$APK" /data/local/tmp/ab.apk >/dev/null 2>&1
 adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | grep -q Success && say "install=ok" || { say "install FAIL"; say DONE; adb emu kill; exit 0; }
+record_build "$APK" "modplay"
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
 adb shell monkey -p com.rovio.angrybirds -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1

@@ -4,7 +4,8 @@
 # automated: polls for the tutorial card (frame[601]+), then taps the start card + does 3 slingshot
 # drags (the sequence proven to reach levelComplete), then dumps the logic_error diagnostics.
 set +e
-source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
+source "$(dirname "$0")/lib_settle.sh"
+source "$(dirname "$0")/lib_provenance.sh"   # frame-based settle (replaces flaky fixed sleeps)
 ( sleep 1300; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/playthrough.txt"; : >"$LOG"
@@ -19,6 +20,7 @@ adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
 adb push "$APK" /data/local/tmp/ab.apk >/tmp/push.log 2>&1
 INST=fail; for t in 1 2 3 4; do adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | grep -q Success && { INST=ok; break; }; sleep 4; done
 echo "install=$INST" | tee -a "$LOG"; [ "$INST" = ok ] || { echo DONE|tee -a "$LOG"; adb emu kill; exit 0; }
+record_build "$APK" "playthrough"
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
 adb shell monkey -p com.rovio.angrybirds -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1

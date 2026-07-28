@@ -4,6 +4,7 @@
 # [h_fatal] appears, dump its LR-capture + the last level-load ops before it. This tells us the
 # CURRENT fatal (post-glGetIntegerv-fix), resolving the stale 14:43(stack-smash)/14:56(IOException) logs.
 set +e
+source "$(dirname "$0")/lib_provenance.sh"
 ( sleep 900; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/emu_fatal.txt"; : >"$LOG"
@@ -23,6 +24,7 @@ for t in 1 2 3 4; do
   echo "$R" | grep -q Success && { INST=ok; break; }; sleep 4
 done
 echo "install=$INST" | tee -a "$LOG"
+record_build "$APK" "emu_fatal"
 [ "$INST" = ok ] || { adb emu kill >/dev/null 2>&1; echo DONE|tee -a "$LOG"; exit 0; }
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &

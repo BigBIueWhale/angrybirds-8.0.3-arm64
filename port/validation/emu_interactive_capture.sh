@@ -18,6 +18,7 @@
 #       -v "$PWD":/work ab-emu bash /work/port/validation/emu_interactive_capture.sh
 set +e
 source "$(dirname "$0")/lib_settle.sh"
+source "$(dirname "$0")/lib_provenance.sh"
 ( sleep 2100; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim.apk          # diagnostic build, as the originals used
 OUT=/work/reports/shots; mkdir -p "$OUT"
@@ -36,6 +37,7 @@ adb push "$APK" /data/local/tmp/ab.apk >/dev/null 2>&1
 INST=fail
 for t in 1 2 3 4; do adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | grep -q Success && { INST=ok; break; }; sleep 4; done
 say "install=$INST"; [ "$INST" = ok ] || { say DONE; adb emu kill; exit 0; }
+record_build "$APK" "interactive"
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
 adb shell monkey -p com.rovio.angrybirds -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
