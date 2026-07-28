@@ -65,8 +65,10 @@ for b in js adcolony; do f=/tmp/aux/lib/armeabi-v7a/lib$b.so; [ -f "$f" ] && cp 
 # Inject the level-script VFS manifest `data/script_paths.json`. It is NOT bundled in the APK
 # (normally runtime-staged); without it AAssetManager_open('data/script_paths.json') fails ->
 # io::IOException -> the scene loader can't map any script -> JSON ParseError -> HANG. The engine
-# reads it as PLAINTEXT JSON (host harness served plaintext `{}`). Start minimal `{}` (valid empty
-# table) to unblock the failed-open; real name->path mappings are layered on once the schema is set.
+# reads it as PLAINTEXT JSON. (This used to say "start minimal `{}` ... real mappings are layered on
+# once the schema is set" — that was the bootstrap plan and it was superseded long ago: the line
+# below generates the REAL manifest, 2035 entries, and port/check_script_paths.py now refuses the
+# build unless it is complete against data/scripts, data/levels and data/vehicles.)
 mkdir -p assets/data
 python3 /work/port/gen_script_paths.py "$WORK/assets" > assets/data/script_paths.json
 echo "   injected assets/data/script_paths.json ($(wc -c < assets/data/script_paths.json) bytes, $(python3 -c 'import json;print(len(json.load(open("'"$WORK"'/assets/data/script_paths.json"))))' 2>/dev/null) keys)"
@@ -74,19 +76,8 @@ echo "   injected assets/data/script_paths.json ($(wc -c < assets/data/script_pa
 # AAssetManager, and per the comment above a failed open cascades to io::IOException -> the scene
 # loader maps no script -> JSON ParseError -> HANG at boot. gen_script_paths.py writing 0 keys would
 # produce exactly that, and the count was only printed. Assert it parses and is non-empty.
-python3 - "$WORK/assets/data/script_paths.json" <<'PYCHK' || { echo "FATAL: script_paths.json is empty/unparseable — the engine would hang at boot."; exit 1; }
-import json,sys
-# The real file is a LIST of ~2035 asset paths, not an object. A first version of this guard asserted
-# isinstance(d, dict) and would have failed EVERY build — caught only by running it against the real
-# generated file rather than against the shape I assumed from the "{}" mentioned in the comment above
-# (that "{}" was an early bootstrap placeholder, long superseded). Accept either container, require
-# non-empty, and require the entries to look like asset paths.
-d = json.load(open(sys.argv[1]))
-if not isinstance(d, (list, dict)) or len(d) == 0:
-    sys.exit(1)
-items = d if isinstance(d, list) else list(d)
-sys.exit(0 if all(isinstance(x, str) for x in items[:50]) else 1)
-PYCHK
+python3 /work/port/check_script_paths.py "$WORK/assets/data/script_paths.json" "$WORK/assets" \
+    || { echo "FATAL: script_paths.json failed its completeness check — the engine would hang at boot."; exit 1; }
 
 echo "== 4/5 repack + align =="
 rm -f META-INF/*.RSA META-INF/*.SF META-INF/*.MF 2>/dev/null || true

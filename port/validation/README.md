@@ -595,6 +595,11 @@ of them are load-bearing parts of the pipeline rather than helpers:
   screenshot in this repo was produced by its output**, because an arm64 AVD cannot run on an x86_64
   host. It is invoked by `build_apk_x86_release.sh` and `build_apk_x86_audio.sh`. A reader tracing
   "where did this win screenshot come from" had no documented path to it.
+- **`port/check_script_paths.py`** — the guard for that manifest, called by all six build scripts.
+  Asserts it parses, is non-empty, contains only strings (all of them, not the first 50), that every
+  listed path exists, and that every `.lua` under `data/{scripts,levels,vehicles}` is listed. It
+  refuses a wrong assets root rather than reporting a vacuous pass. One file, six callers, because
+  the previous inline copy drifted the moment one of the six was strengthened.
 - **`port/gen_script_paths.py`** — synthesises `data/script_paths.json`, the level-script VFS manifest
   the Fusion engine's scene loader opens through `AAssetManager_open`. It is not bundled in the APK
   (normally runtime-staged), so it is generated from the APK's own scripts. Without it the open
