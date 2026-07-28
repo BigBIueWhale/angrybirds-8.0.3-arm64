@@ -53,7 +53,18 @@
 #     to prevent. It now extracts the markers from the doc and keeps the fixed list only as a floor.
 #     Trying to break a check is also how you discover it was never doing what it said.
 #
-# Every check in this file has now been deliberately broken at least once.
+# Every check in this file has now been deliberately broken at least once — and that sentence used
+# to be TAKEN ON TRUST, which is how the provenance lint came to sit here passing vacuously: it had
+# been "fixed and negative-tested", but the fix never reached the file and the test had run against
+# a copy of the intended logic in /tmp. It proved the idea, not the artifact.
+#
+# So the sentence is now backed by `port/validation/mutation_test.sh`, which breaks each guarantee
+# for real — appends a diagnostic string to the shipped shim, puts the ORIGINAL (INTERNET-live)
+# manifest back, corrupts a payload byte, adds an unchecked allocation, references a nonexistent
+# script, staleness-corrupts a provenance row, adds and removes a proof — and asserts THIS file
+# reports each one. Run it after changing any check here:
+#     bash port/validation/mutation_test.sh
+# Result 2026-07-28: 9/9 mutations detected, 0 skipped, unmutated tree still passes.
 #
 # TITLES ARE PART OF THE CHECK. Two claims here asserted more than their code established, and both
 # were found by asking "could I break this?" rather than by reading the code for correctness:

@@ -323,6 +323,35 @@ API-25 script to learn the true count and first-failure point.
   predictive, for the opposite reason: the A56's **CPU**, not its GPU, will set the rate. Real GPU
   behaviour and frame pacing remain things only the A56 can settle. See `port/OPEN_FINDINGS.md` R4.
 
+### `mutation_test.sh` — proving the gate can fail
+
+`verify_claims.sh` is the file every claim in this repo leans on, and a gate nobody has watched fail
+is a gate nobody knows works. Its header claimed each check had been deliberately broken at least
+once; on 2026-07-28 that turned out to be false for one of them — the provenance lint had been
+"fixed and negative-tested", but the fix was never applied to the file, because the negative test ran
+against a *copy* of the intended logic. It proved the idea and said nothing about the artifact.
+
+`mutation_test.sh` replaces that trust with evidence. It hard-links a copy of the tree (`cp -al`,
+with a `cp -an` backfill for root-owned files that `fs.protected_hardlinks` refuses to link, then a
+file-count check so a partial copy cannot masquerade as a detection), breaks exactly one guarantee,
+and asserts the real `verify_claims.sh` reports it:
+
+| mutation | must be caught as |
+|---|---|
+| append `GALLOC-CORRUPT` to the shipped shim | diagnostic string leaked into release |
+| append `[perf-split]` to the shipped shim | shipped APK carries perf instrumentation |
+| flip a byte in `libengine32.so` | payload is not byte-for-byte Rovio's |
+| restore the ORIGINAL manifest | **LIVE `android.permission.INTERNET`** |
+| add an allocation used without a NULL check | shim allocation unchecked |
+| reference a nonexistent script from a doc | docs reference files not in the repo |
+| corrupt a provenance sha | capture is from a build that no longer exists |
+| delete a proof / add an unlisted proof | index and disk disagree, both directions |
+
+Run it after touching any check: `bash port/validation/mutation_test.sh` (or one case by name).
+**2026-07-28: 9/9 detected, 0 skipped, unmutated tree still passes.** A skip is not a pass — the
+verdict refuses to report success unless cases actually ran, because the first version of this
+harness printed "ALL MUTATIONS DETECTED" on a run where nothing executed at all.
+
 ### Not copied from the scratchpad, deliberately
 
 `build_apk_x86_release.sh` and `build_apk_x86_audio.sh` also existed in the scratchpad, but
