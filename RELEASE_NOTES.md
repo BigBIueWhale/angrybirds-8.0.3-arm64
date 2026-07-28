@@ -17,11 +17,11 @@
 
 **Angry Birds Classic 8.0.3, running on an AArch64‑only phone** (target: Samsung Galaxy A56 / Exynos 1580) — the original 32‑bit ARM engine, *unmodified*, inside an embedded ARM32→ARM64 [Unicorn](https://www.unicorn-engine.org/) emulation shim loaded natively by Android's ART. All phone‑homes removed. Reproducibly built, fully offline.
 
-The game plays and **wins levels** — full slingshot/Box2D physics, level‑complete, and multi‑level progression — screenshot‑proven on two Android generations. Please read **Scope of validation** below before installing: it says precisely what has and has not been run.
+The game plays and **wins levels** — full slingshot/Box2D physics, level‑complete, and multi‑level progression — screenshot‑proven on three Android generations, including **Android 16 — the A56's own OS version**, with Google Play Services present. Please read **Scope of validation** below before installing: it says precisely what has and has not been run.
 
 ## Scope of validation — read this first
 
-All runtime validation was performed with the **same shim source compiled for x86_64, running in x86_64 Android emulators** (API 25 and API 34). Every run log records the engine loading from `lib/x86_64/libengine32.so`.
+All runtime validation was performed with the **same shim source compiled for x86_64, running in x86_64 Android emulators** (API 25, API 34 and API 36 — the last being the A56's actual Android version, with GMS). Every run log records the engine loading from `lib/x86_64/libengine32.so`.
 
 **The arm64 APK in this release has not been executed on hardware.** It has been built, signed, aligned and statically audited. An arm64 AVD is not possible on an x86_64 build host — the emulator refuses with *"Avd's CPU Architecture 'arm64' is not supported by the QEMU2 emulator on x86_64 host"* — so an end‑to‑end arm64 run requires the physical device.
 

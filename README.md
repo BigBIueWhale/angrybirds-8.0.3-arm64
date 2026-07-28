@@ -78,13 +78,17 @@ Everything reachable without the physical phone has been verified against the **
 > an x86_64 host (the emulator refuses: *"Avd's CPU Architecture 'arm64' is not supported by the
 > QEMU2 emulator on x86_64 host"*), so an end‑to‑end arm64 run genuinely requires the device.
 > Unicorn runs the ARM32 guest faithfully on both hosts — 125/125 C++ constructors execute clean
-> on each, and 7792 of 7793 guest allocations match byte‑for‑byte — but that is *"both hosts
-> work"*, not *"both hosts reach identical state"*. See `port/validation/README.md`.
+> on each, and the guest heap now measures **identical** at two checkpoints (605096 bytes in use
+> after the constructors, 650032 after `nativeInit`, on x86 and AArch64 alike). The older
+> *"7792 of 7793 allocations match"* figure predates the allocator size‑class fix and has not been
+> re‑measured per‑allocation since; the totals agreeing is weaker evidence than a per‑allocation
+> diff, and is quoted as such. Either way this is *"both hosts work"*, not *"the arm64 APK runs"*.
+> See `port/validation/README.md`.
 
 | | Status |
 |---|---|
 | **Plays & wins** *(x86 proxy)* | boots → auto‑loads the tutorial → slingshot drag launches the bird on a correct Box2D arc → collapses the pig structure → scores → **"LEVEL CLEARED"** → advances into the next level. Screenshot‑proven (`reports/shots/PROOF_*.png`). |
-| **Two Android generations** *(x86 emulators)* | full playthrough + win on **Android 7.1 (API 25)** *and* **Android 14 (API 34)** — the same W^X + install‑policy regime as the A56's Android 16. Multi‑level progression and save persistence validated. |
+| **Three Android generations, including the phone's own** *(x86 emulators)* | full playthrough + win on **Android 7.1 (API 25)**, **Android 14 (API 34)** and **Android 16 (API 36) — the A56's actual OS version, with Google Play Services present**. Multi‑level progression and save persistence validated on API 36 too. Testing on API 36 is not ceremony: it exposed an Android‑16‑only fullscreen dialog that swallows every touch until dismissed, which `port/ONDEVICE.md` now warns about. |
 | **Authentic** | the bundled engine, `libjs`, `libadcolony`, and `classes.dex` are **byte‑for‑byte identical** to the original 8.0.3 APK (SHA‑256 checked). The game code is unmodified — only the manifest is de‑permissioned and the native lib is the shim wrapping the untouched engine. |
 | **Installs on modern Android** | targetSdk 26 → installs with plain `pm install`; Unicorn's JIT executes all 125 C++ constructors under **W^X** (targetSdk < 29 keeps writable+executable memory permitted); links **`libm`** (modern bionic needs it explicitly); ELF LOAD segments are **16 KB‑page aligned** so it `dlopen`s on 16 KB‑page devices as well as 4 KB. |
 | **No phone‑home** | four independent layers (below). The app has no INTERNET permission and the shipped shim **imports no socket symbols at all** (`socket`/`connect`/`sendto`/`recvfrom`/`getaddrinfo` are absent from its dynamic symbols), so there is no socket capability in the binary to reach. Note the emulator runs are `--network none`, so they demonstrate the *mechanisms*, not observed-and-blocked traffic. |
