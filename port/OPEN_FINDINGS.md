@@ -137,6 +137,16 @@ issues exactly **one** `glGetString` call in an entire run — `GL_EXTENSIONS` (
 `reports/gl_extensions_rig.txt` so a device capture can be **diffed** against it rather than
 eyeballed.
 
+**These asset facts cannot drift, so they are not separately gated.** Every static claim in this
+entry — 57 `.pvr` uncompressed, 26 `.zstream` sheets (23 `RGBA4444` + 3 `RGBA8888`), one gameplay
+asset tier, the 16 `TEXTS_*.dat` and their language tags — is a property of the **input** APK, and
+`prepare_inputs.sh` refuses to build unless that file hashes to
+`0580c3d3f79b21b344940bea65b8fadc22e8e5599c89dfe9b5e8a85004846b9a`. A build from a different input
+fails before any of this could quietly change. Adding `verify_claims.sh` checks for them would be
+machinery duplicating a guarantee that already exists, which is its own kind of defect: a second
+mechanism that can disagree with the first. What is *not* covered by that hash — and therefore is
+gated — is everything about the shim and the output APK.
+
 **Why grepping the driver binary would have been the wrong test — demonstrated, not asserted.** The
 first attempt read the extension names out of the emulator's `libGLESv2.so`. The string the engine
 actually receives is the emulator's GLES **translator** list (`ANDROID_EMU_has_shared_slots_host_memory_allocator`,
