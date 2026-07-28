@@ -38,7 +38,8 @@ is given from the run that produced them and is marked `(by run, not hash)`.
 | `PROOF_7_level2_progression.png` | Tapping NEXT loads a **fresh, distinct level 2** — score 0, new structures | x86shim-release | 25 | `emu_progress_release.sh` |
 | `PROOF_8_modern_android_win.png` | "LEVEL CLEARED", score 44000, on modern Android | x86shim-release | 34 | `emu_modern_playthrough.sh` *(by run, not hash)* |
 | `PROOF_9_modern_android_level2.png` | Advances into level 2 on modern Android | x86shim-release | 34 | `emu_modern_progress.sh` |
-| `PROOF_10_audio_levelwin.png` | The **audio variant** plays through and wins | x86shim-audio | 25 | `emu_audio_playthrough.sh` |
+| `PROOF_10_audio_levelwin.png` | The **audio variant** plays through and wins, with the mixer actually running (`nativeMixData` called) | x86shim-audio | 25 | `emu_audio_playthrough.sh` |
+| `PROOF_17_audio_win_modern.png` | The audio variant wins on **modern Android** as well — previously it was only ever proven on API 25 | x86shim-audio | 34 | `emu_audio_modern.sh` |
 | `PROOF_11_modern_win_reproduced_in_repo.png` | The modern-Android win reproduced from the in-repo rig | x86shim-release | 34 | `emu_modern_playthrough.sh` *(by run, not hash)* |
 | `PROOF_12_postfix_no_regression.png` | No regression after the fix round | x86shim-release | 34 | *(by run, not hash)* |
 | `PROOF_13_heapfix_still_wins.png` | Still wins **after the allocator fix** | x86shim-release | 25 | `emu_playthrough_release.sh` |
