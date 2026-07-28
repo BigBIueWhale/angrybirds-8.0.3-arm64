@@ -534,6 +534,34 @@ Where a sweep found nothing, that is recorded above rather than omitted. A class
 and came back clean is a different statement from one that was never checked, and only one of them
 justifies confidence.
 
+### R4b. R4 confirmed by an independent method: 12.3× the pixels costs 25% more frame time
+
+R4 concluded, against what this project had assumed twice, that the **emulator dominates and the
+rasteriser does not** — from instrumented timers inside the shim. A conclusion that important
+deserved a check that shares none of that machinery, and the A56-geometry run (R11) supplies one for
+free: it renders the same build at a very different resolution, so fill cost is the only large term
+that changes.
+
+| run | pixels | median steady-state fps | frame time |
+|---|---|---|---|
+| default 640 × 320 | 204 800 | 24.2 | ~41.3 ms |
+| A56 geometry 1080 × 2340 | 2 527 200 | **19.4** | ~51.5 ms |
+
+**12.3× the pixels, and frame time rises only 25%.** If rasterisation were the dominant cost the
+frame rate would have collapsed toward 2 fps. Solving for the fill-rate share *f* at the small
+resolution — `51.5/41.3 = (1 − f) + 12.3f` → `1.247 = 1 + 11.3f` → **f ≈ 2.2%** — which sits neatly
+inside R4's independently-measured "5–7% outside the shim" (a figure that also includes
+`eglSwapBuffers` and vsync, not just rasterisation).
+
+Two different instruments, no shared code path, same answer. That is worth more than either alone,
+because R4's own history is three wrong measurements in a row.
+
+It also sharpens the A56 prediction rather than merely repeating it: the phone replaces a slice
+measured here at roughly **2%**, so a real GPU cannot rescue the frame rate — single-thread CPU
+performance sets it, exactly as R4 said. Caveats kept: SwiftShader need not scale linearly with area,
+and the emulator's GL translation layer sits in the path, so treat 2.2% as an order-of-magnitude
+agreement with R4's 5–7%, not a refinement of it.
+
 ### R4. Where per-frame time goes — measured twice over, and both prior assumptions were wrong
 
 The release notes said the per-frame cost had "only been measured under software rendering, **where
