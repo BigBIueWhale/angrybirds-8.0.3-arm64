@@ -198,6 +198,32 @@ case_run longjmp    longjmp    "cpu.c loader.c dispatch.c sched.c galloc.c elf32
 case_run memcpy_br  ctors      "cpu.c loader.c dispatch.c sched.c galloc.c elf32.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c" dispatch.c \
   's/static uint64_t h_memcpy (dispatch_t\*d,mcur\*c){ heap_pin(d,"before","memcpy");/static uint64_t h_memcpy (dispatch_t*d,mcur*c){ return 0;/'
 
+# The coverage gate is not a compiled module test — it is a python script that diffs the engine's
+# UND FUNC imports against the bridge tables — so it needs its own runner. It is worth covering here
+# because "UNBRIDGED: 0" is the strongest single claim this project makes about the shim: every
+# import the engine can call resolves to real code rather than silently returning 0 at runtime.
+case_coverage() {
+    [ -n "$ONLY" ] && [ "$ONLY" != "coverage" ] && return 0
+    printf '  %-16s ' "coverage"
+    rm -rf "$WORK"
+    cp -al "$REPO" "$WORK" 2>/dev/null; cp -an "$REPO/." "$WORK/" 2>/dev/null
+    local n_src n_dst; n_src=$(find "$REPO" -type f | wc -l); n_dst=$(find "$WORK" -type f 2>/dev/null | wc -l)
+    [ "$n_dst" = "$n_src" ] || { echo "SKIP (copy incomplete $n_dst/$n_src)"; SKIPPED=$((SKIPPED+1)); rm -rf "$WORK"; return 0; }
+    ( cd "$WORK" && python3 port/shim/test/coverage_check.py >/dev/null 2>&1 ) || {
+        echo "SKIP (control gate does not pass — cannot attribute a failure to the mutation)"
+        SKIPPED=$((SKIPPED+1)); rm -rf "$WORK"; return 0; }
+    local t="$WORK/port/shim/src/dispatch.c"
+    local b; b=$(cat "$t"); rm -f "$t"
+    printf '%s\n' "$b" | sed 's/{"memcpy",1,h_memcpy},//' > "$t"
+    if cmp -s <(printf '%s\n' "$b") "$t"; then
+        echo "SKIP (mutation matched nothing — the BR-table entry form changed)"; SKIPPED=$((SKIPPED+1)); rm -rf "$WORK"; return 0; fi
+    ( cd "$WORK" && python3 port/shim/test/coverage_check.py >/dev/null 2>&1 )
+    if [ $? -ne 0 ]; then echo "OK (COVERAGE FAIL — the removed bridge was named)"; PASS=$((PASS+1))
+    else echo "*** NOT DETECTED *** the gate still reports COVERAGE OK with memcpy unbridged"; MISSED=$((MISSED+1)); fi
+    rm -rf "$WORK"
+}
+case_coverage
+
 echo
 echo "  detected: $PASS   NOT detected: $MISSED   skipped: $SKIPPED   documented gaps: $GAPS"
 # A skip is not a pass — same rule as mutation_test.sh, which once printed success on a run where

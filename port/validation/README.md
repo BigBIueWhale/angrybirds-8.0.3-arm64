@@ -347,7 +347,19 @@ prints `SKIP: engine .so not found` and **returns 0**. The harness now supplies 
 and treats a self-skip as its own outcome, because a test that skipped proves nothing in either
 direction and must never be counted as a run.
 
-**2026-07-28: 14/14 module mutations detected, 0 skipped, 0 open gaps.**
+**2026-07-28: 15/15 mutations detected, 0 skipped, 0 open gaps.**
+
+The 15th covers `coverage_check.py`, the hard gate behind the strongest single claim this project
+makes about the shim — **`UNBRIDGED: 0`**, i.e. every import the engine can call resolves to real
+code instead of silently returning 0 at runtime. It needs its own runner (it is a python script that
+diffs the engine's `UND FUNC` symbols against the bridge tables, not a compiled module test).
+Deleting the `memcpy` entry from the BR table makes it report `UNBRIDGED: 1 / MISSING memcpy /
+COVERAGE FAIL` and exit non-zero, so the gate is demonstrably not vacuous.
+
+A first attempt at that case proved nothing: the `sed` did not match the real entry form and the gate
+duly still said `COVERAGE OK`. The run said so explicitly — "mutation matched nothing" — which is why
+every case here aborts rather than scoring when its mutation fails to apply. A mutation test whose
+mutation silently no-ops is just an expensive way to print PASS.
 
 Getting there required checking each undetected mutation against the FULL suite rather than just its
 own module — coverage can live in a different test — and then asking a second question that matters
