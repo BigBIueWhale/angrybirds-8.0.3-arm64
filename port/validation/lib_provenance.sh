@@ -20,6 +20,12 @@
 #
 # The label ties a row to the screenshots that run produced, so a stale row points at specific
 # files rather than at "something, somewhere".
+#
+# Each row also records THE SCRIPT THAT WROTE IT, because the label does not identify it. Chasing a
+# stale `interactive` row cost 13 minutes of emulator time running emu_interactive.sh — which never
+# records provenance at all; the row comes from emu_interactive_capture.sh. A stale row should say
+# what to re-run, not send you guessing by name. Older 3-column rows stay readable: consumers take
+# the 4th field as optional.
 
 record_build() {
     local apk="$1" label="$2"
@@ -35,6 +41,6 @@ record_build() {
         grep -v "^${label}	" "$tsv" > "$tsv.tmp" 2>/dev/null || true
         mv "$tsv.tmp" "$tsv"
     fi
-    printf '%s\t%s\t%s\n' "$label" "$sha" "$(basename "$apk")" >> "$tsv"
-    echo "  [provenance] $label <- $(basename "$apk") ${sha:0:12}…"
+    printf '%s\t%s\t%s\t%s\n' "$label" "$sha" "$(basename "$apk")" "$(basename "${BASH_SOURCE[1]:-$0}")" >> "$tsv"
+    echo "  [provenance] $label <- $(basename "$apk") ${sha:0:12}… (by $(basename "${BASH_SOURCE[1]:-$0}"))"
 }
