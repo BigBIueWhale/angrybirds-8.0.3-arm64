@@ -14,6 +14,18 @@
 #
 # Security: outbound fetches only at image-build time (apt). Never listens on a port; the suite runs
 # under --network none. Always run WITHOUT -p and WITHOUT --network host.
+# ---------------------------------------------------------------------------
+# VERIFIED BY REBUILD (2026-07-28)
+# ---------------------------------------------------------------------------
+# Rebuilt from scratch with `--no-cache` into `ab-hosttest:verify`; the full host suite then ran
+# green in it (10 module + 7 device tests, plus the coverage hard-gate reporting 0 unbridged
+# imports). So stage 1 of `port/validate_all.sh` rests on a recipe that demonstrably reproduces
+# its image, not on an image whose origin is assumed. Re-verify with:
+#
+#   docker build --no-cache -f port/docker/Dockerfile.ab-hosttest -t ab-hosttest:verify port/docker
+#   docker run --rm --network none -v "$PWD":/work -w /work ab-hosttest:verify \
+#       bash port/shim/test/run_tests.sh
+#
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive

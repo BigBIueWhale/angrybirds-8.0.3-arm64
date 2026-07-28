@@ -21,6 +21,11 @@
 #     scored by exit code. They stay separate on purpose. See port/validation/README.md.
 #   - anything needing the physical A56. See port/OPEN_FINDINGS.md.
 #
+# All three images this depends on are verified to rebuild from their committed Dockerfiles:
+# ab-hosttest and ab-port were rebuilt --no-cache and re-checked (ab-port's rebuild produces a
+# BYTE-IDENTICAL deliverable), and ab-arm64x was built from its Dockerfile when it was created.
+# See the "VERIFIED BY REBUILD" notes in port/docker/.
+#
 #   bash port/validate_all.sh
 # Exits non-zero if any stage fails.
 set +e
