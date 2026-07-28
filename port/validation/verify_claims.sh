@@ -325,15 +325,23 @@ PROV=reports/shots/provenance.tsv
 if [ ! -f "$PROV" ]; then
   skip "screenshot provenance (no $PROV yet - re-run the emu_*.sh captures to populate it)"
 else
-  STALE=""; CUR=0
+  STALE=""; CUR=0; NOTBUILT=""
   while IFS="$(printf '\t')" read -r lbl sha apk; do
     [ -n "$lbl" ] || continue
-    if [ ! -f "out/$apk" ]; then STALE="$STALE\n           - $lbl: built from $apk, which no longer exists"; continue; fi
+    # "not built here" is NOT "stale". A fresh clone builds only the arm64 deliverable, so every x86
+    # proxy is absent and all 12 rows were being reported as evidence from builds "that no longer
+    # exist" - which reads as rotten evidence when the truth is simply that the reader has not built
+    # those variants. Same failure as the git check: conflating "cannot ask" with "the answer is bad".
+    if [ ! -f "out/$apk" ]; then NOTBUILT="$NOTBUILT $lbl"; continue; fi
     now=$(sha256sum "out/$apk" 2>/dev/null | cut -d' ' -f1)
     if [ "$now" = "$sha" ]; then CUR=$((CUR+1))
     else STALE="$STALE\n           - $lbl: captured on ${sha:0:12}…, $apk is now ${now:0:12}…"; fi
   done < "$PROV"
   [ "$CUR" -gt 0 ] && ok "$CUR capture(s) match the current build"
+  if [ -n "$NOTBUILT" ]; then
+    N=$(printf '%s\n' $NOTBUILT | grep -c .)
+    printf "  [note ] %s capture(s) reference variants not built here (normal on a fresh clone):%s\n" "$N" "$NOTBUILT"
+  fi
   if [ -n "$STALE" ]; then
     STALECNT=$(printf "%b" "$STALE" | grep -c "^ *-")
     printf "  [STALE] %s capture(s) are from builds that are no longer current:%b\n" "$STALECNT" "$STALE"

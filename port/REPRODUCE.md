@@ -20,6 +20,14 @@ from-scratch toolchain : 9da84326e1f2b82acba9b50ecec56207f58afcfc97306acb167257a
 cached toolchain       : 9da84326e1f2b82acba9b50ecec56207f58afcfc97306acb167257a4c0d094a4
 ```
 
+**Verified from a genuine fresh clone.** On 2026-07-28 the repo was cloned to a scratch directory —
+committed content only, so no decompressed input, no extracted engine, no `out/` — and
+`bash port/reproduce.sh` was run there with nothing pre-staged. It decompressed the input, gated
+its sha256, extracted the engine, built the image, converted offline and verified the result,
+producing `9da84326e1f2b82acba9b50ecec56207f58afcfc97306acb167257a4c0d094a4` — byte-identical to
+the artifact built here. That is the claim that actually matters to a reader, and it is the one
+this repo previously got wrong: several entry points read files that exist only after a build.
+
 **And the documented path itself is run, not assumed.** On 2026-07-28 `bash port/reproduce.sh`
 was executed exactly as published — inputs prepared and sha256-gated, image built, conversion run
 offline, artifact verified — and produced
