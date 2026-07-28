@@ -165,6 +165,26 @@ fi
 if [ -n "$SIGN" ]; then
   V=$($SIGN verify -v "$PFX$APK" 2>/dev/null | grep -cE "^Verified using v[123] scheme.*true")
   [ "$V" = "3" ] && ok "v1+v2+v3 all verify" || bad "only $V of 3 signature schemes verify"
+
+  # WHICH KEY, not just "a valid signature". The build scripts fall back to `keytool -genkeypair`
+  # when port/debug.ks is absent, so a checkout missing the keystore still produces a perfectly
+  # VALID APK — signed by a fresh random key, and every check here passes it: three schemes verify.
+  # But a differently-signed APK will NOT update-install over the one already on the phone; the user
+  # must uninstall first and loses their saves. That is the failure the committed key exists to
+  # prevent, and nothing was detecting it.
+  #
+  # The expected fingerprint is DERIVED from port/debug.ks, not pasted, so this check cannot rot the
+  # way the documented audio SHA-256 did.
+  EXPECT=$(keytool -list -keystore port/debug.ks -storepass android 2>/dev/null \
+           | grep -oE 'SHA-?256\)?: [0-9A-F:]+' | head -1 | sed 's/.*: //; s/://g' | tr 'A-F' 'a-f')
+  ACTUAL=$($SIGN verify --print-certs "$PFX$APK" 2>/dev/null | grep -m1 'SHA-256 digest' | sed 's/.*: //')
+  if [ -z "$EXPECT" ] || [ -z "$ACTUAL" ]; then
+    skip "signer identity (could not read port/debug.ks or the APK certificate)"
+  elif [ "$EXPECT" = "$ACTUAL" ]; then
+    ok "signed by the repo's committed key (${ACTUAL:0:16}…) — rebuilds update-install over each other"
+  else
+    bad "signed by an UNEXPECTED key: ${ACTUAL:0:16}… (port/debug.ks is ${EXPECT:0:16}…) — will NOT update-install over a repo-key build"
+  fi
   $ALIGN -c 4 "$PFX$APK" >/dev/null 2>&1 && ok "zipalign -c 4 passes" || bad "not 4-byte aligned"
 else
   skip "signing/alignment (no apksigner on PATH, no ab-port image)"

@@ -40,6 +40,18 @@ Treat this as a well‑engineered candidate build, not a shipped product. If it 
 - **`angrybirds-8.0.3-arm64-audio.apk`** — experimental audio‑enabled variant (crash‑free, plays+wins with audio; *continuous* playback is pending on‑device confirmation — the emulator's host audio backend cannot init headless, so the buffer never drains there).
 
 Both are signed with the same key, so either update‑installs over the other without losing saves.
+That key is the repo's committed `port/debug.ks`, and you can confirm the APK you have really came
+from it:
+
+```bash
+apksigner verify --print-certs angrybirds-8.0.3-arm64.apk | grep 'SHA-256 digest'
+# d56d5b2eabc7953917e5d85605842548b0dfafe183b0aa1b75174b5fffd5deb4
+```
+
+A different fingerprint means a different signer — the APK will still install, but **not** as an
+update over one built from this repo, so Android would make you uninstall first and you would lose
+your saves. `verify_claims.sh` checks this automatically, deriving the expected value from the
+keystore rather than from this document.
 
 **SHA‑256**
 ```
