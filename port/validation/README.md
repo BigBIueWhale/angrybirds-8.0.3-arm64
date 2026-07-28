@@ -496,6 +496,7 @@ drift a reader can see.
 | `port/build_apk_x86.sh` | Build an x86_64 variant of the emulation-shim APK — SAME shim source + SAME Unicorn commit, |
 | `port/build_apk_x86_audio.sh` | Build an x86_64 variant of the emulation-shim APK — SAME shim source + SAME Unicorn commit, |
 | `port/build_apk_x86_perf.sh` | a MEASUREMENT-ONLY variant: release configuration plus the perf timers. |
+| `port/build_apk_x86_shaders.sh` | release configuration plus ONLY the GPU-surface dumps (`[shader-src]`, `[gl-str]`, `[tex-dim]`, `[tex-comp]`) — the build `emu_gpu_capture.sh` and `emu_a56_screen.sh` require. NOT a deliverable. |
 | `port/build_apk_x86_release.sh` | Build an x86_64 variant of the emulation-shim APK — SAME shim source + SAME Unicorn commit, |
 | `port/build_offline_apk.sh` | Reproducible: produce a FULLY-OFFLINE, no-phone-home Angry Birds 8.0.3 APK |
 | `port/depermission.py` | Strip network / tracking permissions from a binary AndroidManifest.xml (AXML) by |
@@ -597,6 +598,14 @@ of them are load-bearing parts of the pipeline rather than helpers:
   screenshot in this repo was produced by its output**, because an arm64 AVD cannot run on an x86_64
   host. It is invoked by `build_apk_x86_release.sh` and `build_apk_x86_audio.sh`. A reader tracing
   "where did this win screenshot come from" had no documented path to it.
+- **`port/validation/check_depermission.py`** — asserts the shipped manifest strips **every**
+  permission `depermission.py` claims to, derived from that script's own `STRIP` map instead of a
+  hand-written list. `verify_claims.sh` previously checked six names by hand while eleven strings
+  are stripped, and one of the six (`ACCESS_WIFI_STATE`) is not in Rovio's manifest at all, so it
+  could never fail. Checks both directions — live form absent AND mangled form present — and
+  refuses when the original manifest contains none of the STRIP entries, since that would prove
+  nothing. Reads `STRIP` with `ast` rather than importing `depermission.py`, which does real work
+  at module level and aborts when imported.
 - **`port/check_script_paths.py`** — the guard for that manifest, called by all six build scripts.
   Asserts it parses, is non-empty, contains only strings (all of them, not the first 50), that every
   listed path exists, and that every `.lua` under `data/{scripts,levels,vehicles}` is listed. It

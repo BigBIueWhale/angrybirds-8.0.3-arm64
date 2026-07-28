@@ -355,16 +355,18 @@ echo "== CLAIM: minSdk 16 / targetSdk 26, and NO live network permission =="
 # absence in the AXML string pool is decisive - androguard is not needed for it. This half IS the
 # de-phone-home guarantee, so it must never depend on an optional image being present.
 unzip -p "$APK" AndroidManifest.xml > "$T/am.bin" 2>/dev/null
-LIVE=""
-for perm in android.permission.INTERNET android.permission.ACCESS_NETWORK_STATE \
-            android.permission.ACCESS_WIFI_STATE com.android.vending.BILLING \
-            android.permission.GET_ACCOUNTS com.google.android.c2dm.permission.RECEIVE; do
-  if strings -a "$T/am.bin" | grep -qxF "$perm" || strings -a -el "$T/am.bin" | grep -qxF "$perm"; then
-    LIVE="$LIVE $perm"
-  fi
-done
-[ -z "$LIVE" ] && ok "no live network/billing/account/push permission in the manifest" \
-               || bad "LIVE permission present in the manifest:$LIVE"
+# DERIVED from depermission.py's own STRIP map, not a hand-written subset. The list here used to be
+# six names chosen by hand while the manifest carries ELEVEN stripped strings, so five were ungated —
+# vending.INSTALL_REFERRER, c2dm REGISTRATION and SEND, the Play BIND_GET_INSTALL_REFERRER_SERVICE and
+# the app's own C2D_MESSAGE. A regression that failed to strip any of them passed this gate. Worse,
+# one of the six (ACCESS_WIFI_STATE) is not in Rovio's manifest at all, so that check could never
+# fail: it added a passing line and no evidence. See check_depermission.py.
+unzip -p "$ORIG" AndroidManifest.xml > "$T/am_orig.bin" 2>/dev/null
+if python3 "$(dirname "$0")/check_depermission.py" "$T/am.bin" "$T/am_orig.bin"; then
+  ok "every permission depermission.py strips is absent live and present mangled"
+else
+  bad "the depermission check failed — see the lines above"
+fi
 # The mangled form must also BE there - otherwise "no INTERNET string" could equally mean the
 # manifest was never processed, or that we read the wrong file.
 if strings -a "$T/am.bin" | grep -qxF android.permission.XNTERNET \
