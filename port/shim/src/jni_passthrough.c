@@ -20,7 +20,7 @@
 
 static void set_r0(cpu_t*c,uint32_t v){ uc_reg_write(c->uc,UC_ARM_REG_R0,&v); }
 static void set_r1(cpu_t*c,uint32_t v){ uc_reg_write(c->uc,UC_ARM_REG_R1,&v); }
-static int em_str(cpu_t*c,uint32_t p,char*o,int max){ int i=0; if(!p){o[0]=0;return 0;} for(;i<max-1;i++){ uint8_t ch; uc_mem_read(c->uc,p+i,&ch,1); if(!ch)break; o[i]=(char)ch; } o[i]=0; return i; }
+static int em_str(cpu_t*c,uint32_t p,char*o,int max){ int i=0; if(!p){o[0]=0;return 0;} for(;i<max-1;i++){ uint8_t ch=0; if(uc_mem_read(c->uc,p+i,&ch,1)!=UC_ERR_OK||!ch) break; o[i]=(char)ch; } o[i]=0; return i; }
 static void*fakeptr(jni_state*J){ return (void*)(uintptr_t)(0x50000000u + (++J->fake_next)); }
 static int store_sig(jni_state*J,const char*s){ if(J->nsig<1024){ snprintf(J->sigs[J->nsig],80,"%s",s); return J->nsig++; } return -1; }
 static uint32_t scratch_alloc(jni_state*J,uint32_t n){ n=(n+7)&~7u; if(J->scratch+n>J->scratch_end) J->scratch=JD_SCRATCH; uint32_t p=J->scratch; J->scratch+=n; return p; }

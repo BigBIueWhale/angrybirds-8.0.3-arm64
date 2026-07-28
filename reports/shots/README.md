@@ -30,9 +30,9 @@ is given from the run that produced them and is marked `(by run, not hash)`.
 | Proof | What is visible | Build | API | Source |
 |---|---|---|---|---|
 | `PROOF_tutorial_render.png` | The engine renders — tutorial scene drawn under emulation | x86shim | 25 | `emu_fatal.sh` |
-| `PROOF_2_interactive_level.png` | Tutorial level up and interactive: slingshot loaded, pigs placed, score 0, drag hint | x86shim `1fae5fba` | 25 | `emu_interactive_capture.sh` |
-| `PROOF_3_bird_launched.png` | Bird launched and connected — impact burst, score popups, debris, a live scored hit | x86shim `1fae5fba` | 25 | `emu_interactive_capture.sh` |
-| `PROOF_4_debris_settle.png` | The shot has resolved: structure collapsed, score well above zero, physics still settling. Exact framing varies per run (see the note below) | x86shim `1fae5fba` | 25 | `emu_interactive_capture.sh` |
+| `PROOF_2_interactive_level.png` | Tutorial level up and interactive: slingshot loaded, pigs placed, score 0, drag hint | x86shim `bc9017c0` | 25 | `emu_interactive_capture.sh` |
+| `PROOF_3_bird_launched.png` | Bird launched and connected — impact burst, score popups, debris, a live scored hit | x86shim `bc9017c0` | 25 | `emu_interactive_capture.sh` |
+| `PROOF_4_debris_settle.png` | The shot has resolved: structure collapsed, score well above zero, physics still settling. Exact framing varies per run (see the note below) | x86shim `bc9017c0` | 25 | `emu_interactive_capture.sh` |
 | `PROOF_5_destruction_score5820.png` | Structure destroyed, score 5820. **HISTORICAL — no script regenerates this**, and it is superseded by `PROOF_3`, which shows a launch and impact with live scoring and *can* be regenerated | x86shim (build unknown) | 25 | — |
 | `PROOF_6_levelend_survived.png` | **The level-end transition survives** (the deepest bug) — win screen, `h_fatal=0` | x86shim | 25 | `emu_playthrough.sh` |
 | `PROOF_7_level2_progression.png` | Tapping NEXT loads a **fresh, distinct level 2** — score 0, new structures | x86shim-release | 25 | `emu_progress_release.sh` |

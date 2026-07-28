@@ -38,7 +38,7 @@ static void em_move(cpu_t *c, uint32_t d, uint32_t s, uint32_t n){        /* ove
 static void em_set(cpu_t *c, uint32_t d, int v, uint32_t n){
     uint8_t b[4096]; memset(b,v,n<sizeof b?n:sizeof b); while (n){ uint32_t k=n<sizeof b?n:sizeof b; uc_mem_write(c->uc,d,b,k); d+=k; n-=k; }
 }
-static int em_str(cpu_t *c, uint32_t p, char *o, int max){ int i=0; for(;i<max-1;i++){ uint8_t ch; uc_mem_read(c->uc,p+i,&ch,1); if(!ch)break; o[i]=(char)ch; } o[i]=0; return i; }
+static int em_str(cpu_t *c, uint32_t p, char *o, int max){ int i=0; for(;i<max-1;i++){ uint8_t ch=0; if(uc_mem_read(c->uc,p+i,&ch,1)!=UC_ERR_OK||!ch) break; o[i]=(char)ch; } o[i]=0; return i; }
 
 #define M(d)  (&(d)->cpu->mem)
 static uint32_t W(dispatch_t*d, mcur*c){ return marshal_pull_word(M(d), c); }
@@ -283,7 +283,7 @@ static uint64_t h_memset (dispatch_t*d,mcur*c){ heap_pin(d,"before","memset"); u
 static uint64_t h_ae_set (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),n=W(d,c),v=W(d,c); em_set(d->cpu,a,(int)(v&0xff),n); return 0; } /* (dst,n,c) reversed L1 */
 static uint64_t h_ae_clr (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),n=W(d,c); em_set(d->cpu,a,0,n); return 0; }
 static uint64_t h_memcmp (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),b=W(d,c),n=W(d,c); for(uint32_t i=0;i<n;i++){ uint8_t x,y; uc_mem_read(d->cpu->uc,a+i,&x,1); uc_mem_read(d->cpu->uc,b+i,&y,1); if(x!=y) return (uint32_t)((int)x-(int)y); } return 0; }
-static uint64_t h_memchr (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),v=W(d,c),n=W(d,c); for(uint32_t i=0;i<n;i++){ uint8_t ch; uc_mem_read(d->cpu->uc,a+i,&ch,1); if(ch==(v&0xff)) return a+i; } return 0; }
+static uint64_t h_memchr (dispatch_t*d,mcur*c){ uint32_t a=W(d,c),v=W(d,c),n=W(d,c); for(uint32_t i=0;i<n;i++){ uint8_t ch=0; if(uc_mem_read(d->cpu->uc,a+i,&ch,1)!=UC_ERR_OK) break; if(ch==(v&0xff)) return a+i; } return 0; }
 static uint64_t h_strlen (dispatch_t*d,mcur*c){ char b[8192]; return em_str(d->cpu,W(d,c),b,sizeof b); }
 static uint64_t h_strcmp (dispatch_t*d,mcur*c){ char x[4096],y[4096]; em_str(d->cpu,W(d,c),x,sizeof x); em_str(d->cpu,W(d,c),y,sizeof y); return (uint32_t)strcmp(x,y); }
 static uint64_t h_strncmp(dispatch_t*d,mcur*c){ char x[4096],y[4096]; uint32_t a=W(d,c),b=W(d,c),n=W(d,c); em_str(d->cpu,a,x,sizeof x); em_str(d->cpu,b,y,sizeof y); return (uint32_t)(n?strncmp(x,y,n):0); }

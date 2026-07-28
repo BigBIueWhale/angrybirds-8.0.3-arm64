@@ -19,8 +19,8 @@
 # This recipe is not merely "the file we think built the image". It was rebuilt from scratch with
 # `--no-cache` into `ab-port:verify`, and the deliverable was then built with THAT image:
 #
-#   built by ab-port:latest   9da84326e1f2b82acba9b50ecec56207f58afcfc97306acb167257a4c0d094a4
-#   built by ab-port:verify   9da84326e1f2b82acba9b50ecec56207f58afcfc97306acb167257a4c0d094a4
+#   built by ab-port:latest   53af2c7e628a8dace5c851733610a261d8e0a8bdb8466d4f1937a29895cb2d2d
+#   built by ab-port:verify   53af2c7e628a8dace5c851733610a261d8e0a8bdb8466d4f1937a29895cb2d2d
 #
 # Byte-identical. So the whole chain is reproducible from committed source: this Dockerfile ->
 # toolchain image -> port/build_apk.sh -> the exact APK that ships. Re-verify with:

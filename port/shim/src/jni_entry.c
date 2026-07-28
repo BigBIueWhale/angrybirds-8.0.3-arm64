@@ -66,7 +66,7 @@ static JNIEnv *renv(void){ return (JNIEnv*)G.jni.real_env; }
 static handle_table *HT(void){ return G.jni.ht; }
 
 /* read a guest C string into a host buffer */
-static void rd_str(uint32_t p, char*o, int max){ int i=0; if(!p){o[0]=0;return;} for(;i<max-1;i++){ uint8_t ch; uc_mem_read(G.cpu.uc,p+i,&ch,1); if(!ch)break; o[i]=(char)ch; } o[i]=0; }
+static void rd_str(uint32_t p, char*o, int max){ int i=0; if(!p){o[0]=0;return;} for(;i<max-1;i++){ uint8_t ch=0; if(uc_mem_read(G.cpu.uc,p+i,&ch,1)!=UC_ERR_OK||!ch) break; o[i]=(char)ch; } o[i]=0; }
 static void set_r0(uint32_t v){ uc_reg_write(G.cpu.uc,UC_ARM_REG_R0,&v); }
 static void set_r1(uint32_t v){ uc_reg_write(G.cpu.uc,UC_ARM_REG_R1,&v); }
 static uint32_t tok(jobject o, int kind){ return o? ht_new_ref(HT(),kind,(void*)o) : HT_NULL; }

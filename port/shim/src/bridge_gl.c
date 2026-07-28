@@ -168,8 +168,8 @@ DEF(h_glCreateShader){ REAL(uint32_t,(uint32_t),"glCreateShader"); return f(W); 
 DEF(h_glCreateProgram){ REAL(uint32_t,(void),"glCreateProgram"); (void)c;(void)cur; return f(); }
 DEF(h_glCheckFramebufferStatus){ REAL(uint32_t,(uint32_t),"glCheckFramebufferStatus"); return f(W); }
 DEF(h_glGetError){ REAL(uint32_t,(void),"glGetError"); (void)cur; return f(); }
-DEF(h_glGetAttribLocation){ REAL(int,(uint32_t,const char*),"glGetAttribLocation"); uint32_t p=W,s=W; char nm[256]; uint32_t i=0; for(;i<255;i++){uint8_t ch;uc_mem_read(c->uc,s+i,&ch,1);if(!ch)break;nm[i]=ch;} nm[i]=0; return (uint32_t)f(p,nm); }
-DEF(h_glGetUniformLocation){ REAL(int,(uint32_t,const char*),"glGetUniformLocation"); uint32_t p=W,s=W; char nm[256]; uint32_t i=0; for(;i<255;i++){uint8_t ch;uc_mem_read(c->uc,s+i,&ch,1);if(!ch)break;nm[i]=ch;} nm[i]=0; return (uint32_t)f(p,nm); }
+DEF(h_glGetAttribLocation){ REAL(int,(uint32_t,const char*),"glGetAttribLocation"); uint32_t p=W,s=W; char nm[256]; uint32_t i=0; for(;i<255;i++){uint8_t ch=0;if(uc_mem_read(c->uc,s+i,&ch,1)!=UC_ERR_OK||!ch)break;nm[i]=ch;} nm[i]=0; return (uint32_t)f(p,nm); }
+DEF(h_glGetUniformLocation){ REAL(int,(uint32_t,const char*),"glGetUniformLocation"); uint32_t p=W,s=W; char nm[256]; uint32_t i=0; for(;i<255;i++){uint8_t ch=0;if(uc_mem_read(c->uc,s+i,&ch,1)!=UC_ERR_OK||!ch)break;nm[i]=ch;} nm[i]=0; return (uint32_t)f(p,nm); }
 
 /* --- VBO-offset passthrough draws (Audit 07: offset is an integer, never copied) --- */
 DEF(h_glVertexAttribPointer){ REAL(void,(uint32_t,int,uint32_t,uint8_t,int,const void*),"glVertexAttribPointer");

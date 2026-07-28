@@ -22,7 +22,7 @@ typedef void    (*close_t)(void*);
 #define WA marshal_pull_word(&c->mem, cur)
 static void set_r0(cpu_t*c,uint32_t v){ uc_reg_write(c->uc,UC_ARM_REG_R0,&v); }
 static void set_r1(cpu_t*c,uint32_t v){ uc_reg_write(c->uc,UC_ARM_REG_R1,&v); }
-static void rd_str(cpu_t*c,uint32_t p,char*o,int max){ int i=0; if(!p){o[0]=0;return;} for(;i<max-1;i++){uint8_t ch;uc_mem_read(c->uc,p+i,&ch,1);if(!ch)break;o[i]=(char)ch;} o[i]=0; }
+static void rd_str(cpu_t*c,uint32_t p,char*o,int max){ int i=0; if(!p){o[0]=0;return;} for(;i<max-1;i++){uint8_t ch=0;if(uc_mem_read(c->uc,p+i,&ch,1)!=UC_ERR_OK||!ch)break;o[i]=(char)ch;} o[i]=0; }
 static void *asym(const char *n){ void *p=dlsym(RTLD_DEFAULT,n); if(!p){ static void*h=0; if(!h)h=dlopen("libandroid.so",RTLD_NOW|RTLD_GLOBAL); if(h)p=dlsym(h,n);} return p; }
 #define RES(t,v,nm) static t v=0; if(!v)v=(t)asym(nm)
 
