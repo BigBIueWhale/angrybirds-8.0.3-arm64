@@ -32,6 +32,31 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R8. `/proc/cpuinfo` passes through to the host — and the phone is the *favourable* side of that
+
+`fdtable.c` contains a `ROUTE_PROC` facility that would synthesise `/proc/cpuinfo`, `/proc/meminfo`,
+`/proc/self/auxv` and `/proc/socinfo`. It is **not wired in**: `ROUTE_PROC` appears only in
+`fdtable.c`/`.h` and `fd_route()` has no callers. `bridge_file.c` special-cases nothing but a
+`/dev/urandom` diagnostic, so those opens reach the **host's real files** — confirmed in the run
+logs, where `/proc/cpuinfo` opens succeed three times per run alongside
+`/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq`.
+
+So the engine parses genuinely different bytes on the A56 than in any validation run:
+
+| | validation rig | Galaxy A56 |
+|---|---|---|
+| `/proc/cpuinfo` | `vendor_id: GenuineIntel`, `model name: Intel(R) Core(TM) Ultra 9 285K`, `cpu family`, `flags` | `Features : fp asimd evtstrm aes pmull`, `CPU implementer : 0x41`, `BogoMIPS` |
+
+**The direction of that difference is favourable, and it is worth being explicit about why.** Angry
+Birds 8.0.3 shipped to millions of real ARM phones; its device-info parser was written against, and
+extensively exercised by, exactly the AArch64-shaped `cpuinfo` the A56 provides. The **x86 emulator
+is the unusual input** here — content Rovio's parser has almost certainly never seen. On this one
+path the test rig is the adverse case and the phone is the designed-for case.
+
+That is not a guarantee, and it stays listed as device-only. But it is the opposite of the usual
+"validated on a proxy, unknown on the target" caveat, so it should not be read as an outstanding
+risk of the same kind as the GPU driver.
+
 ### R7. Where the game's data actually goes — app-private only, so scoped storage never applies
 
 Traced from the run logs rather than assumed, because "old game on modern Android" usually means a
