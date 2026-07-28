@@ -147,6 +147,40 @@ else
 fi
 
 say
+say "== GL THREAD AFFINITY =="
+# GLES2 permits GL only on the thread its context is current on. The engine cannot violate that (it
+# imports no eglCreateContext/eglMakeCurrent — CORRECTNESS.md settles it by construction), but the
+# SHIM can: ctx_switch_in restores any runnable gthread onto whichever carrier holds the GEL, so a
+# render gthread that yielded mid-frame could resume on a different host pthread and issue gl* where
+# no context is current. SwiftShader may tolerate that; a real Mali/Xclipse driver would render
+# nothing. That is a bug which would pass every test here and appear first on the A56, so it is
+# asserted rather than left as a one-off observation.
+# NOTE $4, not $3 — logcat's columns are date time PID TID, and reading $3 reports one distinct
+# "tid" for the whole log, which looks like a clean pass and measures nothing.
+GLTIDS=$(grep -aE '\[shader-src\]|\[gl-str\]|\[tex-dim\]' "$ABLOG" | awk '{print $4}' | sort -u)
+NGLT=$(printf '%s\n' "$GLTIDS" | grep -c .)
+ALLT=$(awk '{print $4}' "$ABLOG" | grep -E '^[0-9]+$' | sort -u | tr '\n' ' ')
+say "  shim host tids in this run : $ALLT"
+say "  tids issuing GL            : $(printf '%s' "$GLTIDS" | tr '\n' ' ')"
+if [ "$NGLT" -eq 1 ]; then
+    FTID=$(grep -a 'frame\[' "$ABLOG" | awk '{print $4}' | sort -u | tr -d '\n')
+    if [ -n "$FTID" ] && [ "$FTID" != "$GLTIDS" ]; then
+        say "  [FAIL] GL is on tid $GLTIDS but the render path logs from tid $FTID — the frame loop and"
+        say "         the GL calls are on different host threads, which cannot be right."
+        FAIL=1
+    else
+        say "  [ OK ] every GL call came from ONE host thread, the same one the frame loop runs on"
+    fi
+elif [ "$NGLT" -eq 0 ]; then
+    say "  [FAIL] no GL-bridge lines carried a tid — affinity was not measured, so this is not a pass."
+    FAIL=1
+else
+    say "  [FAIL] GL issued from $NGLT different host threads. On a strict driver only the one with a"
+    say "         current context renders; the rest draw nothing. Check the scheduler's yield points."
+    FAIL=1
+fi
+
+say
 say "  Reminder: SwiftShader, not Mali/Xclipse. This bounds the GPU risk; it does not remove it."
 selfhash_verify
 say "DONE (FAIL=$FAIL)"
