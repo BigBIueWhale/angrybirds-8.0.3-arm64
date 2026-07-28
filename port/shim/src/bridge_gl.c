@@ -370,7 +370,12 @@ static const struct { const char*n; glh h; } GLT[] = {
  * during it, so a timer around uc_emu_start reports the entire run. This is the complement, and it
  * is the number that matters: under SwiftShader it is dominated by software rasterisation, so
  * subtracting it is what separates the rasteriser's cost from the port's own. */
-static uint64_t g_gl_ns = 0, g_gl_n = 0;
+/* __thread for the same reason as g_stub_ns in dispatch.c: this is reported as a fraction of a
+ * per-thread in-shim total, and it must be a SUBSET of the per-thread bridge total for the
+ * stub >= GL invariant in the [perf] line to mean anything. As a global it was compared against
+ * one thread's time while summing all of them. In practice GL is called only from the render
+ * thread so the published ~0.9% is unaffected, but the comparison was not a sound one. */
+static __thread uint64_t g_gl_ns = 0, g_gl_n = 0;
 uint64_t gl_bridge_ns(void){ return g_gl_ns; }
 uint64_t gl_bridge_calls(void){ return g_gl_n; }
 static uint64_t gl_now_ns(void){

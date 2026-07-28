@@ -157,7 +157,34 @@ static struct jni_bcall {
     jobject   r_obj; uint64_t r_u; float r_f; double r_d;   /* raw ART result, by return kind */
 } g_bcall[SCHED_MAX_THREADS];
 
+#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
+/* Time spent in the BLOCKING half of a JNI call. This is separate from jni_passthrough.c's timer
+ * and the split is wrong without it: for a Call*Method, env_dispatch_real only STASHES the call and
+ * redirects the guest to RG_RET, so uc_emu_start has already returned by the time the real ART call
+ * runs here in run_loop — outside jni_hook_cb, and with the GEL RELEASED.
+ *
+ * Left unmeasured, this time falls into the residual and gets reported as "emulator". It is the
+ * opposite: the guest is not executing at all, the carrier thread is parked inside ART. Attributing
+ * a blocking wait to Unicorn would overstate emulation exactly where the conclusion ("CPU-bound on
+ * emulation") is most load-bearing, so it is counted as JNI. Same __thread reasoning as elsewhere;
+ * this runs on the carrier thread whose shim_call is being measured. */
+static __thread uint64_t g_jniblk_ns = 0, g_jniblk_n = 0;
+uint64_t jni_block_ns(void){ return g_jniblk_ns; }
+uint64_t jni_block_calls(void){ return g_jniblk_n; }
+static uint64_t jniblk_now_ns(void){
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+    return (uint64_t)ts.tv_sec*1000000000ull + (uint64_t)ts.tv_nsec;
+}
+static void jni_block_do_cb_inner(gthread *gt);
+static void jni_block_do_cb(gthread *gt){
+    uint64_t _b0 = jniblk_now_ns();
+    jni_block_do_cb_inner(gt);
+    g_jniblk_ns += jniblk_now_ns() - _b0; g_jniblk_n++;
+}
+static void jni_block_do_cb_inner(gthread *gt){
+#else
 static void jni_block_do_cb(gthread *gt){          /* GEL RELEASED: the blocking ART Call*MethodA */
+#endif
     int k=(int)(gt - G.sch.all); if(k<0||k>=SCHED_MAX_THREADS) return;
     struct jni_bcall *b=&g_bcall[k]; JNIEnv*e=renv();
     { static int n=0; if(n++<24) LOG("[S2] do_call ENTER gt=%d type=%d static=%d (GEL released)", k, b->type, b->is_static); }
@@ -572,26 +599,53 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
         /* Emulation share of wall time, sampled with the frame log. Separates the port's own cost
          * from the rasteriser's, which is what SwiftShader-based numbers cannot do. */
         { extern uint64_t gl_bridge_ns(void); extern uint64_t gl_bridge_calls(void);
-          static uint64_t w0=0, g0=0, c0=0, i0=0, o0=0, e0=0; static int prim=0;
+          extern uint64_t stub_bridge_ns(void); extern uint64_t stub_bridge_calls(void);
+          extern uint64_t jni_pass_ns(void); extern uint64_t jni_block_ns(void);
+          static uint64_t w0=0, g0=0, c0=0, i0=0, o0=0, e0=0, s0=0, j0=0, sc0=0, b0=0; static int prim=0;
           extern uint64_t shim_in_ns(void); extern uint64_t shim_out_ns(void); extern uint64_t shim_entries(void);
           struct timespec _ts; clock_gettime(CLOCK_MONOTONIC,&_ts);
           uint64_t wn=(uint64_t)_ts.tv_sec*1000000000ull+(uint64_t)_ts.tv_nsec;
           uint64_t gn=gl_bridge_ns(), cn=gl_bridge_calls();
-          if(!prim){ prim=1; w0=wn; g0=gn; c0=cn; i0=shim_in_ns(); o0=shim_out_ns(); e0=shim_entries(); }
+          if(!prim){ prim=1; w0=wn; g0=gn; c0=cn; i0=shim_in_ns(); o0=shim_out_ns(); e0=shim_entries();
+                     s0=stub_bridge_ns(); j0=jni_pass_ns(); sc0=stub_bridge_calls(); b0=jni_block_ns(); }
           else if((rf % 300u)==0u && wn>w0){
               uint64_t dw=wn-w0, dg=gn-g0;
-              /* dw - dg is everything that is NOT the GL bridge: ARM32 emulation, the other
-               * bridges, and the scheduler. Under SwiftShader dg is mostly software rasterisation,
-               * which a real GPU would not charge us for. */
               uint64_t di = shim_in_ns()-i0, dou = shim_out_ns()-o0;
+              /* Split the in-shim time. ds = ALL native bridges (GL + asset + libc + file + bent),
+               * dj = guest->JVM JNI passthrough (a different hook, so not inside ds). What is left
+               * is the emulator proper: Unicorn translating/running ARM32, plus hook dispatch and
+               * the scheduler. That residual is the number that decides whether this port is
+               * CPU-bound in a way we could optimise, or bound by the emulator itself. */
+              /* JNI has TWO halves and only counting the first would misattribute the second to
+               * the emulator: dispatch (inside the RG_JNI hook) and the blocking ART call (in
+               * run_loop, GEL released). See jni_block_do_cb. */
+              uint64_t ds = stub_bridge_ns()-s0;
+              uint64_t djd = jni_pass_ns()-j0, djb = jni_block_ns()-b0, dj = djd + djb;
+              uint64_t acct = ds + dj;
+              uint64_t demu = (di > acct) ? (di - acct) : 0;
+              /* Invariants. Two prior measurements in this work were wrong in ways no test caught —
+               * only impossible arithmetic exposed them — so the impossible cases are named in the
+               * output instead of being left for a reader to notice: GL is dispatched from stub_cb
+               * so it must be a subset of ds, and ds+dj cannot exceed the in-shim time that
+               * contains them. Either violation means the accounting is broken, not that the port
+               * is slow, and BAD makes that unmissable. */
+              const char *bad = (dg > ds || acct > di) ? "  [BAD: accounting violated]" : "";
               LOG("[perf] frames=%u wall=%llums | IN-shim=%llums (%llu%%) of which GLbridge=%llums | OUT-shim(Java swap/vsync)=%llums (%llu%%) | entries=%llu",
                   rf, (unsigned long long)(dw/1000000ull),
                   (unsigned long long)(di/1000000ull), (unsigned long long)(di*100ull/dw),
                   (unsigned long long)(dg/1000000ull),
                   (unsigned long long)(dou/1000000ull), (unsigned long long)(dou*100ull/dw),
                   (unsigned long long)(shim_entries()-e0));
+              LOG("[perf-split] IN-shim=%llums = emulator=%llums (%llu%% of frame) + bridges=%llums (%llu%%, %llu calls, GL %llums) + JNI=%llums (%llu%%: dispatch %llums + ART-blocking %llums)%s",
+                  (unsigned long long)(di/1000000ull),
+                  (unsigned long long)(demu/1000000ull), (unsigned long long)(demu*100ull/dw),
+                  (unsigned long long)(ds/1000000ull), (unsigned long long)(ds*100ull/dw),
+                  (unsigned long long)(stub_bridge_calls()-sc0),
+                  (unsigned long long)(dg/1000000ull),
+                  (unsigned long long)(dj/1000000ull), (unsigned long long)(dj*100ull/dw),
+                  (unsigned long long)(djd/1000000ull), (unsigned long long)(djb/1000000ull), bad);
               i0=shim_in_ns(); o0=shim_out_ns(); e0=shim_entries();
-              w0=wn; g0=gn; c0=cn;
+              w0=wn; g0=gn; c0=cn; s0=stub_bridge_ns(); j0=jni_pass_ns(); sc0=stub_bridge_calls(); b0=jni_block_ns();
           } }
 #endif
         if((++rf % 300u)==1u){ LOG("frame[%u] GL draws=%lu (+%lu since last) clears=%lu useProgram=%lu",

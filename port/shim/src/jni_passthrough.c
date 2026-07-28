@@ -118,7 +118,31 @@ static void jni_trace(jni_state*J, uint32_t slot){
     else if((slot>=34&&slot<=63)||(slot>=114&&slot<=143)) fprintf(stderr,"[jni] Call slot %u\n",slot);
     else if((slot>=95&&slot<=112)||(slot>=145&&slot<=162)) fprintf(stderr,"[jni] Get/SetField slot %u\n",slot);
 }
+#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
+/* Time spent in guest->JVM JNI passthrough. This arrives on its own UC_HOOK_CODE at RG_JNI, NOT
+ * through dispatch.c's stub hook, so the bridge timer there cannot see it. Without this the JNI
+ * cost would be silently attributed to "emulation" in the frame-time split. Depth-guarded and
+ * globally accumulated for the same reasons documented at g_stub_ns in dispatch.c. */
+#include <time.h>
+static __thread uint64_t g_jnip_ns = 0, g_jnip_n = 0;
+static __thread int g_jnip_depth = 0;
+uint64_t jni_pass_ns(void){ return g_jnip_ns; }
+uint64_t jni_pass_calls(void){ return g_jnip_n; }
+static uint64_t jnip_now_ns(void){
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+    return (uint64_t)ts.tv_sec*1000000000ull + (uint64_t)ts.tv_nsec;
+}
+static void jni_hook_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *ud);
 static void jni_hook_cb(uc_engine *uc, uint64_t address, uint32_t size, void *ud){
+    if (g_jnip_depth++){ jni_hook_cb_inner(uc,address,size,ud); g_jnip_depth--; return; }
+    uint64_t _j0 = jnip_now_ns();
+    jni_hook_cb_inner(uc,address,size,ud);
+    g_jnip_ns += jnip_now_ns() - _j0; g_jnip_n++; g_jnip_depth--;
+}
+static void jni_hook_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *ud){
+#else
+static void jni_hook_cb(uc_engine *uc, uint64_t address, uint32_t size, void *ud){
+#endif
     (void)uc;(void)size;
     jni_state *J=(jni_state*)ud;
     uint32_t a=(uint32_t)address;

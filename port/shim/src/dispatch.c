@@ -551,7 +551,49 @@ static void br_ret(dispatch_t*d, const bent*b, uint64_t rv){
 /* hang-watchdog op marker: STRONG def in jni_entry.c (device); this WEAK no-op keeps the host
  * test builds (which link dispatch.c but not jni_entry.c) resolving — overridden on device. */
 __attribute__((weak)) void abshim_mark_op(const char *bridge, int slot){ (void)bridge; (void)slot; }
+#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
+/* Time spent inside the NATIVE BRIDGES — every stub, i.e. GL + asset + libc + file + the bent
+ * table. This is the second half of the frame-time split. The first measurement established that
+ * ~92% of wall time is inside the shim; that number alone does not say whether the cost is Unicorn
+ * translating ARM32 or our own bridge code running on the guest's behalf, and those have opposite
+ * consequences (the latter is optimisable, the former is close to a hard ceiling).
+ *
+ * stub_cb is the single choke point for all of it, so one timer here captures the whole bridge
+ * slice; jni_passthrough.c times the guest->JVM path, which arrives on a DIFFERENT hook (RG_JNI)
+ * and would otherwise be invisible. IN-shim minus these two is the emulator proper.
+ *
+ * The depth guard is not decoration. The 158%-of-wall-time error earlier in this work came from
+ * summing durations that were nested/concurrent, and it was caught by arithmetic rather than by a
+ * test. Nesting looks impossible here (the only nested uc_emu_start is a 1-instruction CLREX at
+ * RG_KUSER, outside this hook's range), but "looks impossible" is exactly what was believed then,
+ * so only the OUTERMOST interval is accumulated and correctness no longer depends on that survey
+ * being complete.
+ *
+ * __thread, NOT a plain global, and this is the same trap as the 158% error rather than a style
+ * choice. shim_call is entered from several ART threads, so shim_in_ns() is per-thread; a global
+ * bridge total would sum every thread's bridge time and then be divided by ONE thread's in-shim
+ * time, which is not a percentage of anything. Per-thread on both sides makes the ratio a real
+ * one. Attribution stays correct under green threads: bridge time accrues to the host thread whose
+ * shim_call is currently driving the scheduler, which is exactly the call being measured. */
+static __thread uint64_t g_stub_ns = 0, g_stub_n = 0;
+static __thread int g_stub_depth = 0;
+uint64_t stub_bridge_ns(void){ return g_stub_ns; }
+uint64_t stub_bridge_calls(void){ return g_stub_n; }
+static uint64_t stub_now_ns(void){
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+    return (uint64_t)ts.tv_sec*1000000000ull + (uint64_t)ts.tv_nsec;
+}
+static void stub_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *user);
 static void stub_cb(uc_engine *uc, uint64_t address, uint32_t size, void *user){
+    if (g_stub_depth++){ stub_cb_inner(uc,address,size,user); g_stub_depth--; return; }
+    uint64_t _s0 = stub_now_ns();
+    stub_cb_inner(uc,address,size,user);
+    g_stub_ns += stub_now_ns() - _s0; g_stub_n++; g_stub_depth--;
+}
+static void stub_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *user){
+#else
+static void stub_cb(uc_engine *uc, uint64_t address, uint32_t size, void *user){
+#endif
     (void)uc;(void)size;
     dispatch_t *d=(dispatch_t*)user;
     uint32_t slot=((uint32_t)address - RG_STUB) >> 2;
@@ -561,7 +603,18 @@ static void stub_cb(uc_engine *uc, uint64_t address, uint32_t size, void *user){
     abshim_mark_op(NULL, -1);
     /* DIAG: hot-stub detector. A guest that spins calling a bridged import (observed: libcurl's
      * connect/poll retry loop after we cut the network) hammers one stub millions of times; log
-     * its NAME every 2^19 calls so the spin is named without guessing the resolution order. */
+     * its NAME every 2^19 calls so the spin is named without guessing the resolution order.
+     *
+     * DELIBERATELY UNCONDITIONAL, including in release. It was briefly gated behind ABSHIM_HOTSTUB
+     * on the theory that per-call diagnostic work is waste on a path taken millions of times per
+     * frame. Measured, it is ~1-2ns against a ~770ns bridge call plus one logcat line per 2^19
+     * calls: about 0.04% of frame time. That does not justify changing a deliverable that is
+     * bit-reproducible, play-tested and hash-documented — and release ships progress logging by
+     * design anyway (frame[N], which ONDEVICE.md tells the reader to grep for).
+     *
+     * Keeping it unconditional also keeps build_apk_x86_perf.sh honest: that build exists to
+     * measure what release does, so it must carry exactly what release carries. This is how
+     * floor/malloc/free were identified as the hot bridges (2026-07-28) with no special build. */
     { static unsigned long hot[LOADER_MAX_STUBS];
       if(slot<LOADER_MAX_STUBS && ((++hot[slot])&0x7ffffUL)==0UL){
           const char*hn=loader_stub_name(d->ld,(uint32_t)address);

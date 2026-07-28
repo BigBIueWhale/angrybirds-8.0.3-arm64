@@ -159,6 +159,27 @@ else
   skip "signing/alignment (no apksigner on PATH, no ab-port image)"
 fi
 
+echo "== CLAIM: the shipped APK carries NO perf instrumentation =="
+# build_apk_x86_perf.sh compiles -DABSHIM_PERF to time the frame split. That build is a measurement
+# tool, never a deliverable, and its header used to say "verify_claims.sh checks that" — which was
+# simply untrue until this check existed. (The project has hit that exact shape twice before: a
+# claim whose TITLE asserted more than its code established.)
+#
+# Decisive because the perf build's format strings live in the shim's .rodata and cannot be
+# optimised out: if "[perf-split]" or "[perf] frames=" appears in the shipped shim, a perf build was
+# shipped. have() guards the extraction so a failed unzip cannot pass as "no instrumentation found"
+# — absence of evidence is not evidence of absence, which is the single most repeated defect here.
+SHIM="$T/shim_arm64.so"
+unzip -p "$APK" lib/arm64-v8a/libAngryBirdsClassic.so > "$SHIM" 2>/dev/null
+if have "$SHIM" "perf instrumentation"; then
+  PERFHIT=""
+  for marker in '[perf-split]' '[perf] frames='; do
+    strings -a "$SHIM" | grep -qF "$marker" && PERFHIT="$PERFHIT $marker"
+  done
+  [ -z "$PERFHIT" ] && ok "no ABSHIM_PERF instrumentation in the shipped shim ($(stat -c%s "$SHIM") bytes scanned)" \
+                    || bad "the shipped shim contains perf instrumentation:$PERFHIT (a measurement build was released)"
+fi
+
 echo "== CLAIM: minSdk 16 / targetSdk 26, and NO live network permission =="
 # The PERMISSION half is checked self-contained, always. depermission.py mangles each permission's
 # first letter (INTERNET -> XNTERNET) preserving byte length, so the literal string's presence or
