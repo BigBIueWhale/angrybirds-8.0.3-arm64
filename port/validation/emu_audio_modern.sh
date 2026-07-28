@@ -10,11 +10,13 @@ source "$(dirname "$0")/lib_provenance.sh"
 source "$(dirname "$0")/lib_metrics.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_install.sh"
 source "$(dirname "$0")/lib_wincheck.sh"
+source "$(dirname "$0")/lib_selfhash.sh"
 ( sleep 1600; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-audio.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/audiomod.txt"; : >"$LOG"
 ABLOG="$OUT/audiomod_abshim.txt"; : >"$ABLOG"
 say(){ echo "$@" | tee -a "$LOG"; }
+selfhash_begin   # see lib_selfhash.sh: detects a mid-run edit of THIS file
 fnow(){ grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1|grep -oE '[0-9]+'; }
 say "== boot API 34 (abtest34) WITH audio =="
 export QEMU_AUDIO_DRV=none
@@ -74,5 +76,6 @@ say "  stack_chk_fail:    $(marker_report "$ABLOG" stack_chk_fail)  (0 = nested-
 say "  WATCHDOG/FROZEN:   $(marker_report "$ABLOG" 'WATCHDOG|FROZEN')"
 say "  init_array:        $(grep -aoE 'init_array [0-9]+/125' "$ABLOG" | tail -1)  (125/125 = JIT under W^X)"
 say "  final pid:         [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]  (alive => played through with audio)"
+selfhash_verify
 say DONE
 adb emu kill >/dev/null 2>&1

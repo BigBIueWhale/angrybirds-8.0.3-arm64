@@ -8,9 +8,11 @@ source "$(dirname "$0")/lib_settle.sh"
 source "$(dirname "$0")/lib_provenance.sh"
 source "$(dirname "$0")/lib_metrics.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_wincheck.sh"
+source "$(dirname "$0")/lib_selfhash.sh"
 ( sleep 1300; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/playthrough.txt"; : >"$LOG"
+selfhash_begin   # lib_selfhash.sh: detect a mid-run edit of THIS file
 ABLOG="$OUT/playthrough_abshim.txt"; : >"$ABLOG"
 echo "== boot ==" | tee -a "$LOG"
 emulator -avd abtest -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
@@ -51,3 +53,4 @@ echo "guard-fired: $(marker_report "$ABLOG" 'empty-json-guard\] empty')" | tee -
 echo "final_pid: [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]" | tee -a "$LOG"
 echo DONE | tee -a "$LOG"
 adb emu kill >/dev/null 2>&1
+selfhash_verify

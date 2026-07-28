@@ -42,6 +42,7 @@ source "$(dirname "$0")/lib_settle.sh"
 source "$(dirname "$0")/lib_dialogs.sh"
 source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_install.sh"
+source "$(dirname "$0")/lib_selfhash.sh"
 
 APK=/work/out/angrybirds-8.0.3-x86shim-perf.apk
 AVD="${ABSHIM_AVD:-abtest34}"
@@ -49,6 +50,7 @@ PFX="${ABSHIM_OUTPFX:-perfsplit}"
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/${PFX}.txt"; : >"$LOG"
 ABLOG="$OUT/${PFX}_abshim.txt"; : >"$ABLOG"
 say(){ echo "$@" | tee -a "$LOG"; }
+selfhash_begin   # see lib_selfhash.sh: detects a mid-run edit of THIS file
 FAIL=0
 
 if [ ! -f "$APK" ]; then
@@ -168,6 +170,7 @@ fi
 say
 say "  Reminder: x86_64 host under SwiftShader. The SHAPE of the split transfers to the A56;"
 say "  the absolute frame rate does not."
+selfhash_verify
 say DONE
 adb emu kill >/dev/null 2>&1
 exit "$FAIL"

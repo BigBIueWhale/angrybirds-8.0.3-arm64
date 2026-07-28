@@ -9,6 +9,7 @@ source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_dialogs.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_install.sh"
 source "$(dirname "$0")/lib_wincheck.sh"
+source "$(dirname "$0")/lib_selfhash.sh"
 # watchdog raised 1450 -> 2100s: the frame-based settle below can add up to 300s over the old
 # fixed sleep, and boot-to-frame[601] has been observed at ~565s.
 ( sleep 2100; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
@@ -21,6 +22,7 @@ PFX="${ABSHIM_OUTPFX:-modplay}"
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/${PFX}.txt"; : >"$LOG"
 ABLOG="$OUT/${PFX}_abshim.txt"; : >"$ABLOG"
 say(){ echo "$@" | tee -a "$LOG"; }
+selfhash_begin   # see lib_selfhash.sh: detects a mid-run edit of THIS file
 # NOT "API 34": $AVD is parameterised (ABSHIM_AVD=ab36 runs Android 16, the A56's OS), so a
 # hardcoded version here prints "boot API 34 (ab36)" on an Android 16 run — a log line that
 # misstates what was under test, in a file kept as evidence. The very next line reports the
@@ -86,5 +88,6 @@ say "  s-construct-guard: $(marker_report "$ABLOG" 's-construct-null-guard')  (l
 say "  real St11logic:    $(marker_report "$ABLOG" 'THROW.*St11logic_error')"
 say "  last frame:        $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1)"
 say "  final pid:         [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]  (alive => played through)"
+selfhash_verify
 say DONE
 adb emu kill >/dev/null 2>&1

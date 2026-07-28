@@ -12,11 +12,13 @@ source "$(dirname "$0")/lib_provenance.sh"
 source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_dialogs.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_install.sh"
+source "$(dirname "$0")/lib_selfhash.sh"
 ( sleep 1550; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/${PFX}.txt"; : >"$LOG"
 ABLOG="$OUT/${PFX}_abshim.txt"; : >"$ABLOG"
 say(){ echo "$@" | tee -a "$LOG"; }
+selfhash_begin   # see lib_selfhash.sh: detects a mid-run edit of THIS file
 fnow(){ grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1|grep -oE '[0-9]+'; }
 # NOT "API 34": ABSHIM_AVD is parameterised, so running this against ab36 (Android 16) printed a
 # header claiming API 34 — a log kept as evidence stating the wrong OS under test. The version is
@@ -76,5 +78,6 @@ say "  s-construct-guard: $(marker_report "$ABLOG" 's-construct-null-guard')"
 say "  real St11logic:    $(marker_report "$ABLOG" 'THROW.*St11logic_error')"
 say "  last frame:        $(fnow)"
 say "  final pid:         [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]  (alive => advanced OK)"
+selfhash_verify
 say DONE
 adb emu kill >/dev/null 2>&1
