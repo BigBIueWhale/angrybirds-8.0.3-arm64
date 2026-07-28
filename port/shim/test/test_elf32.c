@@ -48,6 +48,34 @@ int main(int argc,char**argv){
     int pr=elf32_parse(buf,len,&IMG);
     CK(pr==0,"elf32_parse ok");
     if(pr!=0){ printf("  parse rc=%d\n",pr); return 1; }
+
+    /* REJECTION PATHS. This test only ever fed elf32_parse a VALID engine .so, so every guard in the
+     * parser was untested: mutation_modules.sh showed that deleting the ELF-magic check outright
+     * left the whole test passing. A loader that accepts arbitrary bytes is a loader that will map
+     * garbage as code, so the negative cases are now asserted alongside the positive one.
+     * Added 2026-07-28. */
+    { elf32_image bad; uint8_t junk[64];
+      memset(junk,0xA5,sizeof junk);
+      CK(elf32_parse(junk,sizeof junk,&bad)!=0,"rejects non-ELF bytes");
+      uint8_t trunc[8] = {0x7f,'E','L','F',1,1,1,0};
+      CK(elf32_parse(trunc,sizeof trunc,&bad)!=0,"rejects truncated ELF header");
+      /* right magic, wrong class/endianness/machine — a 64-bit or big-endian object must not load */
+      uint8_t *wrongclass = malloc(len); memcpy(wrongclass,buf,len);
+      wrongclass[4] = 2;                                   /* ELFCLASS64 */
+      CK(elf32_parse(wrongclass,len,&bad)!=0,"rejects ELFCLASS64");
+      free(wrongclass);
+      CK(elf32_parse(buf,0,&bad)!=0,"rejects zero length");
+      /* The case that isolates the MAGIC check specifically. The three above are all rejected by
+       * OTHER guards too (bounds, class), so deleting the magic check left them passing and the
+       * mutation invisible — mutation_modules.sh reported elf32 NOT DETECTED even with the rejection
+       * tests present. This one is a byte-for-byte valid ELF32 whose e_ident magic alone is wrong,
+       * so nothing downstream objects to it and only the magic check can catch it. */
+      uint8_t *badmagic = malloc(len); memcpy(badmagic,buf,len);
+      badmagic[0] = 0x7e;                                  /* 0x7f -> 0x7e: everything else valid */
+      CK(elf32_parse(badmagic,len,&bad)!=0,"rejects valid ELF32 with wrong magic");
+      free(badmagic);
+    }
+
     printf("  image_size=0x%x symcount=%u  symtab@0x%x strtab@0x%x hash@0x%x\n",
            IMG.image_size,IMG.symcount,IMG.symtab_va,IMG.strtab_va,IMG.hash_va);
     CK(IMG.symcount>1000,"symcount plausible");

@@ -34,6 +34,15 @@ static void t_utf8_malformed(void){
     CK(utf8_decode((uint8_t[]){0x80},1,&cp)==-1,"lone continuation");
     CK(utf8_decode((uint8_t[]){0xF8,0x88,0x80,0x80},4,&cp)==-1,"5-byte lead");
     CK(utf8_decode((uint8_t[]){0xE2,0x82},2,&cp)==-1,"truncated 3-byte");
+    /* Bad CONTINUATION byte after a valid lead. Distinct from the overlong and truncated cases
+     * above: here the length is right and the lead byte is legal, only the follower is not a
+     * 10xxxxxx continuation. Added 2026-07-28 after mutation_modules.sh showed that deleting the
+     * `(s[1] & 0xC0) != 0x80` guard entirely left this whole test passing — the overlong checks
+     * happened to cover the sequences being fed, so the continuation check itself was untested. */
+    CK(utf8_decode((uint8_t[]){0xC2,0x41},2,&cp)==-1,"bad continuation C2 41");
+    CK(utf8_decode((uint8_t[]){0xC2,0xC2},2,&cp)==-1,"bad continuation C2 C2");
+    CK(utf8_decode((uint8_t[]){0xE2,0x82,0x41},3,&cp)==-1,"bad 3rd byte E2 82 41");
+    CK(utf8_decode((uint8_t[]){0xF0,0x9F,0x98,0x41},4,&cp)==-1,"bad 4th byte F0 9F 98 41");
     /* valid boundary cases */
     CK(utf8_decode((uint8_t[]){0x24},1,&cp)==1 && cp==0x24,"'$'");
     CK(utf8_decode((uint8_t[]){0xC2,0xA2},2,&cp)==2 && cp==0xA2,"U+00A2");

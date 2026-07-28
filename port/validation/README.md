@@ -323,6 +323,32 @@ API-25 script to learn the true count and first-failure point.
   predictive, for the opposite reason: the A56's **CPU**, not its GPU, will set the rate. Real GPU
   behaviour and frame pacing remain things only the A56 can settle. See `port/OPEN_FINDINGS.md` R4.
 
+### `port/shim/test/mutation_modules.sh` — proving the MODULE suite can fail
+
+`run_tests.sh` ends with **ALL MODULE TESTS PASSED**, and that line is cited as evidence in
+`validate_all.sh`, this README and the release notes. Only ONE module had ever been shown capable of
+failing (galloc, noted above). For the rest, "passed" rested on the assumption that the test would
+notice.
+
+It found two real coverage gaps immediately:
+
+- **`test_utf.c` never fed a bad continuation byte.** Deleting the `(s[1] & 0xC0) != 0x80` guard
+  outright left the entire test passing — the overlong and truncated cases it did test happened to
+  be caught by *other* checks. Now covered (`C2 41`, `C2 C2`, `E2 82 41`, `F0 9F 98 41`).
+- **`test_elf32.c` had no rejection test at all** — it only ever parsed a valid engine `.so`, so
+  every guard in the parser was unexercised. Now covered: non-ELF bytes, truncated header,
+  ELFCLASS64, zero length, and — the case that actually isolates the magic check — a byte-for-byte
+  valid ELF32 whose magic alone is wrong. That last one matters: the first four are rejected by
+  *other* guards too, so with the magic check deleted they all still passed and the mutation stayed
+  invisible.
+
+A third finding was about the harness, not the code: run bare, `test_elf32` cannot find the engine,
+prints `SKIP: engine .so not found` and **returns 0**. The harness now supplies `ABSHIM_ENGINE_SO`
+and treats a self-skip as its own outcome, because a test that skipped proves nothing in either
+direction and must never be counted as a run.
+
+**2026-07-28: 6/6 module mutations detected, 0 skipped**, and the real suite still passes.
+
 ### `mutation_test.sh` — proving the gate can fail
 
 `verify_claims.sh` is the file every claim in this repo leans on, and a gate nobody has watched fail
