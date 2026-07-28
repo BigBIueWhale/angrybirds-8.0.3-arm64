@@ -34,12 +34,21 @@
 #   provenance staleness     hand-built manifest w/ wrong + missing rows -> caught
 #   provenance label lint    reintroduced a fixed record_build label   -> caught
 #   proof index consistency  added an unlisted proof / a phantom entry -> caught
+#   audio-variant sameness   appended a byte to the AUDIO build's engine  -> caught
+#   documented log markers   added a phantom marker to ONDEVICE.md        -> caught (see below)
 #
-# One attempt reported a MISS that was not one: the test grepped for the SUCCESS message, so when
-# the check correctly failed the pattern matched nothing. Reading the check's source settled it.
-# Worth remembering — a failed negative test can mean the test is wrong, not the check.
+# TWO of these attempts did not go as expected, and both were instructive:
 #
-# Not yet broken on purpose: the audio-variant sameness comparison and the log-marker check.
+#   - the layer-2 case first reported a MISS that was not one: the test grepped for the SUCCESS
+#     message, so when the check correctly failed the pattern matched nothing. Reading the check's
+#     source settled it. A failed negative test can mean the test is wrong, not the check.
+#   - the log-marker case reported a REAL miss. The check was titled "every log marker ONDEVICE.md
+#     tells you to grep for" but never opened ONDEVICE.md — it compared a HARDCODED list against the
+#     source, so a newly documented marker was invisible to it, which is exactly the drift it exists
+#     to prevent. It now extracts the markers from the doc and keeps the fixed list only as a floor.
+#     Trying to break a check is also how you discover it was never doing what it said.
+#
+# Every check in this file has now been deliberately broken at least once.
 #
 # Usage — runs anywhere; it uses apksigner/zipalign from PATH when present (as inside ab-port,
 # which is how REPRODUCE.md step 3 invokes it) and otherwise shells out to the ab-port image.
@@ -206,14 +215,24 @@ echo "== CLAIM: every log marker ONDEVICE.md tells you to grep for is actually e
 # nobody noticed: it documented `call[1] nativeInit (VII) @0x...` and `render[N] GL draws=`, neither
 # of which the shim emits, and TWO diagnostic rows were keyed on the second one. Someone grepping
 # for them with the phone in hand would have found nothing and concluded the shim had stalled.
-MARKERS="empty-json-guard s-construct-null-guard cpu_create failed loader_load failed"
-MARKERS="$MARKERS init_array shim_call h_fatal abshim ready"
+# This used to check a HARDCODED list against the source, while claiming to check "every marker
+# ONDEVICE.md tells you to grep for". It never opened ONDEVICE.md. So a marker newly documented
+# there was invisible to it - which is precisely the drift it exists to prevent. Proven by adding a
+# phantom marker to the doc: the check passed. Now the doc is the source of truth for WHICH markers
+# to verify, and the fixed list below is only a floor of ones that must always be present.
 MISSING=""
+# (a) every bracketed shim tag the doc shows in backticks, e.g. `[empty-json-guard]`
+DOCMARKS=$(grep -oE '`\[[a-z][a-z0-9_-]{2,30}\]`' port/ONDEVICE.md 2>/dev/null | tr -d '`' | sort -u)
+for m in $DOCMARKS; do
+  grep -rqF "$m" port/shim/src/ 2>/dev/null || MISSING="$MISSING $m"
+done
+NDOC=$(printf '%s\n' "$DOCMARKS" | grep -c . )
+# (b) a floor of markers the triage tree depends on regardless of how the doc phrases them
 for m in "empty-json-guard" "s-construct-null-guard" "cpu_create failed" "loader_load failed" \
          "init_array" "shim_call" "h_fatal" "abshim ready" "GL draws="; do
   grep -rqF "$m" port/shim/src/ 2>/dev/null || MISSING="$MISSING [$m]"
 done
-if [ -z "$MISSING" ]; then ok "all documented triage markers exist in the shim source"
+if [ -z "$MISSING" ]; then ok "all triage markers exist in the shim source (${NDOC:-0} extracted from ONDEVICE.md + the fixed floor)"
 else bad "ONDEVICE.md names markers the shim never emits:$MISSING"; fi
 # and the two strings that were wrong must not come back
 for bogus in "call\[1\] nativeInit" "render\[N\] GL draws" "render\[1\] GL draws"; do
