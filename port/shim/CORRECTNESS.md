@@ -912,6 +912,31 @@ current. Worker threads do CPU work (image decode, streaming) and hand results t
 which does the actual `glTexImage2D`. This is a correctness-by-construction lock: **no disasm of the
 polymorphic thread body is needed — the absence of EGL is the proof.**
 
+Premise re-verified rather than trusted: `libAngryBirdsClassic.so` has **0** EGL imports and **68**
+`gl*` imports; `libjs.so` has 0 of each. "Both absent" and "the 68" are exactly right.
+
+**But that argument is about the ENGINE, and the shim interposes green threads on carrier pthreads.**
+`ctx_switch_in` restores any runnable gthread onto whichever carrier holds the GEL, so guest
+execution is not inherently pinned to the host thread a gthread was created on — which is the one way
+this by-construction lock could be broken from below. If a render gthread ever yielded mid-frame and
+resumed on another carrier, its `gl*` calls would land on a host thread with no current context: a
+black screen on a strict driver, and plausibly tolerated by SwiftShader, i.e. exactly the shape of
+bug that would survive every test here and appear first on the A56.
+
+Measured, because reasoning about a scheduler is how one over-claims. logcat records the host tid,
+and across two independent runs on two different builds (`gpucap` = release+dumps, `playthrough` =
+debug), the shim is active on **four** host threads — yet **every** `frame[…]` line and **every**
+GL-bridge dump (`[shader-src]`, `[gl-str]`, `[tex-dim]`) is emitted from exactly **one** of them:
+
+| run | shim host tids | tids issuing GL |
+|---|---|---|
+| `gpucap` | 2237, 2275, 2288, 2391 | **2288 only** |
+| `playthrough` | 2661, 2684, 2767, 2842 | **2767 only** |
+
+So the scheduler does not migrate GL work off the render carrier in practice. This is a measurement
+over two runs rather than a proof — but unlike the GPU facts around it, the mechanism is
+**host-independent**: the same scheduler, with the same yield points, runs on the A56.
+
 **Render entry model — disasm-decisive, and not what the brief's option (a)/(b) assumed.** The
 render JNI thunks are near-empty:
 - `nativeRender@0x1da8f8` = **`mov r0,#1; bx lr`** — a **pure no-op returning JNI_TRUE**. It does NOT
