@@ -84,8 +84,28 @@ deliberately loose (fail above 2× the first steady sample) because no baseline 
 run — a threshold invented ahead of the data would either fire on correct behaviour or never fire.
 Now that the trend is known, it can be tightened against evidence.
 
-Still bounded: ten minutes is not an evening, and this is SwiftShader on x86_64. What it removes is
-the possibility that the port only survives the first few minutes.
+**Repeated at double the duration, which is what makes it a result rather than a data point:**
+
+| soak | frames | RSS start → end | growth |
+|---|---|---|---|
+| 10 min | 9 001 | 611 608 → 616 164 kB | +0.75% |
+| 20 min | **17 401** | 613 696 → 617 824 kB | **+0.67%** |
+
+`h_fatal` 0 in both, across 22 420 and 39 164 shim log lines, 0 stalled samples either time.
+**Doubling the session did not increase the growth** — that is the shape of no leak, since a leak
+would roughly double it. The threshold has therefore been tightened from 2× to 1.3×, which is
+justified by measurement rather than chosen in advance.
+
+Still bounded: twenty minutes is not an evening, and this is SwiftShader on x86_64. What it removes
+is the possibility that the port only survives the first few minutes — and, now, that it leaks
+steadily while it runs.
+
+One transient worth recording: a 20-minute attempt failed with an EMPTY shim log because the app
+never launched, and the script sat through its entire 550-second render wait before saying so. The
+next attempt, unchanged, ran clean — so it was a launch flake, not a defect. `emu_soak.sh` now
+confirms the process exists within 60 seconds and prints the system's own `ActivityManager`/crash
+lines if it does not, because "no pid after nine minutes and no log" is a true statement that
+explains nothing.
 
 ### R14. The project's foundational numbers, re-derived from the binaries
 

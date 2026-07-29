@@ -59,7 +59,23 @@ install_apk "$APK" 4 2>&1 | tee -a "$LOG"
 adb shell pm list packages 2>/dev/null | grep -q rovio || { say "[FAIL] install"; adb emu kill; exit 1; }
 adb logcat -c >/dev/null 2>&1; adb logcat -G 64M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
-adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+MONKEY=$(adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 2>&1 | tr -d '\r')
+# Confirm it actually STARTED before waiting ten minutes for frames. A 20-minute soak once sat
+# through the entire 550 s render wait and only then reported "no pid", with an empty shim log —
+# true, but it took nine minutes to say so and carried no clue why. Check within 60 s and show
+# the system's own reason if the process is not there.
+for i in $(seq 1 12); do
+    P0=$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r'); [ -n "$P0" ] && break; sleep 5
+done
+if [ -z "$P0" ]; then
+    say "[FAIL] the app did not start within 60s of launch — nothing to soak."
+    say "  monkey said: ${MONKEY:-<nothing>}"
+    say "  last activity/crash lines:"
+    adb logcat -d 2>/dev/null | grep -aiE "rovio|ActivityManager.*(START|died)|FATAL|AndroidRuntime" \
+        | tail -8 | sed 's/^/    /' | tee -a "$LOG"
+    adb emu kill; exit 1
+fi
+say "  started as pid $P0"
 
 say "== reach steady play before sampling =="
 for s in $(seq 1 110); do sleep 5
@@ -112,11 +128,17 @@ fi
 if [ -n "$FIRSTRSS" ] && [ -n "$LASTRSS" ] && [ "$FIRSTRSS" -gt 0 ]; then
     PCT=$(( LASTRSS * 100 / FIRSTRSS ))
     say "  RSS ${FIRSTRSS}kB -> ${LASTRSS}kB over ${MINUTES} min = ${PCT}% of the first sample"
-    if [ "$PCT" -gt 200 ]; then
-        say "  [FAIL] resident memory more than DOUBLED during steady play — that is a leak shape"
+    # 130%, tightened from the 200% the first run shipped with. Two measured runs on the shipping
+    # config: 10 min 611608->616164 kB (+0.75%) and 20 min 613696->617824 kB (+0.67%). DOUBLING the
+    # duration did not increase the growth, which is the shape of no leak — a leak would roughly
+    # double it. So the real figure is ~1%, and 130% leaves thirty points of headroom for a longer
+    # soak or a heavier level while still catching anything that actually climbs.
+    if [ "$PCT" -gt 130 ]; then
+        say "  [FAIL] resident memory grew to ${PCT}% of the first steady sample — measured runs sit"
+        say "         at ~101%, so this is a leak shape rather than normal variation"
         FAIL=1
     else
-        say "  [ OK ] resident memory stayed under 2x the first steady sample"
+        say "  [ OK ] resident memory at ${PCT}% of the first steady sample (measured baseline: ~101%)"
     fi
 else
     say "  [FAIL] could not read VmRSS — memory growth was NOT measured, so this run says nothing"
