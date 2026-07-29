@@ -182,25 +182,13 @@ grep -aoE 'data/levels/[A-Za-z0-9_]+/[A-Za-z0-9_]+' "$ABLOG" 2>/dev/null | sort 
 # written up as "the whole 0_Tutorial episode", and the next run opened a sixth. 0_Tutorial actually
 # holds 15 .lua files and the APK carries 20-plus further episodes. A number with no denominator is
 # an invitation to guess one.
-python3 - "$APK" "$ABLOG" <<'PYEOF' | tee -a "$LOG"
-import sys, zipfile, re, collections
-apk, ablog = sys.argv[1], sys.argv[2]
-seen = collections.defaultdict(set)
-for m in re.finditer(rb'data/levels/([A-Za-z0-9_]+)/([A-Za-z0-9_]+)', open(ablog,'rb').read()):
-    seen[m.group(1).decode()].add(m.group(2).decode())
-try:
-    names = zipfile.ZipFile(apk).namelist()
-except Exception as e:
-    print(f"  (could not read the APK to count levels: {e})"); raise SystemExit
-total = collections.defaultdict(set)
-for n in names:
-    m = re.match(r'assets/data/levels/([A-Za-z0-9_]+)/([A-Za-z0-9_]+)\.lua$', n)
-    if m: total[m.group(1)].add(m.group(2))
-for ep in sorted(seen):
-    print(f"  episode {ep}: {len(seen[ep])} of {len(total.get(ep, ()))} level files opened")
-never = sorted(set(total) - set(seen))
-print(f"  episodes never entered: {len(never)}" + (f" ({', '.join(never[:4])}…)" if never else ""))
-PYEOF
+# apk_levels.py, NOT an inline zipfile snippet. The first version of this used zipfile and printed
+# NOTHING in the emulator image, whose python3 is stripped to the point that `import zipfile` fails
+# with ModuleNotFoundError: No module named 'shutil'. The run still reported success — an addition
+# that silently did nothing. It parses the zip central directory with struct alone now, cross-checked
+# against zipfile on the host (4397 entries, identical), and verified to run in the stripped python.
+python3 /work/port/validation/apk_levels.py "$APK" "$ABLOG" 2>/dev/null | tee -a "$LOG" \
+    || say "  (could not read level counts from the APK — denominator NOT reported)"
 say "  wins confirmed from pixels: $WINS of $WANT cycles"
 say "  h_fatal: $(h_fatal_report "$ABLOG")"
 PID=$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')

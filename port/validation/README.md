@@ -289,6 +289,11 @@ PROOF mapping verified by md5 against the source screenshots, not by filename.
 launch point: a drag that does not start on the bird pans the camera, so repeating one fixed gesture
 walks the view off the level, and nothing in a log shows it — frames advance, `h_fatal` stays 0, the
 level file is open, the process is healthy.
+`port/validation/apk_levels.py` supplies the DENOMINATOR for "N levels opened", read from the APK's
+own zip central directory (`struct` only — the emulator images ship a python3 where `import zipfile`
+fails with `ModuleNotFoundError: No module named 'shutil'`, and an inline zipfile version printed
+nothing at all while the run still reported success). Cross-checked against `zipfile` on the host:
+4397 entries, identical sets.
 `port/validation/find_bird.py` then locates the loaded bird in a screenshot (pure `zlib`/`struct`,
 since the emulator images have no PIL) so the drag starts *on* it. It answers "where is the reddest
 thing", which is the bird only on a settled pre-shot frame — on a tutorial instruction card it
