@@ -1110,6 +1110,51 @@ would be exactly the over-reach this document keeps correcting. The honest statu
 incompatibility on one newer image, cause unknown, not attributable to the port** — worth knowing,
 not worth alarming the user with.
 
+### R41. `h_fatal == 0` was being read as a healthy address space — and a whole class of memory faults is neutralised before it can ever be fatal
+
+Every play assertion in this tree checks `h_fatal == 0` and treats it as evidence the run was clean.
+Found while chasing a NULL-pointer question in the GL bridges: that reading is not sound.
+
+`jni_entry.c`'s `UC_MEM_READ_UNMAPPED` / `UC_MEM_WRITE_UNMAPPED` handler maps **any** unmapped data
+address to a fresh zero page and lets the guest continue:
+
+```c
+uint32_t pg = (uint32_t)addr & ~0xFFFu;
+if (uc_mem_map(uc, pg, 0x1000u, UC_PROT_READ|UC_PROT_WRITE) == UC_ERR_OK) { scratch_pages++;
+    static int nn=0; if (nn++ < 12) LOG("[uaf-survive] wild %s @0x%llx ... continuing");
+```
+
+This is deliberate and it is why the game survives the residual `std::string` UAF instead of dying at
+level end. Three consequences that were not being accounted for:
+
+- `pg = addr & ~0xFFF` means **address 0 is mapped like any other** — a NULL dereference is absorbed,
+  not faulted. (Which answers the original question: the missing NULL guard in `h_glGetShaderiv` /
+  `h_glGetProgramiv` does *not* fault loudly. It writes into a zero page and continues.)
+- Bounded at 8192 pages / 32 MB, so it is not unbounded — but that is 8192 absorbed faults.
+- **Only the first 12 are ever logged** (`nn++ < 12`), and `scratch_pages` is a file-local static that
+  is never reported. So after twelve lines, a run that absorbed 8,000 wild accesses produces a log
+  indistinguishable from one that absorbed none.
+
+Put together: **`h_fatal == 0` is compatible with sustained memory corruption**, because the faults are
+neutralised on the way to becoming fatal. The suite was treating an absent symptom as health — this
+project's most repeated defect, sitting inside the assertion library written to stop it.
+
+**Measured baseline: zero.** Every real playthrough log from this session — `modplay_abshim.txt`,
+`modprog_abshim.txt`, `playthroughR_abshim.txt`, `save_ab2.txt` — contains **0** `[uaf-survive]`
+lines. The net exists and currently catches nothing on the play path, which is consistent with the
+galloc size-class fix (R-series, cont.136) having removed the root cause rather than hidden it.
+
+So `assert_playthrough` now checks it separately from `h_fatal`, and says plainly that the number is a
+**floor rather than a count** because of the 12-line cap. Proven able to fail: a log with one
+synthetic `[uaf-survive]` line exits non-zero.
+
+**The shipping shim is unchanged.** Reporting `scratch_pages` at shutdown would be the better fix and
+would also move the APK hash and invalidate every reproducibility claim, to improve reporting on a
+condition measured at zero. The check lives outside the artifact instead.
+
+A side effect worth noting: adding the sixth check broke `test_playassert.sh`'s vacuity guard
+(hardcoded at 5), which is exactly what that guard is for. It now names `EXPECT_CHECKS` and says so.
+
 ### R40. Thirteen pthread bridges report success without doing the work — provably single-threaded today, and now pinned
 
 Applying this session's lens ("which verdicts outrun their evidence?") to the shim itself rather than

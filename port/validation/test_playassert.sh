@@ -49,10 +49,16 @@ run_case(){ # <name> <want pass|fail> <expected text> -- <ablog> <shot> <pid> [m
 echo "== control: a healthy winning run =="
 run_case "a winning playthrough passes" pass "" -- "$ABL" "$WIN" 3782
 NOK=$(assert_playthrough "$ABL" "$WIN" 3782 2>&1 | grep -c '^  \[ OK \]')
-if [ "$NOK" -eq 5 ]; then
-    echo "  [ OK ] the control ran all 5 checks (not vacuously silent)"; PASS=$((PASS+1))
+# The expected count is deliberately HARDCODED — that is the whole point of a vacuity guard, and it
+# is meant to break when a check is added or removed so somebody confirms the change was intended.
+# It did exactly that when the wild-memory-access check was added (5 -> 6).
+EXPECT_CHECKS=6
+if [ "$NOK" -eq "$EXPECT_CHECKS" ]; then
+    echo "  [ OK ] the control ran all $EXPECT_CHECKS checks (not vacuously silent)"; PASS=$((PASS+1))
 else
-    echo "  [FAIL] the control emitted $NOK [ OK ] lines, expected 5"; FAIL=$((FAIL+1))
+    echo "  [FAIL] the control emitted $NOK [ OK ] lines, expected $EXPECT_CHECKS — if a check was"
+    echo "         added or removed on purpose, update EXPECT_CHECKS; if not, one went missing"
+    FAIL=$((FAIL+1))
 fi
 
 echo
@@ -63,6 +69,10 @@ run_case "constructors never finished"  fail "init_array 125/125" -- "$M" "$WIN"
 
 M="$TMP/lowfr.txt"; sed 's/frame\[1501\]/frame[42]/' "$ABL" > "$M"
 run_case "renderer stalled early"       fail "below the 601"      -- "$M" "$WIN" 3782
+
+M="$TMP/uaf.txt"; cp "$ABL" "$M"
+echo "I abshim : [uaf-survive] wild write @0x0 (pc=+0x1234) -> mapped zero page 0x0, continuing" >> "$M"
+run_case "a wild write papered over"    fail "were absorbed into fresh zero pages" -- "$M" "$WIN" 3782
 
 M="$TMP/fatal.txt"; cp "$ABL" "$M"; echo "I abshim : [h_fatal] boom" >> "$M"
 run_case "h_fatal during the run"       fail "h_fatal during"     -- "$M" "$WIN" 3782

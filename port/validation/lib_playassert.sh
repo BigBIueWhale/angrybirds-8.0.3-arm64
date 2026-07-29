@@ -69,6 +69,14 @@ assert_playthrough() {
     ctor=$(grep -acE 'init_array 125/125' "$ablog" 2>/dev/null); ctor=${ctor:-0}
     fr=$(grep -aoE 'frame\[[0-9]+\]' "$ablog" 2>/dev/null | tail -1 | grep -oE '[0-9]+')
     hf=$(grep -ac 'h_fatal' "$ablog" 2>/dev/null); hf=${hf:-0}
+    # WILD MEMORY ACCESSES THAT NEVER BECOME FATAL. jni_entry.c's UC_MEM_*_UNMAPPED handler maps ANY
+    # unmapped data address to a fresh zero page and continues — deliberately, to paper over a
+    # residual std::string UAF so the game keeps playing. `pg = addr & ~0xFFF`, so even a NULL
+    # dereference is absorbed. That means `h_fatal == 0` is NOT evidence of a healthy address space:
+    # a whole class of memory faults is neutralised before it can ever be fatal, and this suite was
+    # treating the absence of the symptom as health.
+    # Today's baseline is ZERO across every real playthrough log, so any occurrence is a regression.
+    uaf=$(grep -ac 'uaf-survive' "$ablog" 2>/dev/null); uaf=${uaf:-0}
 
     if [ "$ctor" -gt 0 ]; then
         sa_pa_say "  [ OK ] all 125 constructors ran"
@@ -88,6 +96,16 @@ assert_playthrough() {
         sa_pa_say "  [ OK ] no h_fatal during the playthrough"
     else
         sa_pa_say "  [FAIL] h_fatal during the playthrough ($hf occurrence(s))"
+        fail=$((fail+1))
+    fi
+
+    if [ "$uaf" -eq 0 ]; then
+        sa_pa_say "  [ OK ] no wild memory access was papered over (h_fatal=0 therefore means something)"
+    else
+        sa_pa_say "  [FAIL] $uaf wild memory access(es) were absorbed into fresh zero pages."
+        sa_pa_say "         The run SURVIVES these by design and h_fatal stays 0, which is exactly why"
+        sa_pa_say "         this is checked separately. NOTE: the shim logs only the FIRST 12, so $uaf is"
+        sa_pa_say "         a floor, not the count. Baseline for every play path here is 0."
         fail=$((fail+1))
     fi
 
