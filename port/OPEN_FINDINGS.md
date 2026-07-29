@@ -38,6 +38,14 @@ Not defects — limits of the environment. Stated so they are never implied to b
     them and not `GL_OES_vertex_buffer_object`. If the A56 advertises that one, the engine takes a
     VBO path nothing here has run. This is now a one-command `diff` on the device against
     `reports/gl_extensions_rig.txt` — see `ONDEVICE.md` and R11.
+- **Loading on a 16 KB-page device.** The shim's ELF LOAD segments are 16 KB-aligned
+  (`-Wl,-z,max-page-size=16384`) and `verify_claims.sh` asserts that on every build — that is the
+  documented requirement for 16 KB-page Android, and a 4 KB-only `.so` fails to `dlopen` there.
+  But the alignment is what has been measured; the *loading* has not. No 16 KB-page system image
+  is available on this host (API 25/34/36 x86_64 are all 4 KB, and the emulator exposes no
+  page-size option), and a 16 KB arm64 image could not boot here anyway. So this is a property
+  verified at the mechanism and inferred at the outcome — worth stating because every other
+  'installs on modern Android' claim in these docs IS backed by a run.
 - **Continuous audio on real audio hardware.** The audio variant plays through and wins on the
   proxy, but sustained playback needs real hardware.
 - **Whether the app-rater ever fires.** R13: an `ACTION_VIEW`/`market://` intent is the one route out
