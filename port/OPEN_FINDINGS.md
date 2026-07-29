@@ -56,6 +56,77 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R50. IT RUNS ON THE PHONE. Every "x86 proxy" caveat in this document is now retired
+
+The Samsung Galaxy A56 (SM-A566B) was connected over USB on 2026-07-30. The shipped artifact —
+`out/angrybirds-8.0.3-arm64.apk`, sha256 `27548721a456ea99…`, the exact published bytes — was installed
+with the documented `adb install -r` and launched. **It plays, it wins, and it advances.**
+
+**The premise, confirmed on the hardware it was always about:**
+
+```
+ro.product.model       SM-A566B
+ro.product.cpu.abilist arm64-v8a          <- ONLY arm64. No armeabi-v7a, no x86.
+ro.build.version.release 16  (API 36)
+ro.board.platform      erd8855            (Exynos 1580)
+getconf PAGE_SIZE      4096
+```
+
+That `abilist` is the whole reason this project exists: the original 32-bit APK has literally nowhere
+to run on this device. And the page size is 4 KB, so the 16 KB alignment work (R18) was insurance
+rather than necessity — harmless, and it would have mattered had the answer been 16384.
+
+**Android chose our AArch64 library:** `primaryCpuAbi=arm64-v8a`. The `-r` replace succeeding over a
+copy installed on 27 July is also the signer proof, since Android refuses a replace across keys.
+
+**The whole sequence, screenshotted and reviewed by eye:**
+
+| step | evidence |
+|---|---|
+| splash | `PROOF_22_PHONE_splash.png` — Red, Chuck, Bomb, the pigs, the logo |
+| tutorial card | `PROOF_23_PHONE_tutorial_card.png` — slingshot, pig, checkmark |
+| level interactive | `PROOF_24_PHONE_level_interactive.png` — tutorial hand + drag arrows |
+| **bird launched, structure destroyed** | `PROOF_25_PHONE_score15380.png` — **SCORE 15380**, pig gone |
+| **LEVEL CLEARED** | `PROOF_26_PHONE_levelcleared_3stars_45500.png` — **3 stars, 45500** |
+| **level 2** | `PROOF_27_PHONE_level2_fresh.png` — fresh puzzle, score 0, two pigs on towers |
+
+**The deepest bug in this project held.** The level-end results transition is where the session-long
+`std::string` use-after-free crashed, and it took the WAF-canary targeted leak plus
+`neut_s_construct_null` to fix. It survived on the Exynos with `h_fatal=0` — and both fixes are
+demonstrably *working*, not merely present: `s-construct-null-guard` fired **15** times and
+`empty-json-guard` **29** times during the run.
+
+**Final on-device figures** (35,681 shim log lines):
+
+```
+init_array 125/125     frame[2101]     nativeUpdate 847
+h_fatal 0              uaf-survive 0   THROW St11logic_error 0
+```
+
+`uaf-survive 0` is worth noting against R41/R42: on real hardware, across a full play-win-advance
+cycle, **zero** wild memory accesses needed absorbing.
+
+**Clause 3 on the real device:** `dumpsys package` reports **0** `android.permission.INTERNET`
+entries. The permission is genuinely absent on the phone, so the kernel refuses socket creation
+outright — the foundation the other three de-phone-home layers sit on.
+
+**Two corrections I made to myself during the run**, both worth keeping:
+
+- I reported the game "stuck at `frame[1]`" after 150 s. It was not. `frame[N]` is a heartbeat every
+  300 frames — **my own R38 finding** — and I walked straight into it. The real liveness signal was
+  `nativeUpdate` climbing 242 → 363 → 484 → 605 → 847.
+- I then read a `nativeUpdate` plateau at 363 as a stall. It was the game **idling for input**: the
+  tutorial card is modal. Tapping it moved the counter +121 immediately, which is how the diagnosis
+  was confirmed rather than assumed.
+
+Also: `win_detect.py` scored `PROOF_26` as "not a win screen" despite it plainly reading
+**LEVEL CLEARED! 3 stars 45500**. Not a game defect — the detector's thresholds were calibrated on
+640×320 emulator captures, and the phone's 2340×1080 layout puts the dimmed panel and letterboxing
+somewhere else entirely. The detector is emulator-calibrated and should not be pointed at device
+captures without recalibration.
+
+
+
 ### R38. `frame[N]` is a heartbeat every 300 frames, not a frame counter — so two captures cannot be made frame-exact
 
 Re-running `emu_interactive_capture.sh` after wiring assertions into it produced a pass, three real
