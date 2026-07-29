@@ -1110,6 +1110,61 @@ would be exactly the over-reach this document keeps correcting. The honest statu
 incompatibility on one newer image, cause unknown, not attributable to the port** — worth knowing,
 not worth alarming the user with.
 
+### R39. The arm64 wall, located exactly: the kernel boots, Android init runs, and SurfaceFlinger can never get a graphics composer
+
+R17 left the arm64 route "untested, not excluded". It is now tested, and this is how far it goes.
+
+**Five blockers came out.** Each was hidden behind the one before it, so each had to be removed to
+see the next:
+
+| # | blocker | how it was removed |
+|---|---|---|
+| 1 | `-soundhw hda` — Intel HDA is PCI-only | **binary patch**, one 8-byte token → `-pidfile` (`port/tools/patch_emulator_arm64.py`). Not removable from outside: the AVD's `hw.audioInput/Output=no` **are** honoured — the argument is literally `hda:input=off,output=off` — and the device is added regardless |
+| 2 | 11 × `virtio_input_multi_touch_pci_N` | AVD `hw.screen=touch`. Deliberately **not** patched: those literals are registered device *type* names and the binary also registers MMIO types of the same name, so renaming collides. Patching the `..._pci_%d` format string was tried and had no effect — the argv is built from the individual literals |
+| 3 | `virtio-wifi-pci` | the emulator's own flag, `-feature -VirtioWifi` |
+| 4 | SIGSEGV in `setupSubWindow` | `-no-skin -qt-hide-window` + `showDeviceFrame=no`. With every PCI device gone the machine assembled and the crash moved to the host window path: Qt building an `EmulatorQtWindow` with uninitialised geometry, `Negative sizes (-469898510,-939797020)`, despite `-no-window` |
+| 5 | camera HAL crash-loop | AVD `hw.camera.back=none` / `front=none` (`vendor.camera-provider-2-4 exited 4 times before boot completed`, retriggering `sys.init.updatable_crashing`) |
+
+**With all five applied, a genuine arm64 machine boots**: `Linux version`, kernel handoff
+(`Freeing unused kernel`), Android `init` running, and zygote starting. Not a refusal, not a
+configuration error — a booting ARM64 Android on an x86_64 host.
+
+**The sixth blocker is different in kind and was not removed.** SurfaceFlinger cannot obtain a
+graphics composer HAL, so it is SIGKILLed and restarted indefinitely, and every dependent service
+loops with it:
+
+```
+init: Control message: Could not find 'android.hardware.graphics.composer@2.1::IComposer/default'
+init: Service 'surfaceflinger' (pid 10675) received signal 9
+init: starting service 'surfaceflinger'...
+```
+
+Measured across three GPU modes, all of which fail the same way — so this is a property of the
+emulated GPU pipe, not a flag left unfound:
+
+| `-gpu` mode | AVD `hw.gpu` | composer complaints | services restarting |
+|---|---|---|---|
+| `off` | `enabled=no` | 964 | audio-hal 135, zygote 126, netd 126 |
+| `swiftshader_indirect` | `enabled=yes, mode=swiftshader_indirect` | 813 | audio-hal 121, zygote 114, netd 114 |
+| `guest` | `enabled=yes, mode=guest` | 491 @600s | audio-hal 72, zygote 71, netd 71 |
+
+**Why this is a limit rather than a to-do.** Google dropped arm64-on-x86_64 support; the ranchu arm64
+composer HAL in the android-30 image needs a goldfish GL pipe that this x86_64-hosted build does not
+wire up. No `-gpu` mode supplies it. The phone does not have this problem — it has a real Mali GPU
+and a real composer.
+
+**A trap worth recording: the boot log looks busy the entire time it is failing.** `init` line counts
+climb linearly and steadily (~3,300 per five minutes) *because* of the restart loop, so an
+init-line counter reads exactly like progress. The first attempt was allowed to run 30 minutes and
+20,268 init lines deep on that signal alone. What actually distinguishes the two is whether services
+are *repeating* — hence the crash-loop table above rather than a progress number.
+
+**Status: the deliverable still has never been executed.** `arm64_real_run.sh` is committed and would
+carry it through install-and-launch the moment a composer exists; it refuses to report an arm64
+result unless the APK really contains `lib/arm64-v8a/` **and** the guest's `ro.product.cpu.abi` really
+is arm64, so it cannot be mistaken for one of the x86-proxy runs. The remaining route is the physical
+A56 — see `ONDEVICE.md`.
+
 ### R17. "arm64 cannot be emulated on this host" is a claim about the LAUNCHER — the engine gets to a running machine and dies on an audio device
 
 The deliverable has never been executed anywhere. The reason on record is that the Android emulator

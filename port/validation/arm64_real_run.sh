@@ -35,6 +35,13 @@
 # With all five applied the arm64 kernel boots and Android userspace starts. This script takes it the
 # rest of the way: wait for boot_completed, install the REAL arm64 APK, launch it, and report.
 #
+# GPU MODE IS NOT COSMETIC HERE. A first attempt used `-gpu off`, reasoning that rendering was not
+# the question yet. It boots the kernel and runs init, and then never completes, and the log says
+# why in as many words:
+#     init: Control message: Could not find 'android.hardware.graphics.composer@2.1::IComposer/default'
+# No composer means no SurfaceFlinger, which means boot_completed never arrives however long you
+# wait. 20,268 init lines and 30 minutes of TCG established that the patient way.
+#
 # EXPECT THIS TO BE SLOW. There is no KVM for an arm64 guest on an x86_64 host, so the whole system
 # runs under TCG, and the app itself then runs a 32-bit ARM engine under Unicorn INSIDE that. Timeouts
 # are large on purpose; the script reports how far it got rather than pretending a timeout is a
@@ -75,15 +82,27 @@ sed -i 's/^hw\.screen=.*/hw.screen=touch/'            "$A"
 sed -i 's/^showDeviceFrame=.*/showDeviceFrame=no/'    "$A"
 sed -i 's/^hw\.ramSize=.*/hw.ramSize=2048/'           "$A"   # 96M cannot boot Android 11 anywhere
 sed -i '/^hw\.audio/d' "$A"; printf 'hw.audioInput=no\nhw.audioOutput=no\n' >> "$A"
+# The camera HAL crash-loops under TCG (`vendor.camera-provider-2-4 exited 4 times before boot
+# completed`), which retriggers sys.init.updatable_crashing over and over and burns emulation
+# cycles this run cannot spare. Nothing here needs a camera.
+sed -i 's/^hw\.camera\.back=.*/hw.camera.back=none/;s/^hw\.camera\.front=.*/hw.camera.front=none/' "$A"
+# THE GPU MUST BE ENABLED IN THE AVD, not just on the command line. This AVD ships with
+#     hw.gpu.enabled=no
+# which overrides -gpu, so the guest never gets a graphics composer HAL, SurfaceFlinger cannot
+# start, and the whole system enters a restart loop: measured 964 "Could not find
+# ...IComposer/default" messages (one per second, indefinitely) with vendor.audio-hal restarted 135
+# times, zygote 126, netd 126. The boot log looks busy the entire time, which is exactly why the
+# init-line counter alone is a bad progress signal.
+sed -i 's/^hw\.gpu\.enabled=.*/hw.gpu.enabled=yes/;s/^hw\.gpu\.mode=.*/hw.gpu.mode=swiftshader_indirect/' "$A"
 say
 say "== AVD, after patching (printed because an unverified patch is a guess) =="
-grep -iE '^(hw\.screen|hw\.audio|hw\.ramSize|showDeviceFrame)' "$A" | sed 's/^/  /' | tee -a "$LOG"
+grep -iE '^(hw\.screen|hw\.audio|hw\.ramSize|showDeviceFrame|hw\.gpu|hw\.camera)' "$A" | sed 's/^/  /' | tee -a "$LOG"
 
 say
 say "== boot arm64 Android (TCG, no KVM — this is slow) =="
 timeout "${BOOT_TIMEOUT:-9000}" "$QEMU" \
     -avd arm64 -no-window -no-audio -no-snapshot -no-boot-anim -no-qt -no-skin -qt-hide-window \
-    -memory 2048 -cores 4 -wipe-data -gpu off -show-kernel -verbose \
+    -memory 2048 -cores 4 -wipe-data -gpu swiftshader_indirect -show-kernel -verbose \
     -feature -VirtioWifi \
     >>"$BOOTLOG" 2>&1 &
 QPID=$!
