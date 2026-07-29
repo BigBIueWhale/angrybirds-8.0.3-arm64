@@ -84,11 +84,30 @@ WARNING | QEMU main loop exits abnormally with code 1
 The argv it generated contains `-soundhw hda`, and the arm64 ranchu machine has no PCI bus to hang
 an Intel HDA device on. Same stopping point on three consecutive runs.
 
-**That option cannot be removed from outside**, which was checked rather than assumed:
-`hw.audioInput`/`hw.audioOutput` set to `no` in the AVD (the script prints the patched config back,
-because an unverified patch is a guess), plus `-no-audio`, plus `-audio none` — and the generated
-argv still carries `-soundhw hda`. The emulator builds that argv in-process and calls QEMU directly,
-so there is no command line to intercept.
+**That option cannot be removed from outside**, which was checked rather than assumed. The AVD's
+`hw.audioInput`/`hw.audioOutput` are set to `no`, and the emulator's own generated
+`hardware-qemu.ini` reads them back as
+
+```
+hw.audioInput = false
+hw.audioOutput = false
+```
+
+— so the configuration propagates correctly and is then **ignored**: the argv still carries
+`-soundhw hda`. `-no-audio` and `-audio none` make no difference either. The emulator builds that
+argv in-process and calls QEMU directly, so there is no command line to intercept.
+
+**One more route was tried and is unresolved.** The binary documents `-fuchsia` as "bypasses
+android-specific setup; args after are treated as standard QEMU args", which allows replaying the
+emulator's own generated argv with `-soundhw hda` stripped. Two attempts, neither of which reached a
+boot: the first was written inline inside `docker bash -c` and its nested quoting silently failed to
+remove the option, so the run failed for a reason that was mine rather than the emulator's; the
+second, written as a file with a guard, refused to proceed — `-soundhw hda occurrences: before=1
+after=1` — because the substitution still did not match the generated text. The guard is the useful
+part: it declined to run a replay that would have failed identically and looked like a result.
+
+So the route is untested, not excluded. Anyone resuming should start by dumping the exact bytes
+around `soundhw` in the generated line rather than assuming its spacing.
 
 **Status: not an architecture limitation, and not a boot either.** The blocker is one unconditional
 device option in emulator 36.6.11's arm64 argv generation.
