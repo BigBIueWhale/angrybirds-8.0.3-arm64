@@ -123,7 +123,23 @@ FATAL | Avd's CPU Architecture 'arm64' is not supported by the QEMU2 emulator on
         System image must match the host architecture.
 ```
 
-The AVD is creatable but can never boot, which is why nothing had ever used that image. The script
+**That claim is about the LAUNCHER, and it is weaker than it reads (2026-07-29).** The refusal above
+comes from the `emulator` wrapper comparing AVD arch to host arch. The engine it would drive is
+present anyway: `/opt/android-sdk/emulator/qemu/linux-x86_64/qemu-system-aarch64` **ships inside the
+x86_64 emulator distribution** and is a normal x86_64 ELF. It starts — with the emulator's own
+`lib64` on `LD_LIBRARY_PATH` it gets as far as wanting `libxkbfile.so.1`, an ordinary apt package,
+rather than failing on anything architectural.
+
+So the accurate statement is: **the Android emulator launcher will not do it, and driving the bundled
+`qemu-system-aarch64` directly is UNTESTED here.** That is not the same as impossible, and the
+difference matters, because this is the gap that keeps `out/angrybirds-8.0.3-arm64.apk` from ever
+having been executed. Whether a hand-built Android arm64 boot (kernel, ramdisk, system/vendor
+images, virtio wiring — all of which the launcher normally assembles) actually reaches ART under TCG
+is an open question, not a closed one. Until someone runs it, neither "impossible" nor "possible"
+should be asserted.
+
+The AVD is creatable but the launcher will not boot it, which is why nothing had ever used that
+image. The script
 is kept, and now detects that failure in seconds instead of waiting out its boot budget, so the
 limitation is recorded by running code rather than by a comment that could drift.
 
