@@ -80,6 +80,43 @@ if [ -f "$UNI/lib/libunicorn.a" ]; then
   cc -Wall -Wextra -O2 -DRTLD_DEFAULT=0 -I"$SRC" -I"$UNI/include" "$HERE/test_ctors.c" $DEV_SRCS \
      "$UNI/lib/libunicorn.a" -lpthread -lm -o "$OUT/test_ctors"
   "$OUT/test_ctors"
+
+  # WHY THIS ASSERTION EXISTS — an invariant the pthread bridges silently depend on.
+  #
+  # dispatch.c gates 13 pthread handlers on HAVE_SCH(d) = (d->sch && sched_current(d->sch)).
+  # sched_init() memsets the scheduler, so S->cur is NULL until a green thread actually runs, and
+  # dispatch_run_init_array() calls cpu_call() DIRECTLY rather than through the scheduler. So for the
+  # whole ctor phase sched_current() is NULL and those handlers take their fallback:
+  #
+  #     h_mlock/h_munlock/h_cwait  -> return 0   ("locked", without locking)
+  #     h_pjoin                    -> writes 0 to the retval and returns 0 WITHOUT WAITING
+  #
+  # Single-threaded that is all semantically correct, and measured today it IS single-threaded: zero
+  # pthread_create calls across all 125 constructors. But h_pcreate gates on `!d->sch` only — NOT on
+  # HAVE_SCH — so it really does create a thread whenever the scheduler object exists, including
+  # during ctors. If a future engine build or shim change ever spawns a thread from a constructor,
+  # the guest would get a real thread plus a join that reports it already finished, silently.
+  #
+  # So the thing that makes the fallback safe is pinned here rather than left to luck. ABSHIM_LOG=1
+  # makes h_pcreate log every creation; the ctor phase must produce none.
+  ABSHIM_LOG=1 "$OUT/test_ctors" > "$OUT/ctors_pthread.log" 2>&1
+  # `|| true` on BOTH counts, because this file runs under `set -e` and `grep -c` exits 1 when the
+  # count is zero — i.e. the HEALTHY case would have aborted the whole suite. Written without it
+  # first, which is a check that breaks precisely when it should pass.
+  NPC=$(grep -c '\[pthread_create\]' "$OUT/ctors_pthread.log" || true); NPC=${NPC:-0}
+  NCT=$(grep -aoE '125/125' "$OUT/ctors_pthread.log" | tail -1 || true)
+  if [ "$NPC" -eq 0 ] && [ "$NCT" = "125/125" ]; then
+      echo "  [ OK ] no thread is created during the ctor phase ($NCT ctors), so the pthread"
+      echo "         fallbacks that cannot lock or join are provably single-threaded"
+  else
+      echo "  [FAIL] ctor phase created $NPC thread(s) (ctors='$NCT'). While sched_current() is NULL"
+      echo "         a guest pthread_join returns success WITHOUT waiting and mutex locks do not"
+      echo "         lock — see the comment above this check in run_tests.sh"
+      # exit, NOT a FAILED counter: this script signals failure through `set -e` and a single
+      # "ALL MODULE TESTS PASSED" at the end, so incrementing a variable nothing reads would have
+      # printed [FAIL] and still let the suite report success. It was written that way first.
+      exit 1
+  fi
   echo
   echo "== longjmp (device: setjmp/longjmp + cpu_run stop/restart) =="
   cc -Wall -Wextra -O2 -DRTLD_DEFAULT=0 -I"$SRC" -I"$UNI/include" "$HERE/test_longjmp.c" $DEV_SRCS \

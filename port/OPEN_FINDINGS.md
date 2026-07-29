@@ -1110,6 +1110,61 @@ would be exactly the over-reach this document keeps correcting. The honest statu
 incompatibility on one newer image, cause unknown, not attributable to the port** — worth knowing,
 not worth alarming the user with.
 
+### R40. Thirteen pthread bridges report success without doing the work — provably single-threaded today, and now pinned
+
+Applying this session's lens ("which verdicts outrun their evidence?") to the shim itself rather than
+the harness. The shim-side form of a check that cannot fail is **a bridge that cannot fail**.
+
+`dispatch.c` gates 13 pthread handlers on
+
+```c
+#define HAVE_SCH(d) ((d)->sch && sched_current((d)->sch))
+```
+
+and `sched_init()` memsets the scheduler, so `S->cur` is NULL until a green thread actually runs.
+`dispatch_run_init_array()` calls `cpu_call()` **directly**, not through the scheduler. So for the
+entire constructor phase `sched_current()` is NULL and those handlers take their fallback:
+
+| handler | fallback when `sched_current()` is NULL |
+|---|---|
+| `h_mlock` / `h_mtry` / `h_munlock` | return 0 — *"locked"*, having locked nothing |
+| `h_cwait` / `h_ctwait` | return 0 — *"the condition was signalled"* |
+| `h_pjoin` | writes 0 to the retval and returns 0 — **without waiting** |
+| `h_pself` | returns 1 (a fixed fake thread id) |
+
+Single-threaded, all of that is semantically correct, and the ctor phase **is** single-threaded.
+Measured, not assumed — `ABSHIM_LOG=1` makes `h_pcreate` log every creation:
+
+```
+  pthread_create calls during the ctor phase : 0
+  ctors                                      : 125/125
+```
+
+**Why it is worth pinning anyway.** `h_pcreate` is gated differently from the others — on `!d->sch`
+alone, *not* on `HAVE_SCH` — so it really does create a green thread whenever the scheduler object
+exists, which it does during ctors (`sched_init` runs at `jni_entry.c:1481`, ctors at `1488`). The
+safety of the whole arrangement therefore rests on one empirical fact: no constructor spawns a
+thread. If a future engine build or shim change ever did, the guest would receive a real thread plus
+a `join` that reports it already finished, and mutexes that do not exclude — silently, with no
+diagnostic.
+
+So the host suite now asserts it (`port/shim/test/run_tests.sh`, beside the ctors test), and the
+assertion is proven able to fail: a doctored log containing one `[pthread_create]` line exits 1, as
+does a truncated ctor count.
+
+**Two bugs in that check on the way in**, both this session's own defect classes:
+
+- It first incremented a `FAILED` counter. `run_tests.sh` signals failure through `set -e` and a
+  single `ALL MODULE TESTS PASSED` at the end, and **nothing reads `FAILED`** — so it would have
+  printed `[FAIL]` and let the suite report success. Now `exit 1`.
+- `grep -c` exits 1 when the count is zero, and the file runs under `set -e` — so the first version
+  aborted the entire suite precisely on the **healthy** path. A check that breaks when it should pass
+  is not a weaker check, it is a different bug.
+
+**Not changed: the shipping shim.** Adding a counter or a warning inside `dispatch.c` would alter the
+binary, the APK hash and every downstream reproducibility claim, to guard a latent condition that is
+measurably not occurring. The invariant is enforced outside the artifact instead.
+
 ### R39. The arm64 wall, located exactly: the kernel boots, Android init runs, and SurfaceFlinger can never get a graphics composer
 
 R17 left the arm64 route "untested, not excluded". It is now tested, and this is how far it goes.
