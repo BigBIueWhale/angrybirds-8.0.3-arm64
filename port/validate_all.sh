@@ -61,7 +61,16 @@ stage "1/5 assertion self-tests (can the checkers themselves fail?)"
 # Positive evidence required, for the reason spelled out in the allocation-compare stage below:
 # a suite that ran zero cases and printed nothing must not be indistinguishable from one where
 # everything passed.
-for t in port/validation/test_saveassert.sh port/validation/test_pngsane.sh port/validation/test_prose.sh; do
+# DISCOVERED, not listed. A hand-maintained list is a list that rots: this one was edited twice in
+# one session and its describing comment went stale both times. The glob cannot silently match
+# nothing — zero suites is a failure, because "stage 1 passed" from a stage that ran no suites is
+# the exact defect this stage exists to catch.
+SUITES=$(ls port/validation/test_*.sh 2>/dev/null)
+NSUITE=$(printf '%s\n' "$SUITES" | grep -c .)
+if [ "$NSUITE" -eq 0 ]; then
+  fail "no self-test suites matched port/validation/test_*.sh — stage 1 tested nothing"
+fi
+for t in $SUITES; do
   OUT=$(bash "$t" 2>&1); rc=$?
   NM=$(basename "$t")
   NOK=$(printf '%s' "$OUT" | grep -c '^  \[ OK \]')

@@ -13,6 +13,7 @@ source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_dialogs.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_install.sh"
 source "$(dirname "$0")/lib_selfhash.sh"
+source "$(dirname "$0")/lib_playassert.sh"   # the verdict, kept separately so it can be tested offline
 ( sleep 1550; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/${PFX}.txt"; : >"$LOG"
@@ -38,7 +39,7 @@ adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
 # [FAIL] and exit 0.
 install_apk "$APK" 4 > /tmp/inst.$$ 2>&1; irc=$?
 while IFS= read -r _l; do say "$_l"; done < /tmp/inst.$$; rm -f /tmp/inst.$$
-[ "$irc" -eq 0 ] || { say "install FAIL"; say DONE; adb emu kill; exit 1; }
+[ "$irc" -eq 0 ] || { say "install FAIL"; say "DONE (FAIL=1)"; adb emu kill; exit 1; }
 record_build "$APK" "$PFX"   # MUST follow $PFX: a fixed label lets an ab36 run overwrite the API-34 row
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
@@ -71,13 +72,21 @@ settle_frames "$ABLOG" 120 300
 adb exec-out screencap -p > "$OUT/${PFX}_2_level2.png" 2>/dev/null
 say "== RESULTS (modern-Android multi-level progression) =="
 say "  install:           ok"
-say "  win/advance check: SCREENSHOTS ONLY -> ${PFX}_1_cleared.png (win) + ${PFX}_2_level2.png (level 2)"
 say "  starsAssetPreloads:$LC  (NOT a win signal — see note above)"
 say "  h_fatal:           $(h_fatal_report "$ABLOG")  (0 = no crash across win + advance)"
 say "  s-construct-guard: $(marker_report "$ABLOG" 's-construct-null-guard')"
 say "  real St11logic:    $(marker_report "$ABLOG" 'THROW.*St11logic_error')"
 say "  last frame:        $(fnow)"
-say "  final pid:         [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]  (alive => advanced OK)"
-selfhash_verify
-say DONE
+PID=$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')
+say "  final pid:         [${PID:-none}]"
+say
+say "== ASSERTIONS =="
+# This block used to say "win/advance check: SCREENSHOTS ONLY -> ..." and then leave both images
+# entirely unexamined, print DONE and exit 0. Both sides of the advancement claim are now checked:
+# the cleared shot must be a win, and the next shot must be a real frame that is NOT one.
+assert_progression "$ABLOG" "$OUT/${PFX}_1_cleared.png" "$OUT/${PFX}_2_level2.png" "$PID"
+FAIL=$?
+selfhash_verify; [ $? -eq 0 ] || FAIL=$((FAIL+1))
+say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
+exit "$FAIL"

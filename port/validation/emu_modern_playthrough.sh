@@ -9,6 +9,7 @@ source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_dialogs.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_install.sh"
 source "$(dirname "$0")/lib_wincheck.sh"
+source "$(dirname "$0")/lib_playassert.sh"   # the verdict, kept separately so it can be tested offline
 source "$(dirname "$0")/lib_selfhash.sh"
 # watchdog raised 1450 -> 2100s: the frame-based settle below can add up to 300s over the old
 # fixed sleep, and boot-to-frame[601] has been observed at ~565s.
@@ -42,7 +43,7 @@ adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
 # [FAIL] and exit 0.
 install_apk "$APK" 4 > /tmp/inst.$$ 2>&1; irc=$?
 while IFS= read -r _l; do say "$_l"; done < /tmp/inst.$$; rm -f /tmp/inst.$$
-[ "$irc" -eq 0 ] || { say "install FAIL"; say DONE; adb emu kill; exit 1; }
+[ "$irc" -eq 0 ] || { say "install FAIL"; say "DONE (FAIL=1)"; adb emu kill; exit 1; }
 record_build "$APK" "$PFX"   # follows ABSHIM_OUTPFX, so an abgms run records "modplaygms" and does NOT overwrite the AOSP row
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
@@ -80,14 +81,23 @@ say "  install:           ok"
 # log lines per file, emitted BEFORE frame[1] — not level wins. It read "8" identically in
 # runs that won and runs that never cleared a pig, so it never measured anything. No abshim
 # log marker distinguishes a win; the END SCREENSHOT is the only authority.
-# see lib_wincheck.sh: three outcomes — a missing interpreter is NOT a verdict on the game
-win_check "$OUT/${PFX}_3_end.png"
 say "  levelCompleteStars asset preloads (NOT a win signal): $(marker_report "$ABLOG" 'levelCompleteStars')"
 say "  h_fatal:           $(h_fatal_report "$ABLOG")"
 say "  s-construct-guard: $(marker_report "$ABLOG" 's-construct-null-guard')  (level-end fix firing)"
 say "  real St11logic:    $(marker_report "$ABLOG" 'THROW.*St11logic_error')"
 say "  last frame:        $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1)"
-say "  final pid:         [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]  (alive => played through)"
-selfhash_verify
-say DONE
+PID=$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')
+say "  final pid:         [${PID:-none}]"
+say
+say "== ASSERTIONS =="
+# Until now this block PRINTED its numbers and CALLED win_check without capturing the verdict, then
+# said DONE and exited 0 whatever had happened — including a run that photographed a level still in
+# progress. selfhash_verify's return was discarded too, so a script edited mid-run printed "DISCARD
+# THESE RESULTS" and still reported success. See lib_playassert.sh.
+# see lib_wincheck.sh: three outcomes — a missing interpreter is NOT a verdict on the game
+assert_playthrough "$ABLOG" "$OUT/${PFX}_3_end.png" "$PID"
+FAIL=$?
+selfhash_verify; [ $? -eq 0 ] || FAIL=$((FAIL+1))
+say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
+exit "$FAIL"

@@ -10,6 +10,7 @@ source "$(dirname "$0")/lib_provenance.sh"
 source "$(dirname "$0")/lib_metrics.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_install.sh"
 source "$(dirname "$0")/lib_wincheck.sh"
+source "$(dirname "$0")/lib_playassert.sh"   # the verdict, kept separately so it can be tested offline
 source "$(dirname "$0")/lib_selfhash.sh"
 ( sleep 1600; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-audio.apk
@@ -34,7 +35,7 @@ adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
 # [FAIL] and exit 0.
 install_apk "$APK" 4 > /tmp/inst.$$ 2>&1; irc=$?
 while IFS= read -r _l; do say "$_l"; done < /tmp/inst.$$; rm -f /tmp/inst.$$
-[ "$irc" -eq 0 ] || { say "install FAIL"; say DONE; adb emu kill; exit 1; }
+[ "$irc" -eq 0 ] || { say "install FAIL"; say "DONE (FAIL=1)"; adb emu kill; exit 1; }
 record_build "$APK" "audiomod"
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
@@ -63,8 +64,6 @@ for w in $(seq 1 20); do
 done
 adb exec-out screencap -p > "$OUT/audiomod_end.png" 2>/dev/null
 
-# see lib_wincheck.sh: three outcomes, and a missing interpreter is not a verdict
-win_check "$OUT/audiomod_end.png"
 
 say "== RESULTS (API 34 audio) =="
 say "  install:           ok"
@@ -75,7 +74,18 @@ say "  h_fatal:           $(h_fatal_report "$ABLOG")  (0 = no crash)"
 say "  stack_chk_fail:    $(marker_report "$ABLOG" stack_chk_fail)  (0 = nested-gt fix holds on API 34)"
 say "  WATCHDOG/FROZEN:   $(marker_report "$ABLOG" 'WATCHDOG|FROZEN')"
 say "  init_array:        $(grep -aoE 'init_array [0-9]+/125' "$ABLOG" | tail -1)  (125/125 = JIT under W^X)"
-say "  final pid:         [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]  (alive => played through with audio)"
-selfhash_verify
-say DONE
+PID=$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')
+say "  final pid:         [${PID:-none}]"
+say
+say "== ASSERTIONS =="
+# Until now this block PRINTED its numbers and CALLED win_check without capturing the verdict, then
+# said DONE and exited 0 whatever had happened — including a run that photographed a level still in
+# progress. selfhash_verify's return was discarded too, so a script edited mid-run printed "DISCARD
+# THESE RESULTS" and still reported success. See lib_playassert.sh.
+# see lib_wincheck.sh: three outcomes, and a missing interpreter is not a verdict
+assert_playthrough "$ABLOG" "$OUT/audiomod_end.png" "$PID"
+FAIL=$?
+selfhash_verify; [ $? -eq 0 ] || FAIL=$((FAIL+1))
+say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
+exit "$FAIL"
