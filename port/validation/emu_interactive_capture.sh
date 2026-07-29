@@ -82,6 +82,8 @@ say "  captured interactive_4.png ($(wc -c < "$OUT/interactive_4.png" 2>/dev/nul
 say "== RESULTS =="
 PID=$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')
 HF=$(grep -ac 'h_fatal' "$ABLOG" 2>/dev/null); HF=${HF:-0}
+# h_fatal alone is not a health signal — see assert_no_absorbed_faults in lib_metrics.sh (R41).
+assert_no_absorbed_faults "${ABLOG}" || FAIL=$((FAIL+1))
 say "  h_fatal:     $(h_fatal_report "$ABLOG")"
 say "  last frame:  $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1)"
 say "  final pid:   [${PID:-none}]"

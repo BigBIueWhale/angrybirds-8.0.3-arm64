@@ -140,6 +140,8 @@ else
     [ -n "$FR" ] && [ "$FR" -ge 601 ] && say "  [ OK ] the engine renders again on a rebooted device" \
         || { say "  [FAIL] never reached frame[601] after the reboot"; FAIL=1; }
     HF=$(grep -ac 'h_fatal' "$ABLOG"); [ "${HF:-0}" -eq 0 ] || { say "  [FAIL] h_fatal after the reboot"; FAIL=1; }
+    # h_fatal alone is not a health signal — see assert_no_absorbed_faults in lib_metrics.sh (R41).
+    assert_no_absorbed_faults "${ABLOG}" || FAIL=1
 fi
 
 say

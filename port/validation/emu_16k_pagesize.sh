@@ -151,6 +151,8 @@ say "  loader errors   : $DL  (dlopen/alignment/UnsatisfiedLinkError in UNFILTER
 [ -n "$PID" ] || { say "  [FAIL] the app is not running on a 16 KB-page kernel"; FAIL=1; }
 [ -n "$FRAME" ] && [ "$FRAME" -ge 601 ] || { say "  [FAIL] never reached frame[601] — the engine did not render"; FAIL=1; }
 HF=$(grep -ac 'h_fatal' "$ABLOG"); [ "${HF:-0}" -eq 0 ] || { say "  [FAIL] h_fatal on a 16 KB-page kernel"; FAIL=1; }
+# h_fatal alone is not a health signal — see assert_no_absorbed_faults in lib_metrics.sh (R41).
+assert_no_absorbed_faults "${ABLOG}" || FAIL=1
 win_check "$OUT/PROOF_16k_pagesize.png" >/dev/null 2>&1   # informational: reaching a level is enough here
 
 # Promote the capture to PROOF_ only if everything above held.

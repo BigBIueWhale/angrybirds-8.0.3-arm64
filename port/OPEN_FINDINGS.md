@@ -1180,8 +1180,27 @@ synthetic `[uaf-survive]` line exits non-zero.
 would also move the APK hash and invalidate every reproducibility claim, to improve reporting on a
 condition measured at zero. The check lives outside the artifact instead.
 
-A side effect worth noting: adding the sixth check broke `test_playassert.sh`'s vacuity guard
-(hardcoded at 5), which is exactly what that guard is for. It now names `EXPECT_CHECKS` and says so.
+**The first version of this fix was only half a fix, which is the part worth recording.** The check
+went into `lib_playassert.sh` — and `h_fatal` was being used as *the* health signal in **eleven**
+places. Closing one and leaving ten is a cosmetic fix. There is now one implementation,
+`assert_no_absorbed_faults` in `lib_metrics.sh`, wired into all of them: `lib_playassert.sh`,
+`lib_saveassert.sh`, `emu_rotate.sh`, `emu_background_resume.sh`, `emu_reboot_persist.sh`,
+`emu_progression.sh`, `emu_soak.sh`, `emu_16k_pagesize.sh`, `emu_interactive_capture.sh`,
+`emu_launch_timing.sh`, `arm64_real_run.sh`.
+
+Consolidating produced three further defects, each caught by an existing guard rather than by luck:
+
+- **The self-contamination bug came back in a second file.** `test_saveassert.sh` also named its
+  abshim log `LOG`, and the shared helper tees into `$LOG` when no `say()` exists — so the verdict
+  was written into the log under analysis. Identical to the bug already fixed in
+  `test_playassert.sh`; it reappeared the moment a second file started using `$LOG`. Renamed there
+  too.
+- **`arm64_real_run.sh` sourced nothing at all**, so the newly wired call resolved to nothing and
+  would have died with "command not found" on the next arm64 run. `prose_as_code.py` caught it: an
+  unsourced helper is a word in command position that resolves to nothing, which is the same class
+  of defect as prose. It now sources `lib_metrics.sh`.
+- **Both vacuity guards broke**, at 5→6 and 8→9 checks — which is exactly what they are for. Both
+  now name `EXPECT_CHECKS` and explain that the hardcoded number is the point.
 
 ### R40. Thirteen pthread bridges report success without doing the work — provably single-threaded today, and now pinned
 

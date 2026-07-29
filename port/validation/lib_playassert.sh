@@ -38,6 +38,7 @@
 # with a message that sends the reader hunting the emulator instead of the missing source line.
 # (prose_as_code.py flagged the call for exactly this: it could not see where win_check came from.)
 source "$(dirname "${BASH_SOURCE[0]}")/lib_wincheck.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib_metrics.sh"   # absorbed_report / assert_no_absorbed_faults
 
 # Same three-branch fallback as lib_wincheck.sh's _wc_say, and for the same reason: two scripts
 # (emu_playthrough.sh, emu_playthrough_release.sh) log with inline `echo ... | tee -a "$LOG"` and
@@ -76,7 +77,6 @@ assert_playthrough() {
     # a whole class of memory faults is neutralised before it can ever be fatal, and this suite was
     # treating the absence of the symptom as health.
     # Today's baseline is ZERO across every real playthrough log, so any occurrence is a regression.
-    uaf=$(grep -ac 'uaf-survive' "$ablog" 2>/dev/null); uaf=${uaf:-0}
 
     if [ "$ctor" -gt 0 ]; then
         sa_pa_say "  [ OK ] all 125 constructors ran"
@@ -99,15 +99,9 @@ assert_playthrough() {
         fail=$((fail+1))
     fi
 
-    if [ "$uaf" -eq 0 ]; then
-        sa_pa_say "  [ OK ] no wild memory access was papered over (h_fatal=0 therefore means something)"
-    else
-        sa_pa_say "  [FAIL] $uaf wild memory access(es) were absorbed into fresh zero pages."
-        sa_pa_say "         The run SURVIVES these by design and h_fatal stays 0, which is exactly why"
-        sa_pa_say "         this is checked separately. NOTE: the shim logs only the FIRST 12, so $uaf is"
-        sa_pa_say "         a floor, not the count. Baseline for every play path here is 0."
-        fail=$((fail+1))
-    fi
+    # ONE implementation, in lib_metrics.sh — this file had its own copy for about an hour,
+    # which is how a fix ends up drifting between two places.
+    assert_no_absorbed_faults "$ablog" || fail=$((fail+1))
 
     if [ -n "$pid" ]; then
         sa_pa_say "  [ OK ] the process was still alive at the end (pid $pid)"

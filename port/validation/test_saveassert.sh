@@ -6,7 +6,7 @@
 # out to be incapable of failing and nobody noticed, because a green line looks the same either way.
 #
 # So each check gets fed synthetic evidence here, offline, in about a second:
-#   - the CONTROL case supplies healthy evidence and must produce zero failures and 8 [ OK ] lines
+#   - the CONTROL case supplies healthy evidence and must produce zero failures and EXPECT_CHECKS [ OK ] lines
 #     (counted: if the function silently stopped emitting checks, "no failures" would still be true)
 #   - each MUTATION breaks exactly one input and must produce a failure whose text names that input.
 #     A mutation that fails for the wrong reason is not evidence, so the expected text is matched,
@@ -35,7 +35,11 @@ GOOD_SAVES='     412 /data/data/com.rovio.angrybirds/files/settings.lua
 GOOD_NF=46
 GOOD_PID=2659
 
-LOG="$TMP/ab2.txt"; good_log "$LOG"
+# NOT named LOG. lib_saveassert.sh sources lib_metrics.sh, whose assert_no_absorbed_faults tees
+# its verdict into $LOG when no say() exists — so calling this LOG made the assertions write into
+# the very log they analyse. Identical bug to the one already fixed in test_playassert.sh: the
+# hazard reappeared the moment a second file started using $LOG.
+ABL="$TMP/ab2.txt"; good_log "$ABL"
 
 # expect <name> <expected-failure-count-relation> <expected-text> -- <nf> <log> <pid> <saves>
 run_case(){
@@ -59,56 +63,64 @@ run_case(){
 }
 
 echo "== control: healthy evidence must pass =="
-run_case "control passes" pass "" -- "$GOOD_NF" "$LOG" "$GOOD_PID" "$GOOD_SAVES"
+run_case "control passes" pass "" -- "$GOOD_NF" "$ABL" "$GOOD_PID" "$GOOD_SAVES"
 # Vacuity guard: "zero failures" is also what an empty function returns. Count the OK lines.
-NOK=$(assert_save_persistence "$GOOD_NF" "$LOG" "$GOOD_PID" "$GOOD_SAVES" 2>&1 | grep -c '\[ OK \]')
-if [ "$NOK" -eq 8 ]; then
-    echo "  [ OK ] the control ran all 8 checks (not vacuously silent)"; PASS=$((PASS+1))
+NOK=$(assert_save_persistence "$GOOD_NF" "$ABL" "$GOOD_PID" "$GOOD_SAVES" 2>&1 | grep -c '\[ OK \]')
+# Hardcoded on purpose: this guard is meant to break when a check is added so somebody confirms it
+# was intended. It did, when the absorbed-wild-write check arrived (8 -> 9).
+EXPECT_CHECKS=9
+if [ "$NOK" -eq "$EXPECT_CHECKS" ]; then
+    echo "  [ OK ] the control ran all $EXPECT_CHECKS checks (not vacuously silent)"; PASS=$((PASS+1))
 else
-    echo "  [FAIL] the control emitted $NOK [ OK ] lines, expected 8 — checks went missing"; FAIL=$((FAIL+1))
+    echo "  [FAIL] the control emitted $NOK [ OK ] lines, expected $EXPECT_CHECKS — checks went missing"; FAIL=$((FAIL+1))
 fi
 
 echo
 echo "== mutations: each must be caught, by name =="
 
 run_case "no private files written" fail "nothing whose persistence could be tested" \
-    -- 0 "$LOG" "$GOOD_PID" "$GOOD_SAVES"
+    -- 0 "$ABL" "$GOOD_PID" "$GOOD_SAVES"
 
 run_case "settings.lua vanished" fail "settings.lua is missing or empty" \
-    -- "$GOOD_NF" "$LOG" "$GOOD_PID" '      88 /data/data/com.rovio.angrybirds/files/highscores.lua'
+    -- "$GOOD_NF" "$ABL" "$GOOD_PID" '      88 /data/data/com.rovio.angrybirds/files/highscores.lua'
 
 run_case "settings.lua truncated to 0 bytes" fail "settings.lua is missing or empty" \
-    -- "$GOOD_NF" "$LOG" "$GOOD_PID" '       0 /data/data/com.rovio.angrybirds/files/settings.lua
+    -- "$GOOD_NF" "$ABL" "$GOOD_PID" '       0 /data/data/com.rovio.angrybirds/files/settings.lua
       88 /data/data/com.rovio.angrybirds/files/highscores.lua'
 
 run_case "highscores.lua vanished" fail "highscores.lua is absent" \
-    -- "$GOOD_NF" "$LOG" "$GOOD_PID" '     412 /data/data/com.rovio.angrybirds/files/settings.lua'
+    -- "$GOOD_NF" "$ABL" "$GOOD_PID" '     412 /data/data/com.rovio.angrybirds/files/settings.lua'
 
 run_case "the app died on relaunch" fail "not running after the relaunch" \
-    -- "$GOOD_NF" "$LOG" "" "$GOOD_SAVES"
+    -- "$GOOD_NF" "$ABL" "" "$GOOD_SAVES"
 
-M="$TMP/no_ctor.txt"; grep -v 'init_array' "$LOG" > "$M"
+M="$TMP/no_ctor.txt"; grep -v 'init_array' "$ABL" > "$M"
 run_case "constructors did not complete" fail "never reached init_array 125/125" \
     -- "$GOOD_NF" "$M" "$GOOD_PID" "$GOOD_SAVES"
 
-M="$TMP/partial_ctor.txt"; sed 's|init_array 125/125|init_array 124/125|' "$LOG" > "$M"
+M="$TMP/partial_ctor.txt"; sed 's|init_array 125/125|init_array 124/125|' "$ABL" > "$M"
 run_case "constructors stopped at 124/125" fail "never reached init_array 125/125" \
     -- "$GOOD_NF" "$M" "$GOOD_PID" "$GOOD_SAVES"
 
-M="$TMP/stalled.txt"; sed 's|frame\[301\]|frame[7]|' "$LOG" > "$M"
+M="$TMP/stalled.txt"; sed 's|frame\[301\]|frame[7]|' "$ABL" > "$M"
 run_case "renderer stalled at frame 7" fail "did not render" \
     -- "$GOOD_NF" "$M" "$GOOD_PID" "$GOOD_SAVES"
 
-M="$TMP/noframe.txt"; grep -v 'frame\[' "$LOG" > "$M"
+M="$TMP/noframe.txt"; grep -v 'frame\[' "$ABL" > "$M"
 run_case "no frames at all" fail "did not render" \
     -- "$GOOD_NF" "$M" "$GOOD_PID" "$GOOD_SAVES"
 
-M="$TMP/noreads.txt"; grep -v 'fopen' "$LOG" > "$M"
+M="$TMP/noreads.txt"; grep -v 'fopen' "$ABL" > "$M"
 run_case "saves on disk but never read back" fail "read none of its own files" \
     -- "$GOOD_NF" "$M" "$GOOD_PID" "$GOOD_SAVES"
 
-M="$TMP/fatal.txt"; cp "$LOG" "$M"; echo "07-29 18:00:21.000 I abshim  : [h_fatal] unhandled" >> "$M"
+M="$TMP/fatal.txt"; cp "$ABL" "$M"; echo "07-29 18:00:21.000 I abshim  : [h_fatal] unhandled" >> "$M"
 run_case "h_fatal during the reload" fail "h_fatal on the second launch" \
+    -- "$GOOD_NF" "$M" "$GOOD_PID" "$GOOD_SAVES"
+
+M="$TMP/uaf.txt"; cp "$ABL" "$M"
+echo "07-29 18:00:22.000 I abshim  : [uaf-survive] wild write @0x0 -> mapped zero page 0x0, continuing" >> "$M"
+run_case "a wild memory access papered over" fail "absorbed into fresh zero pages" \
     -- "$GOOD_NF" "$M" "$GOOD_PID" "$GOOD_SAVES"
 
 M="$TMP/empty.txt"; : > "$M"

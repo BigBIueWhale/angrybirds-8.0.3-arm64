@@ -30,6 +30,8 @@
 #     is valid there because the app is not relaunched between the two hashes.
 
 # Prefer the caller's say() (it tees into the run log) and fall back to echo when tested offline.
+source "$(dirname "${BASH_SOURCE[0]}")/lib_metrics.sh"   # absorbed_report / assert_no_absorbed_faults
+
 sa_say(){ if type say >/dev/null 2>&1; then say "$@"; else echo "$@"; fi; }
 
 # Size of one file out of `wc -c` output. index() is a literal substring test, not a regex, so a
@@ -115,6 +117,9 @@ assert_save_persistence() {
         sa_say "  [FAIL] h_fatal on the second launch ($hf occurrence(s))"
         fail=$((fail+1))
     fi
+
+    # h_fatal alone is not a health signal here either — see R41 / lib_metrics.sh.
+    assert_no_absorbed_faults "$ab2" || fail=$((fail+1))
 
     return "$fail"
 }

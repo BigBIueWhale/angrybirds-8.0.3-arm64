@@ -127,6 +127,8 @@ fi
 adb exec-out screencap -p > "$OUT/bg_resume_screen.png" 2>/dev/null
 say "  h_fatal: $(h_fatal_report "$ABLOG")"
 HF=$(grep -ac 'h_fatal' "$ABLOG"); [ "${HF:-0}" -eq 0 ] || { say "  [FAIL] h_fatal across the background/resume cycle"; FAIL=1; }
+# h_fatal alone is not a health signal — see assert_no_absorbed_faults in lib_metrics.sh (R41).
+assert_no_absorbed_faults "${ABLOG}" || FAIL=1
 say "  capture: bg_resume_screen.png — LOOK at it; counting frames is not the same as being visible"
 
 say

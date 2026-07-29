@@ -135,6 +135,8 @@ say "  pid: ${PID3:-<none>}   frames $F_E -> $F_F over 12s"
 
 say "  h_fatal: $(h_fatal_report "$ABLOG")"
 HF=$(grep -ac 'h_fatal' "$ABLOG"); [ "${HF:-0}" -eq 0 ] || { say "  [FAIL] h_fatal across the rotation cycle"; FAIL=1; }
+# h_fatal alone is not a health signal — see assert_no_absorbed_faults in lib_metrics.sh (R41).
+assert_no_absorbed_faults "${ABLOG}" || FAIL=1
 say "  capture: rotate_screen.png — LOOK at it; frames advancing is not the same as being visible"
 
 say

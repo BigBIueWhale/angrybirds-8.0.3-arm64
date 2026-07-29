@@ -205,6 +205,8 @@ else
 fi
 [ -n "$PID" ] || { say "  [FAIL] the process died during progression"; FAIL=1; }
 HF=$(grep -ac 'h_fatal' "$ABLOG"); [ "${HF:-0}" -eq 0 ] || { say "  [FAIL] h_fatal during a level transition"; FAIL=1; }
+# h_fatal alone is not a health signal — see assert_no_absorbed_faults in lib_metrics.sh (R41).
+assert_no_absorbed_faults "${ABLOG}" || FAIL=1
 
 say
 # selfhash_verify RETURNS a verdict (0 unchanged / 1 edited mid-run / 2 cannot tell). It was

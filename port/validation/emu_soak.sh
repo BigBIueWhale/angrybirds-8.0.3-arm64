@@ -133,6 +133,8 @@ for m in $(seq 1 "$MINUTES"); do
     F=$(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1|grep -oE '[0-9]+')
     R=$(adb shell "cat /proc/$PID/status 2>/dev/null | grep VmRSS" 2>/dev/null | tr -d '\r' | awk '{print $2}')
     HF=$(grep -ac 'h_fatal' "$ABLOG" 2>/dev/null)
+    # h_fatal alone is not a health signal — see assert_no_absorbed_faults in lib_metrics.sh (R41).
+    assert_no_absorbed_faults "${ABLOG}" || FAIL=$((FAIL+1))
     printf "  %3s  %-9s  %-9s  %s\n" "$m" "${F:-?}" "${R:-?}" "${HF:-?}" | tee -a "$LOG"
 
     [ -n "$R" ] && { [ -z "$FIRSTRSS" ] && FIRSTRSS="$R"; LASTRSS="$R"; }

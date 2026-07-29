@@ -56,6 +56,10 @@ E=/opt/android-sdk/emulator
 export LD_LIBRARY_PATH="$E/lib64:$E/lib64/qt/lib:$E/lib64/gles_swiftshader:$E/lib64/vulkan"
 export QT_QPA_PLATFORM=offscreen
 export ANDROID_AVD_HOME=/root/.android/avd
+# This script was self-contained (it sourced nothing) until assert_no_absorbed_faults was wired in
+# below. prose_as_code.py caught the omission before any arm64 run did: an unsourced helper is a
+# word in command position that resolves to nothing, which is the same class of defect as prose.
+source "$(dirname "$0")/lib_metrics.sh"   # h_fatal_report / assert_no_absorbed_faults
 QEMU="$E/qemu/linux-x86_64/qemu-system-aarch64"
 APK=${ABSHIM_APK:-/work/out/angrybirds-8.0.3-arm64.apk}
 OUT=/work/reports/shots; mkdir -p "$OUT"
@@ -180,6 +184,8 @@ PID=$(adb shell pidof com.rovio.angrybirds 2>/dev/null | tr -d '\r')
 CT=$(grep -aoE 'init_array [0-9]+/125' "$ABLOG" 2>/dev/null | tail -1)
 FR=$(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null | tail -1)
 HF=$(grep -ac 'h_fatal' "$ABLOG" 2>/dev/null)
+# h_fatal alone is not a health signal — see assert_no_absorbed_faults in lib_metrics.sh (R41).
+assert_no_absorbed_faults "${ABLOG}" || FAIL=$((FAIL+1))
 say "  abshim log lines : $(wc -l <"$ABLOG")"
 say "  constructors     : ${CT:-none}"
 say "  frames           : ${FR:-none}"

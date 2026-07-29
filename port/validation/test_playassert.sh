@@ -72,7 +72,7 @@ run_case "renderer stalled early"       fail "below the 601"      -- "$M" "$WIN"
 
 M="$TMP/uaf.txt"; cp "$ABL" "$M"
 echo "I abshim : [uaf-survive] wild write @0x0 (pc=+0x1234) -> mapped zero page 0x0, continuing" >> "$M"
-run_case "a wild write papered over"    fail "were absorbed into fresh zero pages" -- "$M" "$WIN" 3782
+run_case "a wild write papered over"    fail "absorbed into fresh zero pages" -- "$M" "$WIN" 3782
 
 M="$TMP/fatal.txt"; cp "$ABL" "$M"; echo "I abshim : [h_fatal] boom" >> "$M"
 run_case "h_fatal during the run"       fail "h_fatal during"     -- "$M" "$WIN" 3782

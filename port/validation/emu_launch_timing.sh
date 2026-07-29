@@ -113,6 +113,8 @@ PID=$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')
 HF=$(grep -ac 'h_fatal' "$ABLOG"); [ "${HF:-0}" -eq 0 ] && say "  [ OK ] no h_fatal" \
     || { say "  [FAIL] h_fatal during the burst"; FAIL=$((FAIL+1)); }
 say
+# h_fatal alone is not a health signal — see assert_no_absorbed_faults in lib_metrics.sh (R41).
+assert_no_absorbed_faults "${ABLOG}" || FAIL=$((FAIL+1))
 say "  NOW LOOK AT THEM. This script cannot tell which offset shows a bird in flight —"
 say "  that is the entire question, and it is a question for a person."
 selfhash_verify; [ $? -eq 0 ] || FAIL=$((FAIL+1))
