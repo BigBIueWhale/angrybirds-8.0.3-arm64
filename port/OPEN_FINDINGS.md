@@ -1139,10 +1139,38 @@ Put together: **`h_fatal == 0` is compatible with sustained memory corruption**,
 neutralised on the way to becoming fatal. The suite was treating an absent symptom as health — this
 project's most repeated defect, sitting inside the assertion library written to stop it.
 
-**Measured baseline: zero.** Every real playthrough log from this session — `modplay_abshim.txt`,
-`modprog_abshim.txt`, `playthroughR_abshim.txt`, `save_ab2.txt` — contains **0** `[uaf-survive]`
-lines. The net exists and currently catches nothing on the play path, which is consistent with the
-galloc size-class fix (R-series, cont.136) having removed the root cause rather than hidden it.
+**Measured baseline: zero — across every log in the repo, including the long ones.** Not just this
+session's short runs. Swept all 30-odd `*_abshim.txt` logs:
+
+| log | lines | last frame | `[uaf-survive]` |
+|---|---|---|---|
+| `progression_abshim.txt` | 59,812 | **frame[26401]** | 0 |
+| `soak_abshim.txt` (20-min soak) | 47,958 | **frame[21601]** | 0 |
+| `rotate_abshim.txt` | 11,717 | frame[3901] | 0 |
+| every other play/lifecycle log | — | — | 0 |
+| **`emu_fatalR_abshim.txt`** | 16,880 | frame[6301] | **3** |
+
+The two longest runs in the project — 21,601 and 26,401 frames — absorb nothing at all, so this is not
+a short-run artifact.
+
+**The one non-zero log is the useful part, because it proves the check is not vacuous.**
+`emu_fatalR_abshim.txt` is dated **2026-07-26**, before the level-end fixes and before the galloc
+size-class fix, and it caught the thing the net was built for:
+
+```
+[uaf-survive] wild write @0x144dde70 (pc=+0x741f4c) -> mapped zero page 0x144dd000, continuing (residual std::string UAF)
+[uaf-survive] wild write @0x144de000 (pc=+0x741f4c) -> mapped zero page 0x144de000, continuing
+[uaf-survive] wild write @0x144df004 (pc=+0x7425d8) -> mapped zero page 0x144df000, continuing
+```
+
+Wild pointers into the unmapped gap between `RG_GUESTDATA` (0x12000000) and `RG_ENGINE` (0x40000000)
+— not NULL — from two engine PCs in the `std::string` code. **That run's `h_fatal` was 0**, which is
+precisely the point: the corruption was real, the run reported clean, and only this separate signal
+distinguishes them.
+
+So the sequence is a genuine before/after: the mechanism demonstrably fired while the root cause
+existed, and has been silent through every run since it was fixed, up to frame[26401]. A regression
+that reintroduced it would now be caught rather than absorbed into a green log.
 
 So `assert_playthrough` now checks it separately from `h_fatal`, and says plainly that the number is a
 **floor rather than a count** because of the 12-line cap. Proven able to fail: a log with one
