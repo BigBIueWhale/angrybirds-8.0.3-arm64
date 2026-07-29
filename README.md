@@ -182,7 +182,7 @@ port/validate_all.sh                      one command for every offline check: h
 port/prepare_inputs.sh                    decompresses + sha256‑gates the input every build script needs
 port/validation/                          the emulator rig that produced every PROOF — scripts, README,
                                           and the recorded reproducible proxy hashes
-port/validation/verify_claims.sh          re‑checks all 30 documented claims against the shipped bytes;
+port/validation/verify_claims.sh          re‑checks all 31 documented claims against the shipped bytes;
                                           exits non‑zero if any is false (run by reproduce.sh step 3)
 port/shim/test/run_tests.sh               host test suite + the coverage hard‑gate (0 unbridged imports)
 reports/shots/PROOF_*.png                 screenshot evidence

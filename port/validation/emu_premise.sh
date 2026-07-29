@@ -29,6 +29,7 @@ source "$(dirname "$0")/lib_settle.sh"
 source "$(dirname "$0")/lib_dialogs.sh"
 source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_install.sh"
+source "$(dirname "$0")/lib_provenance.sh"
 source "$(dirname "$0")/lib_selfhash.sh"
 
 ORIG=/work/apks/com.rovio.angrybirds@8.0.3.apk
@@ -91,6 +92,9 @@ else
     FN=$(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1|grep -oE '[0-9]+')
     if [ -n "$FN" ] && [ "$FN" -ge 301 ]; then
         say "  [ OK ] the re-hosted game RUNS on the device that refused the original (frame[$FN])"
+# Record which build produced this PROOF. Ten capture scripts were found writing images
+# with no provenance row; these two are the ones whose output is cited as evidence.
+record_build "$OURS" "premise" 2>&1 | tee -a "$LOG"
         adb shell screencap -p /sdcard/premise.png >/dev/null 2>&1
         adb pull /sdcard/premise.png "$OUT/premise_render.png" >/dev/null 2>&1
         say "  screenshot: $OUT/premise_render.png ($(stat -c%s "$OUT/premise_render.png" 2>/dev/null) bytes) — LOOK AT IT"

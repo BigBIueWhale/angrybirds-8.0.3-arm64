@@ -974,6 +974,30 @@ else
   bad "the docs advertise $DOCN documented claims but this file has $NCLAIM"
 fi
 
+echo "== CLAIM: every script that produces a PROOF records which build produced it =="
+# Ten capture scripts were found writing screenshots with no provenance row. Most write diagnostics,
+# but two produced PROOFs — PROOF_20 (the premise) and PROOF_21 (A56 geometry) — so two pieces of
+# cited evidence had no build attached, and the "captures were taken on builds that still exist"
+# check silently did not cover them. Nothing failed; they were simply absent from the ledger.
+#
+# The source script of every proof is already named in the index, so the rule is checkable: if the
+# index says a script produced a proof, that script must call record_build. Comments are stripped
+# first — a script merely MENTIONING record_build in prose must not satisfy it.
+PROVSRC=$(grep -oE '\| `emu_[a-z0-9_]+\.sh`' reports/shots/README.md 2>/dev/null | tr -d '|` ' | sort -u)
+PROVMISS=""
+for sc in $PROVSRC; do
+  f="port/validation/$sc"
+  [ -f "$f" ] || continue
+  grep -vE '^[[:space:]]*#' "$f" | grep -q 'record_build' || PROVMISS="$PROVMISS $sc"
+done
+if [ -z "$PROVSRC" ]; then
+  skip "proof-source provenance (no source scripts parsed from the index)"
+elif [ -n "$PROVMISS" ]; then
+  bad "these scripts are named as PROOF sources but record no provenance:$PROVMISS"
+else
+  ok "every script the index names as a proof source records its build ($(printf '%s\n' $PROVSRC | grep -c .) script(s))"
+fi
+
 echo "== CLAIM: the screenshot index describes exactly the proofs that exist =="
 # PROOF_2/3/4 silently went stale for a day: they showed a binary that no longer existed, and
 # nothing noticed because nothing recorded what they were supposed to show. reports/shots/README.md

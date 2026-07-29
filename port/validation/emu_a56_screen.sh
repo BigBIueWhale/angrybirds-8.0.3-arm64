@@ -28,6 +28,7 @@ source "$(dirname "$0")/lib_settle.sh"
 source "$(dirname "$0")/lib_dialogs.sh"
 source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_install.sh"
+source "$(dirname "$0")/lib_provenance.sh"
 source "$(dirname "$0")/lib_selfhash.sh"
 source "$(dirname "$0")/lib_wincheck.sh"
 
@@ -151,6 +152,9 @@ fi
 
 say
 say "== letterboxing =="
+# Record which build produced this PROOF. Ten capture scripts were found writing images
+# with no provenance row; these two are the ones whose output is cited as evidence.
+record_build "$APK" "a56_screen" 2>&1 | tee -a "$LOG"
 adb shell screencap -p /sdcard/a56.png >/dev/null 2>&1
 adb pull /sdcard/a56.png "$OUT/a56_screen.png" >/dev/null 2>&1
 DIMS=$(python3 - "$OUT/a56_screen.png" <<'PY'

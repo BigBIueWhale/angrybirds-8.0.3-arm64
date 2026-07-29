@@ -56,6 +56,44 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R31. Ten capture scripts wrote images with no provenance — two of them produced cited PROOFs
+
+Wiring provenance into this session's three lifecycle tests raised the obvious question: how many
+*other* scripts save a screenshot and never record which build made it? Ten:
+
+```
+emu_16k_pagesize  emu_a56_screen  emu_audio_test  emu_fatal_release  emu_modern_test
+emu_premise       emu_progression emu_run         emu_save_test      emu_soak
+```
+
+Most write diagnostics, where the omission costs little. **Two produced cited evidence** —
+`emu_premise.sh` → `PROOF_20` (the premise: the original APK refused, ours runs on the same device)
+and `emu_a56_screen.sh` → `PROOF_21` (a win at the A56's real 1080x2340 geometry). Two of the
+project's load-bearing proofs had no build attached, and the *"captures were taken on builds that
+still exist"* check silently did not cover them: it can only police rows that exist, and nothing
+failed because nothing was there.
+
+Both now record provenance, and the rows were produced by **re-running** them rather than written by
+hand. Both passed again, which re-established their findings in passing:
+
+```
+premise     [ OK ] REFUSED for the documented reason: no ABI this device can run (R12)
+            [ OK ] the re-hosted game RUNS on the device that refused the original (frame[1201])
+a56_screen  [ OK ] renders at the A56's geometry (frame[2401])
+            [ OK ] WIN at 1080x2340 — slingshot drags reached the engine through the shim
+```
+
+Guarded: the index already names each proof's source script, so the rule is checkable — if the index
+says a script produced a proof, that script must call `record_build`. Comments are stripped first, so
+a script merely *mentioning* it in prose cannot satisfy the check. Mutation `proof_prov` deletes the
+call from a proof source and is caught.
+
+Adding that claim made the gate's own count 31 while the docs still said 30, and the counting check
+from R27 caught it immediately — the second time that self-referential check has policed a change I
+made in the same commit.
+
+**31 claims, 30 mutation cases, 30/30 detected, 0 skipped**, vacuity audit clean, control passing.
+
 ### R30. Rotating the phone rebuilds the Activity under a live process — and the port survives it
 
 Read out of the shipped manifest rather than assumed:

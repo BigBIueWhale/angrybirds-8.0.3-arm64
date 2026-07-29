@@ -14,3 +14,5 @@ regr36	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybir
 rotate	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybirds-8.0.3-x86shim-release.apk	emu_rotate.sh	ab36
 bg_resume	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybirds-8.0.3-x86shim-release.apk	emu_background_resume.sh	ab36
 reboot_persist	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybirds-8.0.3-x86shim-release.apk	emu_reboot_persist.sh	ab36
+premise	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybirds-8.0.3-x86shim-release.apk	emu_premise.sh	abtest34
+a56_screen	544982bb6c3b0b62faa6d921a36d9512c23db50d45027d9e9f2bcdf8b85970a9	angrybirds-8.0.3-x86shim-shaders.apk	emu_a56_screen.sh	abtest34

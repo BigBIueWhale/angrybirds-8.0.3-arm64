@@ -362,6 +362,21 @@ mut_claim_count() {
     grep -q 'checks all 3 documented claims' "$f" || return 1
 }
 
+# Strip record_build from a script the proof index names as a source. Ten capture scripts were
+# found writing images with no provenance at all, two of them producing cited PROOFs — the ledger
+# simply had no row, and nothing failed, because the "captures were taken on builds that still
+# exist" check can only police rows that exist.
+mut_proof_prov() {
+    local f
+    f=$(grep -oE '\| `emu_[a-z0-9_]+\.sh`' "$1"/reports/shots/README.md 2>/dev/null | tr -d '|` ' | sort -u \
+        | while read -r sc; do grep -lq 'record_build' "$1/port/validation/$sc" 2>/dev/null && echo "$1/port/validation/$sc"; done | head -1)
+    [ -n "$f" ] || return 1
+    cp "$f" "$f.mut" && rm -f "$f" && mv "$f.mut" "$f" || return 1   # break the cp -al hard link
+    sed -i '/^[[:space:]]*record_build/d' "$f" || return 1
+    grep -vE '^[[:space:]]*#' "$f" | grep -q 'record_build' && return 1   # must really be gone
+    return 0
+}
+
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
 mut_perf()        { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_perf; }
 mut_payload()     { repack_member "$1" lib/arm64-v8a/libengine32.so          m_flip_byte;  }
@@ -584,6 +599,7 @@ case_run audio_payload "DIFFERS from the silent build"                 mut_audio
 case_run jni_thunk     "MISSING thunks for engine natives"             mut_jni_thunk
 case_run prov_label    "record a FIXED provenance label"               mut_prov_label
 case_run claim_count   "the docs advertise"                            mut_claim_count
+case_run proof_prov    "named as PROOF sources but record no provenance" mut_proof_prov
 
 echo
 echo "== control: the real tree must still PASS =="
