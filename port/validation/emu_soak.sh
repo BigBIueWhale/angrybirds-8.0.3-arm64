@@ -52,6 +52,7 @@ source "$(dirname "$0")/lib_dialogs.sh"
 source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_install.sh"
 source "$(dirname "$0")/lib_selfhash.sh"
+source "$(dirname "$0")/lib_camera.sh"
 
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk   # the SHIPPING configuration, not a diagnostic build
 PKG=com.rovio.angrybirds
@@ -115,7 +116,7 @@ PREVF=0; FIRSTRSS=""; LASTRSS=""; STALLS=0
 for m in $(seq 1 "$MINUTES"); do
     # keep it playing: pan back to the slingshot (see header — otherwise the view drifts off the
     # level and the drags hit nothing), a slingshot drag, then advance past whatever card appears
-    for k in 1 2 3 4; do adb shell input swipe 80 150 600 150 400 >/dev/null 2>&1; sleep 1; done
+    pan_to_slingshot 3 1        # lib_camera.sh — one implementation, not a copy per script
     for k in 1 2 3; do adb shell input swipe 207 118 110 150 700 >/dev/null 2>&1; sleep 6; done
     adb shell input tap 390 266 >/dev/null 2>&1; sleep 4
     adb shell input tap 500 300 >/dev/null 2>&1; sleep 8

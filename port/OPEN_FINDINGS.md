@@ -56,6 +56,68 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R16. Progression measured across FOUR levels — after two harness bugs that blamed the game
+
+Multi-level progression rested on a single step. `PROOF_9` shows a second level loading after a win,
+and everything past that was generalisation. `emu_progression.sh` was written to drive the
+win → NEXT cycle deliberately and count **distinct `data/levels/<episode>/<name>` files opened**,
+which is progression read from the asset bridge rather than inferred from frames.
+
+Its first run won **once in five cycles** and reached two tutorial levels — no better than blind
+input. The conclusion that suggested itself, and that I wrote into the script before examining
+anything, was about the game: fixed coordinates cannot aim, so a harness cannot clear arbitrary
+levels and progression past level 2 is not demonstrable here.
+
+Both halves of that were wrong, and **every signal a log can carry supported it**: frames advancing,
+`h_fatal` 0, the level file open, the process healthy. The screenshot the run had already captured —
+`prog_5.png` — is a screenful of empty sky with `SCORE 0` and a live pause button.
+
+**Bug 1: the view drifts.** `input swipe 207 118 110 150 700` appears in seventeen scripts here and
+is called "the slingshot drag". It is a drag at a screen position. It launches a bird only when it
+starts **on** the bird, and a drag that misses **pans the camera**. Cycle 1 hit the bird because the
+tutorial puts one under that point; every later cycle missed and shoved the view further right until
+the level was off-screen. Fixed in `lib_camera.sh`, called before every shot.
+
+**Bug 2: the anchor is a constant for something that moves.** With the camera fixed the run still won
+once — and `prog_2_pre.png` shows level 2 framed correctly, slingshot and loaded bird at (152,183),
+spares behind, pig towers right, while the harness dragged from (207,118): open sky above the
+slingshot. `find_bird.py` now locates the bird per shot and applies the proven pull vector relative
+to it.
+
+**Measured, 6 cycles, API 34, shipping config:**
+
+| | |
+|---|---|
+| distinct level files | **4** — `Tutorial_red_niko`, `Tutorial_red2_niko`, `Tutorial_chuck_niko`, `Tutorial_bomb_niko` |
+| wins confirmed from pixels | 3 of 6 cycles |
+| `h_fatal` | **0**, across 26 085 shim log lines |
+| process | alive at the end |
+
+Four levels and three different bird types (Red, Chuck, Bomb), each reached by winning the previous
+one and tapping NEXT. Every level transition — the path where this port's deepest bug lived, a
+session-long `std::string` UAF that killed the process on the results screen — survived.
+
+**What it still does not show.** This is the tutorial episode, not the whole game, and the harness
+loses as often as it wins: 3 of 6. The losses are aiming, which is genuine and uninteresting. The
+finder is a red-blob heuristic, and it is honest about that in its own header — on a tutorial
+instruction card it will happily report the *illustrated* bird.
+
+**Three corrections the run itself forced**, each visible in the log now: shooting stops once a level
+is won (a "bird" at (242,145) was the win banner); an in-game tutorial card is dismissed when no bird
+is visible (level 3 sat behind the "tap to launch" card while the harness shot at it); and the
+slingshot is latched per cycle (a shot aimed at (236,213) while the slingshot was at (151,185),
+having locked onto a spare bird walking up). Picking the largest red **blob** rather than the topmost
+red *pixel* fixed a shot aimed at (288,62) — speckle on an animated hint-hand overlay — when the bird
+was at (270,203).
+
+A yellow mask for Chuck was tried and **rejected on measurement**: it finds the bird (98 px) and also
+sunlit foliage (2525, 3314 and 5307 px), which outranks it on the very frames red already handles.
+
+Guarded in `verify_claims.sh` (a script that shoots across rounds must reset the camera first) and in
+`mutation_test.sh` (deleting the pan must make the gate fail). Both of those checks were themselves
+wrong first — see the commit; a guard that fires on correct code, or that quietly stops matching, is
+its own defect.
+
 ### R15. Sustained operation: 20 minutes, frame[17401], memory flat — within the tutorial levels
 
 Every run in this project was 5-10 minutes and stopped at level 2; the longest ever reached
