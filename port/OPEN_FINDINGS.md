@@ -56,6 +56,41 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R23. The second deliverable re-verified: the audio variant builds reproducibly and still wins
+
+`ONDEVICE.md` offers an **experimental audio-enabled variant** alongside the silent shipping build,
+with a build command the user is told to run and a claim that it plays crash-free. Both were re-run
+after this session's changes to `lib_install.sh`, which every emulator script sources.
+
+**The documented build command reproduces byte-identically:**
+
+```
+docker run --rm --network none -v "$PWD":/work ab-port \
+    env ABSHIM_AUDIO=1 bash /work/port/build_apk.sh
+before: 196053244e92ac8c902f1b956ad8b56211266012ec48c6b4…
+after : 196053244e92ac8c902f1b956ad8b56211266012ec48c6b4…
+cmp: clean
+```
+
+So reproducibility is not a property of the default build alone — the `ABSHIM_AUDIO=1` path is
+deterministic too, which matters because that is a command handed to the user.
+
+**And it still plays with audio active, on modern Android** (`emu_audio_modern.sh`, API 34):
+
+```
+nativeMixData:  8   (>0 ⇒ AudioTrack inited and the mixer ran under modern W^X)
+h_fatal:        0   (6431 shim log lines, so this was measured)
+win check:      WIN CONFIRMED from pixels
+```
+
+Looked at rather than scored: `audiomod_end.png` is **LEVEL CLEARED**, three stars, **43210**.
+
+The known limit is unchanged and still honestly stated in `ONDEVICE.md`: *continuous* playback cannot
+be settled here, because the emulator's host audio backend will not initialise in a headless
+container, so the guest `AudioTrack` buffer never drains and the mixer blocks after ~8 buffers. That
+is emulator infrastructure, not the shim — `nativeMixData: 8` is exactly that ceiling, and it is why
+the number is 8 rather than growing.
+
 ### R22. Every symbol the shim imports is now proven resolvable on the phone — the generic form of the `-lm` bug
 
 The worst near-miss in this project was a link flag. The shim used `sin`/`cos`, was linked without
