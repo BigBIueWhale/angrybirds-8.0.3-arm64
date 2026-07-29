@@ -56,6 +56,25 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R20. The reproducible build, re-verified end to end today
+
+Clause 2 of the brief is that the conversion be a reproducible automated process inside Docker. That
+was established earlier and has not been re-run since a long stretch of harness changes, so it was
+re-run from the documented entry point rather than assumed to still hold:
+
+```
+bash port/reproduce.sh        →  out/angrybirds-8.0.3-arm64.apk
+before: 27548721a456ea99295469c30c247e3f9519878a3d40abb817a148801af04851
+after : 27548721a456ea99295469c30c247e3f9519878a3d40abb817a148801af04851
+[ OK ] REPRODUCIBLE — byte-identical
+```
+
+`cmp` clean against the artifact that existed before the rebuild, and matching the hash documented in
+`REPRODUCE.md`. Every step runs `docker run --rm --network none`; there is no `-p`/`--publish` and no
+`--network host` anywhere in the build path. (A grep for `-p [0-9]` does hit `zipalign -f -p 4`, which
+is zipalign's page-align flag, not a port publish.) The `1980-01-01` timestamps visible on every zip
+entry are the normalised mtimes that make the byte-identical result possible.
+
 ### R19. Regression check: the install-library changes did not break the phone's actual OS
 
 `lib_install.sh` was changed twice while chasing R18 — installer exceptions reclassified as transient,
@@ -125,6 +144,13 @@ into Unicorn's own address space, the shim's only real `dlopen` calls target sys
 (`libandroid.so`, `libGLESv2.so`), and the guest-side `dlopen` bridge returns 0 so emulated ARM32 code
 cannot load anything either. That was read out of the source rather than inferred from file names,
 and the APK does install on the 16 KB image, so the installer does not object to them either.
+
+**The APK's internal zip alignment is not part of this, and that was checked too.** A 16 KB device
+also cares about zip alignment when libraries are `Stored` and mmapped straight out of the APK. Ours
+are not: all four are `Defl:N` (compressed), so Android extracts them to the app's lib directory at
+install and the loader reads the extracted file from disk. `zipalign -p 4` in `build_apk.sh` is
+therefore about page-aligning stored entries that do not exist here — the property that matters is
+the ELF `p_align`, which is the one now gated.
 
 Guarded in `verify_claims.sh` — every **AArch64** library in the shipped APKs must have all `LOAD`
 segments aligned to at least 16 KB — with the ARM32 payloads exempt for the reason above. The guard
