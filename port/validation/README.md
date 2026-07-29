@@ -284,6 +284,14 @@ PROOF mapping verified by md5 against the source screenshots, not by filename.
 | `arm64_cross_test.sh` | — (cross + qemu-user) | — | **the arm64 validation**: the WHOLE suite on AArch64 — 7 device tests (boot, ctors, longjmp, sched, libc, file, native_init) + all 10 mode-agnostic module tests, 19 checks. CROSS-compiled on x86 in the `ab-arm64x` image so it runs in minutes, fully offline, instead of hours of emulated compilation. Asserts the binaries really are AArch64 |
 | `arm64_unicorn_test.sh` | — (qemu-user) | — | the original arm64 validation, built *inside* an emulated arm64 container. Superseded by `arm64_cross_test.sh` for routine use; kept because it is the one path that does **not** depend on a cross toolchain |
 
+**`port/validation/emu_dlopen_pagesize.sh`** (+ `build_dltest.sh`, `src/dltest.c`) asks the Android
+loader directly whether the shim can be loaded, with a 20-line `dlopen` program that needs no
+Activity, no ART and no working app — which is the only reason the 16 KB question could be settled on
+an image where the game does not launch. It runs three cases: the shim, a system library (positive
+control), and a deliberately 4 KB-aligned binary (negative control, which must FAIL on a 16 KB kernel
+and SUCCEED on a 4 KB one). Skipping either control turns the result into an opinion; the first run
+proved that when the un-aligned tester segfaulted and briefly looked like a broken shim.
+
 **Two helpers exist because the "slingshot drag" in every script is not one.**
 `port/validation/lib_camera.sh` (`pan_to_slingshot`, `pan_and_capture`) puts the view back on the
 launch point: a drag that does not start on the bird pans the camera, so repeating one fixed gesture

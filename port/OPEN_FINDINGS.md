@@ -85,8 +85,33 @@ ELF headers, because no 16 KB image existed on this host. One exists now
 (`system-images;android-36.1;google_apis_ps16k;x86_64`), so `port/docker/Dockerfile.ab-emu-16k` +
 `port/validation/emu_16k_pagesize.sh` run it for real. The guest is genuinely 16 KB —
 `getconf PAGE_SIZE` returns **16384** and the kernel command line carries `page_shift=14` — and the
-**APK installs there**. On a 16 KB kernel a 4 KB-aligned library is rejected outright by the loader,
-so installing at all already excludes the alignment failure this was written to catch.
+**APK installs there**.
+
+**That last sentence used to carry an argument that was simply wrong**, and it is worth leaving the
+correction visible: it read *"on a 16 KB kernel a 4 KB-aligned library is rejected outright by the
+loader, so installing at all already excludes the alignment failure"*. Installing excludes nothing.
+Android rejects a misaligned library at **`dlopen`**, not at install time, so an APK full of 4 KB
+libraries installs perfectly happily and only dies when something tries to load one. The claim needed
+the loader's answer and had been given the package manager's.
+
+**Now measured properly** (`port/validation/emu_dlopen_pagesize.sh`, with
+`build_dltest.sh` + `src/dltest.c`). The game cannot supply this evidence on that image because it
+never launches there, so a 20-line program asks the loader directly — no Activity, no ART, no app:
+
+| | 16 KB kernel | 4 KB kernel |
+|---|---|---|
+| **A. 16 KB-aligned tester dlopens THE SHIM** | **DLOPEN-OK** | DLOPEN-OK |
+| B. 16 KB-aligned tester dlopens system `libc` | DLOPEN-OK | DLOPEN-OK |
+| C. **4 KB-aligned** tester (negative control) | **Segmentation fault** | DLOPEN-OK |
+
+Row **C** is what makes row A mean anything: it shows this kernel genuinely **enforces** alignment,
+refusing a 4 KB-aligned binary that runs fine on the 4 KB image. Row **B** shows the tester works at
+all. So: the enforcement is real, and **the shim loads under it**.
+
+That control also caught a mistake before it became a finding. The first tester was built without
+`-Wl,-z,max-page-size=16384`, so the *tester itself* was 4 KB-aligned and segfaulted on exec — which
+looked exactly like "the shim fails to load on 16 KB". Only B, dlopening a system library that must
+work, revealed the tester had never started.
 
 **But the app does not become launchable, and that is an Android 36.1 property.** Controlled four
 ways rather than assumed:
