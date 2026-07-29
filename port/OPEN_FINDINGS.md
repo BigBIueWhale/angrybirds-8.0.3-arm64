@@ -176,19 +176,25 @@ So the claim is sustained **operation**: twenty minutes of continuous rendering 
 handling, 17 401 frames, no fatal, flat memory. Multi-level *progression* is evidenced elsewhere
 (`PROOF_9`, `PROOF_21`), by scripts that check for a win screen rather than counting frames.
 
-**Correction — what the soak was actually looking at.** This section previously said the run
-"replayed the tutorial". That was never measured: `emu_soak.sh` captured no images, so nothing in
-the run could say what was on screen, and the sentence was an inference from the level-file count
-dressed as an observation. `emu_progression.sh` then repeated the same fixed drag and *photographed*
-the result — `prog_5.png` is empty sky with `SCORE 0` and a live pause button. In this game a drag
-on empty space **pans the camera**, so repeating one drag walks the view off the level and every
-later swipe lands on nothing. The soak was very likely doing the same, which is weaker than
-"replaying the tutorial" implies.
+**Correction, then a re-measurement that corrected the correction.** This section said the run
+"replayed the tutorial", which was never measured — `emu_soak.sh` captured no images, so nothing in
+it could say what was on screen. `emu_progression.sh` then photographed the same fixed drag and
+found empty sky (`prog_5.png`), so this was amended to "the soak was very likely drifting the same
+way". That hedge has now been replaced by a run.
 
-The measured claims above are unaffected: frames, `VmRSS` and `h_fatal` are read from the process,
-not from the screen, so they hold whatever was being displayed. Only the explanation of what the
-input achieved was wrong. Both scripts now pan back to the slingshot before each drag, and both save
-frames so a later reader can look instead of infer.
+**Re-measured, 20 minutes with the camera reset in place:** `soak_start.png` is the tutorial properly
+framed — slingshot, loaded bird, three spares, score 0 — and the session opens **two** distinct level
+files, the same as before. So "it replayed the tutorial" was right, for a reason nobody had stated:
+this script still shoots from the **fixed anchor** (207,118). That wins level 1, whose bird sits
+there, and cannot win level 2, whose bird is at (152,183). Within each minute the missed drags pan
+the view off the level, and the next minute's pan brings it back — which is why the first end frame
+captured straight after a minute's drags was a screenful of cloud. The capture is now taken after a
+pan, so it shows where the game is rather than the worst instant of the cycle.
+
+Numbers from that run: **frame[20701], 0 stalled samples, RSS 613 960 → 620 732 kB = 101%,
+`h_fatal` 0 across 47 956 shim log lines**, process alive. The measured claims never depended on any
+of this — frames, `VmRSS` and `h_fatal` are read from the process, not the screen — but what the
+input *achieves* is now measured instead of guessed, twice over.
 
 Still bounded: twenty minutes is not an evening, and this is SwiftShader on x86_64. What it removes
 is the possibility that the port only survives the first few minutes — and, now, that it leaks

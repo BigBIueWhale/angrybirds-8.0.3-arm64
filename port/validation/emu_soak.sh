@@ -26,11 +26,20 @@
 # on nothing. This soak was almost certainly doing that too, which makes its input weaker than
 # "replaying the tutorial" implied.
 #
-# Two changes follow. The loop now pans back to the slingshot before each drag, so the session is
-# actual play rather than swiping sky; and it saves a frame at the start and end, so a future reader
-# can SEE what was soaked instead of trusting a sentence. None of this affects what the script
-# asserts — frames advancing, RSS, h_fatal are measured from the process either way — but a
-# stability test is worth more when the app is being used than when it is idling on scenery.
+# Two changes follow. The loop pans back to the slingshot before each drag, and it saves a frame at
+# the start and end, so a future reader can SEE what was soaked instead of trusting a sentence.
+#
+# MEASURED with both in place (20 min, API 34): soak_start.png is the tutorial properly framed —
+# slingshot, loaded bird, three spares, score 0 — and the run opens TWO distinct level files. So the
+# original "it replayed the tutorial" was right after all, for a reason that was never stated: this
+# script still shoots from the FIXED anchor (207,118). That wins level 1, whose bird sits there, and
+# then cannot win level 2, whose bird is at (152,183). Within each minute the missed drags pan the
+# view off the level; the next minute's pan brings it back.
+#
+# So the input here lands sometimes and not others, by design — this is a stability test, not a
+# progression test, and emu_progression.sh is the one that actually plays (it locates the bird per
+# shot, reaches four levels). What the soak asserts is unaffected either way: frames, VmRSS and
+# h_fatal are read from the process, not from the screen.
 #
 # WHAT IT MEASURES, per sample
 #   frame[N]   — must keep advancing, or the game has stalled even if the process is alive
@@ -132,6 +141,11 @@ for m in $(seq 1 "$MINUTES"); do
     if [ "${HF:-0}" -ne 0 ]; then say "  [FAIL] h_fatal appeared at minute $m — the shim crashed mid-session"; FAIL=1; break; fi
 done
 
+# Pan BEFORE the end capture. Without this the frame is taken immediately after the minute's three
+# drags — which, on any level whose bird is not under the fixed anchor, miss and pan the view into
+# the sky. The first end frame captured that way was a screenful of cloud, which reads as "the soak
+# was doing nothing" when the next minute's pan would have recovered it. Show where the game IS.
+pan_to_slingshot 4 2
 adb exec-out screencap -p > "$OUT/soak_end.png" 2>/dev/null
 
 say
