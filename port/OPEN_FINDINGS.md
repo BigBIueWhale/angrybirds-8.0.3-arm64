@@ -115,9 +115,30 @@ One earlier entry in this list was wrong: **capture-build currency was already c
 
 **26/26 mutations detected, 0 skipped**, vacuity audit clean, control passing.
 
-Still uncovered, honestly: **JNI thunk completeness** — mutating it means removing an exported
-`Java_` symbol from the shim, which is a different class of surgery from the byte-append and
-string-rename mutations here.
+**JNI thunk completeness is covered too now.** Mutating it needed different surgery: rename one of
+the shim's 72 `Java_com_rovio_*` exports in place, at identical length, replacing the last character
+with `9` so the scan extracts a well-formed *but different* name. The mutation has to look like a
+missing thunk, not a corrupt binary — a missing thunk does not fail at load, it fails the first time
+Java calls that method, potentially deep into play on the phone. Caught:
+*"shim is MISSING thunks for engine natives"*.
+
+**How much of the gate is actually proven — measured, not asserted.** The header claims every check
+has been deliberately broken at least once, and that sentence has been wrong before. A static map
+now pairs each claim with the cases whose expected text appears in it (following through to the
+helper scripts the claim calls, since several print their own failure lines):
+
+- a first version of that map searched only `verify_claims.sh` and reported **6** uncovered claims.
+  Four of those were false: their wording lives in `check_depermission.py` and friends. The map was
+  wrong before the file was.
+- of the remainder, three were cases that broke *two* claims while asserting only one. `case_run`
+  now accepts `A||B` and requires **every** listed failure, so `align16k` asserts both 16 KB claims
+  and `libm_gone` asserts both `libm` **and** import-resolvability — the latter previously rested on
+  a manual check of mine rather than on the suite.
+
+**27 cases, 27/27 detected, 0 skipped.** Two claims remain unconfirmed *by the map*: engine
+authenticity and the provenance label lint. Both build their failure text from shell variables
+(`bad "$o != $m"`), so no static search can match them — that is a limit of the audit tool, not
+evidence of a gap, and it is recorded as such rather than counted either way.
 
 ### R25. Two of twenty-one mutation cases could not fail — now audited mechanically
 

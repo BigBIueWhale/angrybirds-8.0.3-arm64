@@ -73,10 +73,22 @@ case_run() {
     [ "$n_dst" = "$n_src" ] || { echo "SKIP (copy incomplete: $n_dst/$n_src files)"; SKIPPED=$((SKIPPED+1)); rm -rf "$WORK"; return 0; }
     "$fn" "$WORK" || { echo "SKIP (mutation could not be applied)"; SKIPPED=$((SKIPPED+1)); rm -rf "$WORK"; return 0; }
     local out; out=$(run_gate "$WORK")
-    if printf '%s' "$out" | grep -qF "$want"; then
+    # `want` may list SEVERAL required failures separated by ||. One mutation often breaks more than
+    # one claim, and asserting only the first leaves the others unproven: a static coverage map showed
+    # four claims that no case asserted, even though the mutations plainly broke them. Requiring every
+    # listed string is what turns "this mutation was noticed" into "these claims can fail".
+    local all_found=1 w
+    while IFS= read -r w; do
+        [ -n "$w" ] || continue
+        printf '%s' "$out" | grep -qF "$w" || all_found=0
+    done <<< "$(printf '%s' "$want" | sed 's/||/\n/g')"
+    if [ "$all_found" = "1" ]; then
         # It must also still be able to PASS — a check that always fails is equally useless. The
         # unmutated tree is verified once at the end rather than per case.
-        echo "OK — gate reported: $(printf '%s' "$out" | grep -F "$want" | head -1 | sed 's/^ *//' | cut -c1-84)"
+        # Show the FIRST required failure, not the raw $want — which may now be an A||B list and
+        # would grep for nothing, printing an empty and slightly alarming "gate reported:".
+        local first; first=$(printf '%s' "$want" | sed 's/||.*//')
+        echo "OK — gate reported: $(printf '%s' "$out" | grep -F "$first" | head -1 | sed 's/^ *//' | cut -c1-84)"
         PASS=$((PASS+1))
     else
         echo "*** NOT DETECTED *** expected a [FAIL] containing: $want"
@@ -297,6 +309,31 @@ mut_audio_payload() {
     repack_member "$1" lib/arm64-v8a/libengine32.so m_append_audio "$apk"
 }
 
+# Remove one of the shim's 72 JNI thunks, as the loader would see it. A missing thunk does NOT fail
+# at load: it fails the first time Java calls THAT method, which for a rarely-used native could be
+# deep into play on the user's phone with an UnsatisfiedLinkError and no earlier warning. The claim
+# compares the engine's Java_com_rovio_* exports against the shim's, so renaming one symbol in the
+# shim's string table makes it genuinely absent from that comparison.
+#
+# Renamed IN PLACE at identical length — no ELF offsets move, so the file stays loadable and only the
+# symbol set changes. The last character is replaced with '9', which is still [A-Za-z0-9_], so the
+# scan extracts a well-formed BUT DIFFERENT name rather than a truncated one: the mutation must look
+# like a missing thunk, not like a corrupt binary.
+m_drop_thunk() {
+    python3 - "$1" <<'PYEOF'
+import sys, re
+p = sys.argv[1]
+b = bytearray(open(p, 'rb').read())
+m = re.search(rb'Java_com_rovio_[A-Za-z0-9_]+\x00', bytes(b))
+assert m, "no Java_com_rovio_* symbol found — mutation would be a no-op"
+end = m.end() - 2                       # last character before the NUL
+assert b[end:end+1] != b'9', "symbol already ends in 9; pick another"
+b[end:end+1] = b'9'
+open(p, 'wb').write(bytes(b))
+PYEOF
+}
+mut_jni_thunk() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_drop_thunk; }
+
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
 mut_perf()        { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_perf; }
 mut_payload()     { repack_member "$1" lib/arm64-v8a/libengine32.so          m_flip_byte;  }
@@ -506,9 +543,9 @@ case_run identity      "identity CHANGED by the conversion"           mut_identi
 case_run doc_hash      "documented SHA-256 does not match the artifact"  mut_dochash
 case_run signer        "signed by an UNEXPECTED key"                     mut_signer
 case_run camera        "without resetting the camera"                  mut_camera
-case_run align16k      "NOT 16 KB-aligned"                             mut_align
+case_run align16k      "NOT 16 KB-aligned||LOAD align = "                mut_align
 case_run stale_doc     "a doc quotes a superseded measurement as current" mut_stale_doc
-case_run libm_gone     "libm.so MISSING"                               mut_libm
+case_run libm_gone     "libm.so MISSING||the shim imports symbols no declared library provides" mut_libm
 case_run prov_env      "not the environment it ran on"                 mut_prov_env
 case_run proof_bytes   "does not match the bytes the index recorded"   mut_proof_bytes
 case_run hostpath_src  "tracked files name a build-host path"          mut_hostpath_tracked
@@ -516,6 +553,7 @@ case_run hostpath_apk  "build-host path(s)"                            mut_hostp
 case_run extractnative "the manifest sets extractNativeLibs"           mut_extractnative
 case_run phantom_mark  "names markers the shim never emits"            mut_phantom_marker
 case_run audio_payload "DIFFERS from the silent build"                 mut_audio_payload
+case_run jni_thunk     "MISSING thunks for engine natives"             mut_jni_thunk
 
 echo
 echo "== control: the real tree must still PASS =="
