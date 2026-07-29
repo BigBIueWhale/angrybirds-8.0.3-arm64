@@ -94,10 +94,15 @@ the same defect wherever it sits:
 
 | stated figure | verdict |
 |---|---|
-| `re-checks all 18 documented claims` (README) | **wrong** — the gate had 29. Fixed, and now self-policing |
+| README's "re-checks all **18** documented claims" | **wrong** — the gate had 29. Fixed, and now self-policing |
 | `15/15 mutations detected` (validation README) | **stale** — that suite is at 19/19. Now records both: 15 is history, 19 is current |
 | `20 checks` on AArch64 | correct — matches `checks passed on AArch64: 20` from the run |
 | `125 constructors` (8 mentions) | correct, and **asserted programmatically**: `arm64_cross_test.sh` greps for `125/125 constructors ran CLEAN` and fails loudly otherwise |
+
+Writing that table tripped the new check: quoting the wrong figure verbatim put a second
+`checks all N documented claims` string into the docs, and the claim compares every such figure it
+finds. The row now breaks the phrase with markdown emphasis so it reads the same and matches nothing
+— the same recursion as the host-path scan flagging the sentence that documented the host-path leak.
 
 Two of four had rotted, and both were counts nobody re-derives. The two that held are the two a
 script re-checks on every run — which is the argument for deriving numbers rather than typing them.
