@@ -85,7 +85,13 @@ run_one(){   # $1=label  $2=apk  $3=outfile
   local inst=fail
   if install_apk "$apk" 4; then inst=ok; fi
   say "  install=$inst"
-  [ "$inst" = ok ] || { bad "$label failed to install"; return 1; }
+  # echo -1 like the other two failure paths (lines below): the caller does
+  #     CN=$(run_one ... | tail -1)
+  # and then compares with -lt 0. Returning 1 without emitting -1 left CN holding whatever text
+  # happened to be last, so the verdict block would compare a message string with an integer.
+  # The run still failed overall (bad sets FAIL=1), but the VERDICT it printed would have been
+  # decided by a bash "integer expression expected" error rather than by the experiment.
+  [ "$inst" = ok ] || { bad "$label failed to install"; echo "-1"; return 1; }
   # Let the package manager finish tearing down the PREVIOUS install's task before launching.
   # Without this the freshly started process is killed ~11 ms in with
   # "Killing <pid> (adj -10000): remove task" - which produced a silent app, zero Firebase lines,
@@ -136,6 +142,13 @@ say ""
 say "== VERDICT =="
 say "  control token-registration attempts: ${CN:-0}"
 say "  shipped token-registration attempts: ${SN:-0}"
+# Refuse anything that is not an integer. Every failure path in run_one emits -1, but if a future
+one forgets, CN/SN would hold a message string and the comparisons below would be decided by a
+bash "integer expression expected" error — printing a confident verdict about an experiment that
+never produced a number. Fail loudly instead of guessing.
+case "${CN:-x}${SN:-x}" in
+  *[!0-9-]*) bad "an arm returned a non-numeric result (CN='${CN}' SN='${SN}') — verdict void" ;;
+esac
 if [ "${CN:-0}" -lt 0 ] || [ "${SN:-0}" -lt 0 ]; then
   bad "at least one arm failed to run - the comparison is void (see above)"
 elif [ "${CN:-0}" -eq 0 ]; then
