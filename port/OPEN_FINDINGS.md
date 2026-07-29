@@ -56,6 +56,55 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R29. Home-then-return works — and the first run of the test nearly filed a phantom EGL bug
+
+Backgrounding and resuming is the most common thing a user does to a running app, and no test here
+had ever done it. Every play run launches, plays and ends; none leaves and comes back.
+
+It is a real risk for this port. Android destroys the EGL surface when an activity stops and supplies
+a new one on resume, and `grep -rn 'surfaceDestroyed\|eglMakeCurrent' port/shim/src/` finds
+**nothing** — the shim passes GL through, and the surface lifecycle belongs to the engine's Java
+side. The original design notes list "EGL context lifecycle" as a top hazard for precisely this.
+
+`emu_background_resume.sh` measures **three** states rather than two, so it cannot fool itself:
+frames must be advancing *before* (or "it resumed" is a claim about a stalled app), must **stop**
+*during* (a Home key that did nothing would otherwise look like a flawless resume), and must advance
+again *after*.
+
+**The first run failed**, and the failure looked exactly like the hazard:
+
+```
+frames while backgrounded: 1501 -> 1501   [ OK ] rendering stopped
+pid after resume: 3068    frames 1501 -> 1501 over 15s
+[FAIL] frames are NOT advancing after the resume — the renderer did not recover the surface
+h_fatal: 0
+```
+
+Same process, no crash, renderer permanently stalled after a surface swap. That is a textbook EGL
+resume bug, and it would have been reported as one — except the script takes a screenshot, on the
+principle that *"frames advance" and "the game is visible" are different claims*.
+
+The screenshot showed **Android's `POST_NOTIFICATIONS` permission dialog** sitting over the game.
+The activity is not resumed while a system dialog holds focus, so the renderer was idle for a
+completely ordinary reason. Nothing to do with EGL.
+
+`lib_dialogs.sh` now dismisses that prompt — answering **"Don't allow"**, which is also the correct
+answer for a build shipping with push neutralised — and the re-run passes:
+
+```
+pid after resume: 3127    frames 2401 -> 2701 over 15s
+[ OK ] rendering resumed (+300 frames in 15s)
+(same process throughout — pid 3127, so this was a real resume, not a relaunch)
+h_fatal: 0  (9688 shim log lines, so this was measured)
+```
+
+`bg_resume_screen.png` shows level `0-1` drawn with the game's own **pause menu** over it — the
+correct behaviour: it paused when backgrounded and offers resume on return.
+
+So the surface swap is handled, the process survives, and the visible result is right. The lesson is
+the near-miss: a three-state frame measurement, careful about its own premises, still produced a
+confident and wrong diagnosis. Only the image settled it.
+
 ### R28. Saves survive a real device reboot, and the game reads them back — tested on the phone's OS
 
 Persistence was proven across an **app** restart only: `emu_save_test.sh` force-stops the process and

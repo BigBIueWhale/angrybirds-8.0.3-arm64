@@ -61,6 +61,13 @@ dismiss_system_dialogs() {
         _tap_button_labelled "$lbl" && sleep 1
     done
     for pass in 1 2; do
+        # "Don't allow" — Android 13+ POST_NOTIFICATIONS runtime prompt. It is NOT part of the
+        # launch sequence: it appeared for the first time when emu_background_resume.sh brought the
+        # app back from the background, sat modally over the game, and froze rendering because the
+        # activity is not resumed while a dialog holds focus. That looked exactly like an EGL surface
+        # failure on resume, and only the screenshot showed otherwise. "Don't allow" is also the
+        # correct answer for this build — it ships with push neutralised.
+        adb shell input tap 320 251 >/dev/null 2>&1; sleep 1
         adb shell input tap 510 190 >/dev/null 2>&1; sleep 1   # "Got it" — API 36 fullscreen notice (topmost)
         adb shell input tap 468 236 >/dev/null 2>&1; sleep 1   # "OK"     — older-Android notice, API 36 layout
         adb shell input tap 490 237 >/dev/null 2>&1; sleep 1   # "OK"     — older-Android notice, API 25/34 layout
