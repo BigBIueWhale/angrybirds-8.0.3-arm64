@@ -94,6 +94,26 @@ The capture was looked at, not only scored: it is the **LEVEL CLEARED** screen, 
 **44910**. So the library changes are clean on the platform that matters, and the port still plays and
 wins there.
 
+**The de-phone-home assertions were re-run for the same reason** (`emu_jni_exception_probe.sh`,
+abtest34, shipping config):
+
+```
+ASSERTION 1  no pending exception / JNI DETECTED ERROR / Runtime aborting     [ OK ]
+ASSERTION 2  app pid 2349
+               UnknownHostException  12 in the log, 0 from our pid            [ OK ]
+               SocketException        0 in the log, 0 from our pid            [ OK ]
+               ConnectException       0 in the log, 0 from our pid            [ OK ]
+               socket failed          0 in the log, 0 from our pid            [ OK ]
+ASSERTION 3  FlurryAgent reports ACCESS_NETWORK_STATE is not declared         [ OK ]
+             Facebook SDK reports no INTERNET permission granted              [ OK ]
+```
+
+Assertion 2 repays a careful read: **twelve** `UnknownHostException`s do appear in that log, raised by
+system components resolving names for their own reasons, and **none of them belong to our pid**. A
+bare "0 network errors on the device" would have been both false and unfalsifiable — attributing by
+pid is what turns it into evidence. Assertion 3 is the inverse: two bundled tracking SDKs
+independently notice, at runtime, that the permissions they need were stripped.
+
 ### R18. 16 KB pages are FINE. Android **36.1** is where this app stops being launchable — and it is not our doing
 
 Two things were tested here. One closes an open gap; the other opens a new one that matters more.
