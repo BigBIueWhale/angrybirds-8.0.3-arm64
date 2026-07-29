@@ -198,6 +198,21 @@ case_run longjmp    longjmp    "cpu.c loader.c dispatch.c sched.c galloc.c elf32
 case_run memcpy_br  ctors      "cpu.c loader.c dispatch.c sched.c galloc.c elf32.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c" dispatch.c \
   's/static uint64_t h_memcpy (dispatch_t\*d,mcur\*c){ heap_pin(d,"before","memcpy");/static uint64_t h_memcpy (dispatch_t*d,mcur*c){ return 0;/'
 
+# The four executed tests no mutation had ever shown capable of failing. Until now their "pass"
+# rested on the assumption that the test would notice — the premise this suite's own header says it
+# exists to remove. test_ninit had to be given a real assertion first: it returned 0 unconditionally.
+case_run boot_load  boot       "cpu.c loader.c elf32.c galloc.c dispatch.c sched.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c" loader.c \
+  's/return 0;$/return -1;/'
+
+case_run file_write file       "cpu.c loader.c dispatch.c sched.c galloc.c elf32.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c" bridge_file.c \
+  's/static uint64_t f_fwrite(cpu_t\*c,mcur\*u){/static uint64_t f_fwrite(cpu_t*c,mcur*u){ return 0;/'
+
+case_run libc_try   libc       "cpu.c loader.c dispatch.c sched.c galloc.c elf32.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c" bridge_libc.c \
+  's/^int libc_try(cpu_t \*c, const char \*name, mcur \*cur){/int libc_try(cpu_t *c, const char *name, mcur *cur){ return 0;/'
+
+case_run ninit_slots native_init "cpu.c loader.c dispatch.c sched.c galloc.c elf32.c ctype_tables.c marshal.c format.c bridge_gl.c bridge_asset.c bridge_libc.c bridge_file.c handle_table.c jni_passthrough.c" jni_passthrough.c \
+  's/for (uint32_t i=0;i<260;i++) gm_wr32(\&cpu->mem, JD_ENV_VT/for (uint32_t i=0;i<0;i++) gm_wr32(\&cpu->mem, JD_ENV_VT/'
+
 # The coverage gate is not a compiled module test — it is a python script that diffs the engine's
 # UND FUNC imports against the bridge tables — so it needs its own runner. It is worth covering here
 # because "UNBRIDGED: 0" is the strongest single claim this project makes about the shim: every
