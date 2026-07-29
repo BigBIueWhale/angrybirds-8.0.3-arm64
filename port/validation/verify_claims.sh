@@ -883,6 +883,29 @@ else
   fi
 fi
 
+echo "== CLAIM: no provenance row records a capture without its environment =="
+# A capture's row exists so it cannot drift from the build AND the environment that produced it. The
+# AVD column was silently empty on 11 of 13 rows because record_build() read ${ABSHIM_AVD:-} and
+# scripts that pick their AVD internally never export it. That is the difference between "won on
+# API 36" and "won on API 25" going unrecorded, which is most of the value of the ledger.
+#
+# Only 5-field rows are checked. Three-field rows predate the script/AVD columns; they are legacy,
+# not truncated, and are deliberately not backfilled (inferring a historical AVD would be inventing
+# provenance). A 5-field row with an empty 5th field is the regression this guards.
+PROV="reports/shots/provenance.tsv"
+if [ ! -f "$PROV" ]; then
+  skip "provenance environment (no provenance.tsv present)"
+else
+  PROVBAD=$(awk -F'\t' 'NF==5 && ($5=="" || $5=="<not-recorded>") {print "         " $1 " (script " $4 ") has no AVD recorded"}' "$PROV")
+  PROVOK=$(awk -F'\t' 'NF==5 && $5!="" && $5!="<not-recorded>" {n++} END{print n+0}' "$PROV")
+  if [ -n "$PROVBAD" ]; then
+    bad "a provenance row names a capture but not the environment it ran on:"
+    printf '%s\n' "$PROVBAD"
+  else
+    ok "every full provenance row records its AVD ($PROVOK row(s); legacy 3-field rows exempt)"
+  fi
+fi
+
 echo "== CLAIM: the screenshot index describes exactly the proofs that exist =="
 # PROOF_2/3/4 silently went stale for a day: they showed a binary that no longer existed, and
 # nothing noticed because nothing recorded what they were supposed to show. reports/shots/README.md

@@ -56,6 +56,40 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R24. The provenance ledger recorded which build a capture came from, but not which Android it ran on
+
+Committing one audio row exposed it: the AVD column was empty. `record_build()` read it from
+`${ABSHIM_AVD:-}`, and scripts that pick their AVD internally never export that variable
+(`emu_audio_modern.sh` → `abtest34`, `emu_16k_pagesize.sh` → `ab16k`). **Eleven of thirteen rows had
+no environment recorded at all.**
+
+That is most of the ledger's value. "Won on API 36" and "won on API 25" are very different claims
+about a phone running Android 16, and from the record they were indistinguishable.
+
+**Fixed at the source:** the AVD is now asked of the emulator — `adb emu avd name` — rather than
+inferred from a variable the caller may never have set, or may have set to something it did not
+launch. Verified against the raw protocol, which returns two lines (`abtest34\r`, `OK\r`), with a
+guard for the ordering where the status line lands first. Unknown values record `<not-recorded>`, so
+absence looks like absence instead of a formatting artefact.
+
+**Backfilled by re-running, not by inference.** Four rows (`playthrough`, `emu_fatal`, `interactive`,
+`modplay`) were missing their environment. Their scripts have known defaults and the README map lists
+them, so filling those in from the map was tempting — and would have been inventing provenance, the
+exact thing this file says is worse than admitting absence. Each capture was re-run instead, which
+refreshed the evidence as well as the row:
+
+```
+audiomod  abtest34     playthrough  abtest    emu_fatal  abtest
+modplay   abtest34     interactive  abtest    modplay36  ab36     regr36  ab36
+```
+
+`modplay`'s re-run reconfirmed its result in passing: WIN from pixels, `h_fatal` 0 across 7370 shim
+log lines.
+
+Guarded and mutation-proven: a 5-field row with an empty AVD fails the gate (`prov_env` blanks one),
+while legacy 3-field rows stay exempt because they predate the columns. **20/20 mutations detected,
+0 skipped.**
+
 ### R23. The second deliverable re-verified: the audio variant builds reproducibly and still wins
 
 `ONDEVICE.md` offers an **experimental audio-enabled variant** alongside the silent shipping build,

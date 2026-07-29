@@ -164,6 +164,18 @@ PYEOF
 }
 mut_libm() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_unlink_libm; }
 
+# Blank the AVD out of a full provenance row. This is exactly the state the ledger was found in:
+# eleven of thirteen rows recorded which build a capture came from but not which Android it ran on,
+# so "won on API 36" and "won on API 25" were indistinguishable from the record. Legacy 3-field rows
+# are exempt by design, so the mutation has to target a 5-field row to test the rule that exists.
+mut_prov_env() {
+    local f="$1/reports/shots/provenance.tsv"
+    [ -f "$f" ] || return 1
+    awk -F'\t' 'BEGIN{OFS="\t"} NF==5 && $5!="" && !done {$5=""; done=1} {print}' "$f" > "$f.tmp" || return 1
+    grep -qP '\t$' "$f.tmp" || return 1          # the blanked row must actually be blank
+    mv "$f.tmp" "$f"
+}
+
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
 mut_perf()        { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_perf; }
 mut_payload()     { repack_member "$1" lib/arm64-v8a/libengine32.so          m_flip_byte;  }
@@ -373,6 +385,7 @@ case_run camera        "without resetting the camera"                  mut_camer
 case_run align16k      "NOT 16 KB-aligned"                             mut_align
 case_run stale_doc     "quotes a superseded measurement"               mut_stale
 case_run libm_gone     "libm.so MISSING"                               mut_libm
+case_run prov_env      "not the environment it ran on"                 mut_prov_env
 
 echo
 echo "== control: the real tree must still PASS =="
