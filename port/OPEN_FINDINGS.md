@@ -91,8 +91,27 @@ argv still carries `-soundhw hda`. The emulator builds that argv in-process and 
 so there is no command line to intercept.
 
 **Status: not an architecture limitation, and not a boot either.** The blocker is one unconditional
-device option in emulator 36.6.11's arm64 argv generation. The untried next step is an older
-emulator — ARM images on x86 hosts were routine for years — which needs a network download.
+device option in emulator 36.6.11's arm64 argv generation.
+
+**The obvious next step was tried and FAILED.** ARM images on x86 hosts were routine for years, so an
+older emulator looked promising. Downloaded 31.3.10 (build 8807927) and pointed it at the same AVD:
+
+```
+PANIC: Avd's CPU Architecture 'arm64' is not supported by the QEMU2 emulator on x86_64 host.
+```
+
+The launcher check is present there too, so the hypothesis is disproved for that version rather than
+left hanging. Worth recording precisely *how* it nearly went the other way: the first look at 31.3.10
+showed `Found AVD target architecture: arm64` and no refusal inside the observation window, and I
+wrote down that it had "proceeded past the point where 36.6.11 fatals". It had not — the PANIC simply
+comes later, after SDK-root resolution, and the run had died on a `Broken AVD system path` error
+first (the image has no `platforms/` directory). Absence of the symptom was not absence of the check;
+this is the third time in this investigation that reading has cost more than measuring.
+
+What remains untried: an emulator old enough to still ship the pre-QEMU2 "classic" engine, and
+upstream QEMU with an arm64 GSI — noting that the ranchu images depend on goldfish devices that
+upstream QEMU does not have. Neither is close to free, and neither is needed for the deliverable to
+be correct; they only bear on executing it *here* rather than on the phone.
 
 Two traps the probe pre-empts, each of which would have produced a confident wrong answer. The
 committed arm64 AVD specifies **`hw.ramSize=96M`**, which cannot boot Android 11 on any
