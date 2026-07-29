@@ -64,13 +64,22 @@ unmodified, inside an ARM32→ARM64 emulation shim (Unicorn). targetSdk 26, self
   records and all 8290 `nativeInit` records identical** between the two hosts (sha256
   `a4407f9f28cae7f1…` and `3f7c7bcc30409d06…`).
 
-**On first launch the A56 will show you TWO system dialogs, stacked.** Both are normal and neither
-means anything is wrong:
+**On first launch the A56 will show you TWO system dialogs, stacked**, and a THIRD may appear later.
+All are normal and none means anything is wrong:
 
 1. **"Viewing full screen — to exit, swipe down from the top of your screen"** → tap **Got it**.
    This is Android 16's immersive-mode notice. It appears *on top*, so dismiss it first.
 2. **"This app was built for an older version of Android"** → tap **OK**. Normal for a
    targetSdk=26 app; the game runs fine.
+3. **"Allow Angry Birds to send you notifications?"** → tap **Don't allow**. This one does not
+   necessarily appear at launch — it showed up when the game was brought back from the background —
+   and it is worth knowing about because **while it is up the game looks frozen**: Android does not
+   resume an activity while a system dialog holds focus, so rendering stops until you answer.
+
+   Declining is the right answer here and costs you nothing: this build ships with push messaging
+   neutralised, so the only thing that could use it is the game's own local reminders. The permission
+   is **not** in the APK's manifest and cannot be stripped from it — Android 13+ raises this prompt
+   itself for any app targeting below SDK 33 that creates a notification channel.
 
 The second dialog is the well-known one. The first only exists on Android 16 — it does not appear
 on Android 14 — and it was found by running the playthrough on an API 36 image rather than assuming
