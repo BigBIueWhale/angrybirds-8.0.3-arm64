@@ -1146,11 +1146,35 @@ are formed `PC + offset` at runtime rather than stored absolutely, and `reports/
 `.plt` and `.text` — its `ldr` annotations name the pool slot, not the word inside it. So "which code
 tests this extension" is not answerable by grepping addresses.
 
-**Net for the phone:** if the A56 advertises `GL_OES_vertex_buffer_object` — plausible, it is an ancient
-and near-universal mobile extension — the engine will use VBOs and five bridges will run that may never
-have run here. They exist, they are real implementations, and `ONDEVICE.md` already tells you to diff
-the device's extension list against `reports/gl_extensions_rig.txt`, which is exactly how you would
-find out. That diff is now worth doing deliberately rather than as a curiosity.
+**CORRECTION to the paragraph that stood here.** It said the A56 advertising
+`GL_OES_vertex_buffer_object` was "plausible — an ancient and near-universal mobile extension", making
+the VBO path a likely device-first-run. That is wrong, and the rig had already said so in its own
+output before I wrote it:
+
+```
+gl_caps.py:  not automatically a defect — GL_OES_vertex_buffer_object is a GLES1-era name
+```
+
+`GL_OES_vertex_buffer_object` is an **OpenGL ES 1.x** extension. Buffer objects are **core** in ES 2.0,
+so no ES2 driver advertises the name — not SwiftShader, and not Mali/Xclipse. And this engine is
+unambiguously an ES2 client: it imports `glCreateShader`, `glCompileShader`, `glLinkProgram`,
+`glUseProgram`, `glVertexAttribPointer`. So the extension check fails identically on the rig and on the
+phone, and **rig and device agree on this branch** rather than diverging.
+
+Tested rather than reasoned, too: re-running the capture with `ABSHIM_GPU=guest` (a different GL
+backend — the flag is now overridable, default unchanged) returns the **identical** list, 51 extensions
+/ 1488 bytes. The backend cannot change it, because the shim dlopens the *guest's* `libGLESv2` either
+way.
+
+**Net for the phone, restated honestly:** the VBO family is bridged and remains untested here, but there
+is no longer a reason to expect the phone to take that path either. What survives from this entry is
+the bounded part — the five bridges exist, the coverage gate guarantees nothing on that path falls
+through to an `UNIMPL→0` stub — plus the two method notes below, which are the durable value. The
+extension diff in `ONDEVICE.md` is worth running for the *other* 51 entries, not for this one.
+
+**Process note.** `gl_caps.py` already contained the GLES1 analysis and prints it every run. I built a
+finding on top of its data without reading its conclusion, then had to correct my own entry. The rig
+frequently already knows — read its output to the end before adding to it.
 
 ### R48. The 36.1 failure is located: the launcher FILTER is dropped, not the activity — and Android logs no reason
 

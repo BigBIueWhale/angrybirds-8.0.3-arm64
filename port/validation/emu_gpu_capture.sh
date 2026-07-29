@@ -51,7 +51,12 @@ say "  capturing with: $(basename "$APK")  sha256 $(sha256sum "$APK" | cut -c1-1
 # NOT a hardcoded "API 34": $AVD is parameterised, so the version is read FROM THE DEVICE below.
 say "== boot $AVD =="
 emulator -avd "$AVD" -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
-    -gpu swiftshader_indirect >/tmp/emu.log 2>&1 &
+    -gpu "${ABSHIM_GPU:-swiftshader_indirect}" >/tmp/emu.log 2>&1 &
+# GPU backend overridable, default UNCHANGED. The extension list the engine sees comes from the HOST
+# driver via the shim's glGetString passthrough, so a different backend can answer differently — and
+# R11/R49 turn on exactly one extension the rig lacks (GL_OES_vertex_buffer_object) that the A56
+# plausibly has. Varying this is the only way to exercise the engine's VBO path without instrumenting
+# the shipping shim.
 adb wait-for-device
 for i in $(seq 1 120); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null|tr -d '\r')" = "1" ] && break; sleep 5; done
 say "  android $(adb shell getprop ro.build.version.release 2>/dev/null|tr -d '\r') (API $(adb shell getprop ro.build.version.sdk 2>/dev/null|tr -d '\r'))"

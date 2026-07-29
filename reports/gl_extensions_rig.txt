@@ -1,7 +1,7 @@
 # GL_EXTENSIONS as returned to the engine, one per line, sorted.
 # This is the BASELINE to diff a device capture against: the engine branches on
 # this string (OPEN_FINDINGS R11), so a difference is a different code path.
-# source capture: gpucap_abshim.txt
+# source capture: gpucapguest_abshim.txt
 # 51 extensions, 1488 bytes.
 ANDROID_EMU_CHECKSUM_HELPER_v1
 ANDROID_EMU_YUV_Cache
