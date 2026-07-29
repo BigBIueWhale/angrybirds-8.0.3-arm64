@@ -108,6 +108,13 @@ ASSERTION 3  FlurryAgent reports ACCESS_NETWORK_STATE is not declared         [ 
              Facebook SDK reports no INTERNET permission granted              [ OK ]
 ```
 
+**The commands `ONDEVICE.md` tells the user to run were re-executed too**, on `ab36` — the phone's own
+OS — via `emu_doc_verify.sh`: the no-phone-home `dumpsys` grep (with its positive control, *"the same
+command DOES find INTERNET on a package that has it"*), the "no ESTABLISHED socket while it runs"
+check, the save-inspection tip, and the ABI check. `DONE (FAIL=0)`. This matters more than it sounds:
+the remaining work is a physical install, so the instructions are the handoff, and instructions that
+have never been executed are just prose.
+
 **Layer 4 (the Firebase/FCM kill-switch) was re-run as well**, on the GMS image — the only tier where
 it can be exercised at all, since FCM registration is performed by Google Play Services on the app's
 behalf:
