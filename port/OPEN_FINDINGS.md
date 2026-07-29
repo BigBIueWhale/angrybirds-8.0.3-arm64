@@ -56,6 +56,41 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R32. The de-phone-home runtime proof was measured with the radios off
+
+Every script in this rig sets `airplane_mode_on 1` — 36 of them. For most that is right: it keeps
+runs deterministic. For **`emu_jni_exception_probe.sh`** it quietly undermined the headline result.
+
+That script carries the strongest runtime evidence for clause 3 of the brief: *the app's own pid
+performs no name resolution and opens no sockets*. Asserting that on a device whose radios are off
+proves very little — the environment guarantees the answer whether or not the port has anything to do
+with it. The check was sound and pid-attributed; the **conditions** made it easy.
+
+Re-run with `ABSHIM_NETWORK=1`, which leaves the guest's network stack up:
+
+```
+network: LEFT UP (ABSHIM_NETWORK=1) — the socket/DNS assertions are about the app, not about airplane mode
+app pid = 3355
+UnknownHostException: 12 in the log, 0 from our pid
+SocketException:       0 in the log, 0 from our pid
+ConnectException:      0 in the log, 0 from our pid
+socket failed:         0 in the log, 0 from our pid
+FlurryAgent reports ACCESS_NETWORK_STATE is not declared
+Facebook SDK reports no INTERNET permission granted
+```
+
+The **12 `UnknownHostException`s are the control**, and they are better than a designed one: with the
+stack up, system components genuinely attempted DNS and failed for want of external routing. Name
+resolution was demonstrably being attempted on that device, during that run — and none of it was
+ours.
+
+**What this still is not.** Every container runs `--network none` by policy, so the emulator's NAT has
+nowhere to go: this is a live network *stack*, not live internet. That is adequate for the claim being
+made — the app holds no `INTERNET` permission, so the kernel refuses socket creation outright with
+`EPERM` regardless of reachability — but it makes this a stronger test rather than a complete one, and
+the script says so in its own comments rather than leaving a reader to assume otherwise. The default
+remains airplane mode; the flag selects the stronger form.
+
 ### R31. Ten capture scripts wrote images with no provenance — two of them produced cited PROOFs
 
 Wiring provenance into this session's three lifecycle tests raised the obvious question: how many

@@ -54,7 +54,28 @@ emulator -avd "$AVD" -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
 adb wait-for-device
 for i in $(seq 1 200); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null|tr -d '\r')" = 1 ] && break; sleep 2; done
 sleep 10
-adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
+# NETWORK STATE — this is load-bearing for what the run can conclude.
+#
+# Every script in this rig sets airplane mode on, and for most that is right: it keeps runs
+# deterministic. For THIS script it quietly weakens the headline result. Asserting "the app performs
+# no name resolution and opens no sockets" on a device whose radios are off proves very little — the
+# environment guarantees the answer whether or not the port has anything to do with it.
+#
+# ABSHIM_NETWORK=1 leaves the guest's network stack UP, so the assertions below are about the app
+# rather than about airplane mode. What that cannot provide here is real internet: every container
+# runs `--network none` by policy, so the emulator's NAT has nowhere to go. That is fine for the
+# claim being made — the app has no INTERNET permission, so the kernel refuses socket creation
+# outright (EPERM) regardless of whether anything is reachable — but it is the reason this is a
+# stronger test rather than a complete one, and it is written down instead of glossed.
+if [ "${ABSHIM_NETWORK:-0}" = "1" ]; then
+    adb shell settings put global airplane_mode_on 0 >/dev/null 2>&1
+    adb shell svc wifi enable >/dev/null 2>&1
+    adb shell svc data enable >/dev/null 2>&1
+    echo "  network: LEFT UP (ABSHIM_NETWORK=1) — the socket/DNS assertions are about the app, not about airplane mode"
+else
+    adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
+    echo "  network: airplane mode ON (default) — re-run with ABSHIM_NETWORK=1 for the stronger form"
+fi
 # see lib_install.sh: this used to be a bare 4x retry on ANY failure, which neither waits for the
 # package service to be publishable nor tells a transient service error apart from a real
 # rejection. Both cost a 15-minute capture run on 2026-07-28.
