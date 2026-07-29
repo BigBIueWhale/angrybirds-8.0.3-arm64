@@ -25,7 +25,11 @@ int main(void){
     printf("=== boot test (load real engine into Unicorn) ===\n");
     const char*path=getenv("ABSHIM_ENGINE_SO");
     if(!path) path="work803/libv7/libAngryBirdsClassic.so";
-    FILE*fp=fopen(path,"rb"); if(!fp){ printf("  SKIP: no engine at %s\n",path); return 0; }
+    FILE*fp=fopen(path,"rb");
+    /* NOT return 0: run_tests.sh guarantees the engine exists (it FATALs if extraction fails),
+     * so a missing engine here means the harness is wrong, and "could not test" must never exit
+     * with the code that means "passed". */
+    if(!fp){ printf("  FAIL: no engine at %s (set ABSHIM_ENGINE_SO)\n",path); return 1; }
     fseek(fp,0,SEEK_END); long len=ftell(fp); fseek(fp,0,SEEK_SET);
     uint8_t*elf=malloc(len); if(fread(elf,1,len,fp)!=(size_t)len){printf("read fail\n");return 1;} fclose(fp);
 

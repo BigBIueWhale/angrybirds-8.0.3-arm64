@@ -40,7 +40,7 @@ int main(int argc,char**argv){
     if (!path) path = "work803/libv7/libAngryBirdsClassic.so";
 
     FILE*f=fopen(path,"rb");
-    if(!f){ printf("  SKIP: engine .so not found at %s\n",path); return 0; }
+    if(!f){ printf("  FAIL: engine .so not found at %s (set ABSHIM_ENGINE_SO)\n",path); return 1; }
     fseek(f,0,SEEK_END); long len=ftell(f); fseek(f,0,SEEK_SET);
     uint8_t*buf=malloc(len); if(fread(buf,1,len,f)!=(size_t)len){printf("  FAIL: read\n");return 1;} fclose(f);
     printf("  loaded %ld bytes from %s\n",len,path);

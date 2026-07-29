@@ -13,7 +13,9 @@ int main(void){
     printf("=== ctor execution test ===\n");
     const char*path=getenv("ABSHIM_ENGINE_SO");
     if(!path) path="work803/libv7/libAngryBirdsClassic.so";
-    FILE*fp=fopen(path,"rb"); if(!fp){ printf("  SKIP: no engine\n"); return 0; }
+    FILE*fp=fopen(path,"rb");
+    /* see test_boot.c: a missing engine is a harness failure, not a pass. */
+    if(!fp){ printf("  FAIL: no engine at %s (set ABSHIM_ENGINE_SO)\n",path); return 1; }
     fseek(fp,0,SEEK_END); long len=ftell(fp); fseek(fp,0,SEEK_SET);
     uint8_t*elf=malloc(len); if(fread(elf,1,len,fp)!=(size_t)len){return 1;} fclose(fp);
 
