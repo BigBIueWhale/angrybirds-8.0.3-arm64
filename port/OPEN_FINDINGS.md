@@ -56,6 +56,42 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R26. A security-relevant check had never been able to fail — `git grep` was aborting, silently
+
+The gate's header asserts *"Every check in this file has now been deliberately broken at least
+once"*, and notes that the sentence "used to be TAKEN ON TRUST". With 29 claims and 21 automated
+mutations, it was worth testing again rather than inheriting.
+
+Writing the missing case for **"no tracked file names a build-host path"** exposed that the claim
+could not fail at all. It runs
+
+```
+git grep -InE '/home/[a-z_][a-z0-9_-]*/|/root/[a-z]|/Users/[A-Za-z]' -- . 2>/dev/null
+```
+
+inside a container, as root, against a bind mount owned by the host user — so git aborts with
+**"detected dubious ownership in repository at '/work'"**, `2>/dev/null` swallows it, the variable
+comes back empty, and the claim reports OK. A deliberately planted `/home/<user>/…` path in a tracked
+file was **not detected**.
+
+This matters beyond bookkeeping: the repository is **public**, and this is the check that stops the
+build machine's paths being published.
+
+The fix was already written down elsewhere in the same file. The doc-referenced-files claim carries
+`-c safe.directory=*` and a comment saying *a check that cannot tell "not tracked" from "cannot ask"
+is worse than no check* — this claim is precisely that check. It now passes `-c safe.directory='*'`
+and **fails loudly if git errors**, rather than treating an unanswerable question as a clean answer.
+
+Two details worth keeping:
+
+- With the scan working, it immediately flagged **`mutation_test.sh` itself** — the new fixture wrote
+  a literal `/home/somebuilduser/…` into a tracked file. The fixture now assembles the path at
+  runtime from two halves so neither matches the pattern. A test for a leak must not be a leak.
+- The vacuity audit then flagged the new case, correctly: while the real tree was failing that claim,
+  its expected text appeared in the "clean" output. Fixing the fixture cleared both.
+
+**22/22 mutations detected, 0 skipped**, vacuity audit clean, control passing.
+
 ### R25. Two of twenty-one mutation cases could not fail — now audited mechanically
 
 Finding one vacuous case raised the obvious question: how many others? Rather than reason about it,

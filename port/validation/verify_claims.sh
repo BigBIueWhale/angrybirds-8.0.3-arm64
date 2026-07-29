@@ -399,9 +399,22 @@ echo "== CLAIM: no tracked file names a build-host path =="
 # ("SKIP: no engine at /home/...") by any test binary run directly.
 # Only build-host prefixes: Android device paths like /data/data/... are legitimate and appear
 # throughout the docs.
+# `-c safe.directory=*`, and the exit status is CHECKED. This ran inside a container as root against
+# a bind mount owned by the host user, so git aborted with "detected dubious ownership", the
+# 2>/dev/null swallowed it, HP came back empty and the claim reported OK — on every run, for years,
+# without ever being able to fail. A deliberately planted /home/<user> path in a tracked file was NOT
+# detected, which is how this surfaced.
+#
+# The check below it (doc-referenced files) already carries this exact fix and says in its own
+# comment that a check unable to tell "no matches" from "cannot ask" is worse than no check. This one
+# is that check.
 if command -v git >/dev/null 2>&1 && [ -d .git ]; then
-  HP=$(git grep -InE '/home/[a-z_][a-z0-9_-]*/|/root/[a-z]|/Users/[A-Za-z]' -- . 2>/dev/null | head -5)
-  if [ -n "$HP" ]; then
+  HPERR=$(git -c safe.directory='*' grep -InE '/home/[a-z_][a-z0-9_-]*/|/root/[a-z]|/Users/[A-Za-z]' -- . 2>&1 >/dev/null)
+  HP=$(git -c safe.directory='*' grep -InE '/home/[a-z_][a-z0-9_-]*/|/root/[a-z]|/Users/[A-Za-z]' -- . 2>/dev/null | head -5)
+  HPRC=$?
+  if [ -n "$HPERR" ] && [ -z "$HP" ]; then
+    bad "the host-path scan could not run (git said: ${HPERR%%$'\n'*}) — NOT measured"
+  elif [ -n "$HP" ]; then
     bad "tracked files name a build-host path:"; printf '%s\n' "$HP" | sed 's/^/         /'
   else
     ok "no /home/<user>, /root or /Users path in any tracked file"

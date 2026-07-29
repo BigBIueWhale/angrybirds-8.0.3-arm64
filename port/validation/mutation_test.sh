@@ -235,6 +235,34 @@ mut_proof_bytes() {
     printf '\x00' | dd of="$f" bs=1 seek=64 conv=notrunc status=none || return 1
 }
 
+# Leak a build-host path into a tracked file. This claim exists because the repo is PUBLIC: a stray
+# /home/<user>/... in a committed file discloses the machine that built it. It had no automated case,
+# so nothing showed it could fire.
+mut_hostpath_tracked() {
+    local f="$1/port/REPRODUCE.md"
+    [ -f "$f" ] || return 1
+    cp "$f" "$f.mut" && rm -f "$f" && mv "$f.mut" "$f" || return 1   # break the cp -al hard link
+    # ASSEMBLED AT RUNTIME, deliberately. Writing the literal path here would put it in a TRACKED
+    # file and the very claim under test would flag mutation_test.sh itself — which it did, the first
+    # time this was written. Split so neither half matches /home/<user>/.
+    local h='/ho' m='me/somebuilduser/angrybirds/port'
+    printf '\nBuilt from %s%s on the author machine.\n' "$h" "$m" >> "$f"
+    grep -q "${h}${m}" "$f" || return 1
+}
+
+# Same leak, but inside the shipped ARTIFACT rather than a tracked file — a path baked into the shim
+# by a careless compile would ship to every user. Also had no automated case.
+mut_hostpath_artifact() {
+    local tmp; tmp=$(mktemp -d)
+    ( cd "$tmp" && unzip -o -q "$1/out/angrybirds-8.0.3-arm64.apk" lib/arm64-v8a/libAngryBirdsClassic.so ) || return 1
+    local h='/ho' m='me/somebuilduser/angrybirds/port/shim/src'   # split: see mut_hostpath_tracked
+    printf '%s%s\x00' "$h" "$m" >> "$tmp/lib/arm64-v8a/libAngryBirdsClassic.so"
+    local apk="$1/out/angrybirds-8.0.3-arm64.apk" body
+    body=$(cat "$apk"); rm -f "$apk"; printf '%s' "$body" > "$apk" 2>/dev/null || cp "$apk" "$apk" 2>/dev/null
+    ( cd "$tmp" && zip -q "$1/out/angrybirds-8.0.3-arm64.apk" lib/arm64-v8a/libAngryBirdsClassic.so ) || return 1
+    rm -rf "$tmp"
+}
+
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
 mut_perf()        { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_perf; }
 mut_payload()     { repack_member "$1" lib/arm64-v8a/libengine32.so          m_flip_byte;  }
@@ -449,6 +477,7 @@ case_run stale_doc     "a doc quotes a superseded measurement as current" mut_st
 case_run libm_gone     "libm.so MISSING"                               mut_libm
 case_run prov_env      "not the environment it ran on"                 mut_prov_env
 case_run proof_bytes   "does not match the bytes the index recorded"   mut_proof_bytes
+case_run hostpath_src  "tracked files name a build-host path"          mut_hostpath_tracked
 
 echo
 echo "== control: the real tree must still PASS =="
