@@ -751,6 +751,44 @@ else
   printf "         drifts off the level and the run silently measures nothing: %s\n" "$CAMFAIL"
 fi
 
+echo "== CLAIM: every library ANDROID loads is 16 KB page-aligned =="
+# The A56 is a 64-bit Android 15+ era device, where the loader REFUSES a shared object whose LOAD
+# segments are not 16 KB-aligned — dlopen fails and the app dies at launch. Proven to be enforced,
+# not theoretical: emu_dlopen_pagesize.sh runs a deliberately 4 KB-aligned binary on a 16 KB kernel
+# and it segfaults, while the shim loads (DLOPEN-OK).
+#
+# Only the AArch64 shim is checked, and the exemption is the interesting part. lib/arm64-v8a/ also
+# contains THREE ARM 32-bit payloads (libengine32/libjs32/libadcolony32) at 4 KB alignment. They are
+# exempt because nothing ever hands them to bionic: jni_entry.c takes them with open()+fstat()+mmap()
+# and maps them into Unicorn's address space itself, the shim's only real dlopen calls target system
+# libraries (libandroid.so, libGLESv2.so), and the guest-side dlopen bridge returns 0. Verified by
+# reading the source, not assumed from the file names — and empirically the APK installs on a 16 KB
+# image, so the installer does not object to them either.
+ALIGN_BAD=""; ALIGN_OK=0
+for APK in out/angrybirds-8.0.3-arm64.apk out/angrybirds-8.0.3-arm64-audio.apk; do
+  [ -f "$APK" ] || continue
+  T=$(mktemp -d); unzip -o -q "$APK" 'lib/arm64-v8a/*.so' -d "$T" 2>/dev/null
+  for f in "$T"/lib/arm64-v8a/*.so; do
+    [ -f "$f" ] || continue
+    readelf -hW "$f" 2>/dev/null | grep -q "AArch64" || continue      # payloads are not Android's to load
+    for a in $(readelf -lW "$f" 2>/dev/null | awk '/LOAD/{print $NF}' | sort -u); do
+      if [ $(( a )) -lt 16384 ]; then
+        ALIGN_BAD="$ALIGN_BAD $(basename "$APK"):$(basename "$f")=$a"
+      else
+        ALIGN_OK=$((ALIGN_OK+1))
+      fi
+    done
+  done
+  rm -rf "$T"
+done
+if [ -n "$ALIGN_BAD" ]; then
+  bad "an AArch64 library is NOT 16 KB-aligned — it will fail to dlopen on the A56:$ALIGN_BAD"
+elif [ "$ALIGN_OK" -gt 0 ]; then
+  ok "every AArch64 library Android loads is >=16 KB aligned ($ALIGN_OK LOAD segment(s) checked)"
+else
+  skip "16 KB alignment (no arm64 APK present to check)"
+fi
+
 echo "== CLAIM: the screenshot index describes exactly the proofs that exist =="
 # PROOF_2/3/4 silently went stale for a day: they showed a binary that no longer existed, and
 # nothing noticed because nothing recorded what they were supposed to show. reports/shots/README.md

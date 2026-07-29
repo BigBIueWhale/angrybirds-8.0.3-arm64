@@ -105,6 +105,30 @@ m_append_diag()  { printf 'GALLOC-CORRUPT' >> "$1"; }
 m_append_perf()  { printf '[perf-split]'   >> "$1"; }
 m_flip_byte()    { printf '\x00' | dd of="$1" bs=1 seek=64 conv=notrunc status=none; }
 
+# Rewrite the AArch64 shim's PT_LOAD p_align from 16 KB to 4 KB. That is precisely the defect that
+# makes a library un-loadable on a 16 KB-page device: emu_dlopen_pagesize.sh shows a 4 KB-aligned
+# binary segfaulting on such a kernel while the shim loads. The mutation edits the ELF program
+# headers in place — same size, no offsets move — so nothing else about the APK changes.
+m_align4k() {
+    python3 - "$1" <<'PYEOF'
+import sys, struct
+p = sys.argv[1]
+b = bytearray(open(p, 'rb').read())
+assert b[:4] == b'\x7fELF' and b[4] == 2, "not ELF64"
+phoff  = struct.unpack_from('<Q', b, 0x20)[0]
+phentsize, phnum = struct.unpack_from('<HH', b, 0x36)
+n = 0
+for i in range(phnum):
+    off = phoff + i * phentsize
+    if struct.unpack_from('<I', b, off)[0] == 1:            # PT_LOAD
+        struct.pack_into('<Q', b, off + 48, 0x1000)         # p_align -> 4 KB
+        n += 1
+assert n, "no PT_LOAD segments found — mutation would be a no-op"
+open(p, 'wb').write(bytes(b))
+PYEOF
+}
+mut_align() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_align4k; }
+
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
 mut_perf()        { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_perf; }
 mut_payload()     { repack_member "$1" lib/arm64-v8a/libengine32.so          m_flip_byte;  }
@@ -311,6 +335,7 @@ case_run identity      "identity CHANGED by the conversion"           mut_identi
 case_run doc_hash      "documented SHA-256 does not match the artifact"  mut_dochash
 case_run signer        "signed by an UNEXPECTED key"                     mut_signer
 case_run camera        "without resetting the camera"                  mut_camera
+case_run align16k      "NOT 16 KB-aligned"                             mut_align
 
 echo
 echo "== control: the real tree must still PASS =="

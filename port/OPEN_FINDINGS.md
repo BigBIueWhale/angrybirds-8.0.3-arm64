@@ -108,6 +108,29 @@ Row **C** is what makes row A mean anything: it shows this kernel genuinely **en
 refusing a 4 KB-aligned binary that runs fine on the 4 KB image. Row **B** shows the tester works at
 all. So: the enforcement is real, and **the shim loads under it**.
 
+**And the deliverable itself was audited, not just the x86 proxy.** The probe above loads the *x86*
+shim, because that is what runs on an x86_64 emulator. What ships is the arm64 APK, so its libraries
+were checked directly:
+
+```
+lib/arm64-v8a/libAngryBirdsClassic.so   align=0x4000   AArch64     <- the only one Android dlopens
+lib/arm64-v8a/libengine32.so            align=0x1000   ARM (32)
+lib/arm64-v8a/libjs32.so                align=0x1000   ARM (32)
+lib/arm64-v8a/libadcolony32.so          align=0x1000   ARM (32)
+```
+
+Three 4 KB-aligned libraries sit in an arm64 directory, which looks alarming and is not. Nothing
+hands them to bionic: `jni_entry.c` takes the payload with `open()` + `fstat()` + `mmap()` and maps it
+into Unicorn's own address space, the shim's only real `dlopen` calls target system libraries
+(`libandroid.so`, `libGLESv2.so`), and the guest-side `dlopen` bridge returns 0 so emulated ARM32 code
+cannot load anything either. That was read out of the source rather than inferred from file names,
+and the APK does install on the 16 KB image, so the installer does not object to them either.
+
+Guarded in `verify_claims.sh` — every **AArch64** library in the shipped APKs must have all `LOAD`
+segments aligned to at least 16 KB — with the ARM32 payloads exempt for the reason above. The guard
+is proven able to fail: `mutation_test.sh`'s `align16k` case rewrites the shim's `p_align` from
+`0x4000` to `0x1000` in place and the gate catches it (17/17 mutations detected, 0 skipped).
+
 That control also caught a mistake before it became a finding. The first tester was built without
 `-Wl,-z,max-page-size=16384`, so the *tester itself* was 4 KB-aligned and segfaulted on exec — which
 looked exactly like "the shim fails to load on 16 KB". Only B, dlopening a system library that must
