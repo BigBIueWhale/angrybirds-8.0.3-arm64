@@ -56,6 +56,38 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R25. Two of twenty-one mutation cases could not fail — now audited mechanically
+
+Finding one vacuous case raised the obvious question: how many others? Rather than reason about it,
+it is decidable — a case is vacuous exactly when the text it expects already appears in the gate's
+**clean** output, because then it reports "detected" whether or not its mutation did anything.
+
+Running that comparison over every registered case found a second one immediately:
+
+| case | expected | why it could not fail |
+|---|---|---|
+| `stale_doc` | `quotes a superseded measurement` | the wording of the claim's **header**, printed every run — and a `mut_stale` name collision meant it ran the *provenance* mutation anyway |
+| `sockets` | `network-capable symbol` | the wording of that claim's **OK** line: *"shim imports NO network-capable symbol"* |
+
+`sockets` is the older and worse of the two: it is the check that the shipped shim imports nothing
+network-capable — one of the four de-phone-home layers — and its mutation has been reporting success
+without ever demonstrating the check fires. The correct expectation is the failure text, *"the
+socket-import scan failed"*, and with that it does detect.
+
+**The audit is now permanent.** `mutation_test.sh` runs the gate once on the unmutated tree before
+any case and refuses to proceed if any case's expected text appears in that output. Proven able to
+fail: reintroducing the old `sockets` wording in a scratch copy produces
+
+```
+*** VACUOUS CASE(S): sockets — their expected text appears in the CLEAN gate output,
+    so they would report 'detected' with no mutation applied.
+```
+
+and a non-zero return. **21/21 mutations detected, 0 skipped**, control passing, audit clean.
+
+The general rule, now enforced rather than remembered: **a mutation must expect the `[FAIL]` text, never
+a string the claim also prints when it passes.**
+
 ### R24. The provenance ledger recorded which build a capture came from, but not which Android it ran on
 
 Committing one audio row exposed it: the AVD column was empty. `record_build()` read it from

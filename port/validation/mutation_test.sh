@@ -86,6 +86,33 @@ case_run() {
     rm -rf "$WORK"
 }
 
+# VACUITY AUDIT — run BEFORE any case, because a case that cannot fail is worse than a missing one.
+#
+# Two cases were found passing without their mutation doing anything. `stale_doc` expected a string
+# that also appears in its claim's HEADER line (printed every run, pass or fail) AND was wired to the
+# wrong function through a name collision. `sockets` expected "network-capable symbol", which is the
+# wording of that claim's **OK** line: "shim imports NO network-capable symbol".
+#
+# Both are the same mistake — an expectation that the CLEAN gate already prints. That is mechanically
+# detectable, so it is detected here rather than reasoned about: run the gate once on the unmutated
+# tree and refuse to proceed if any case's expected text appears in that output.
+vacuity_audit() {
+    local clean bad_cases="" name exp rest
+    clean=$(run_gate "$REPO")
+    while read -r name rest; do
+        exp=$(printf '%s' "$rest" | sed -n 's/^ *"\([^"]*\)".*/\1/p')
+        [ -n "$exp" ] || continue
+        case "$clean" in *"$exp"*) bad_cases="$bad_cases $name" ;; esac
+    done < <(grep '^case_run' "$0" | sed 's/^case_run *//')
+    if [ -n "$bad_cases" ]; then
+        echo "*** VACUOUS CASE(S):$bad_cases — their expected text appears in the CLEAN gate output,"
+        echo "    so they would report 'detected' with no mutation applied. Fix before trusting this run."
+        return 1
+    fi
+    echo "  [ OK ] no case expects text the clean gate already prints"
+    return 0
+}
+
 # --- mutations. Each rm's before writing: the copy is hard-linked to the real repo. -------------
 
 # Repack an APK with one member replaced by a mutated version of itself.
@@ -394,10 +421,13 @@ mut_camera() {
     rm -f "$f"; mv "$f.tmp" "$f"
 }
 
+echo "== vacuity audit: can every case only pass because of its mutation? =="
+vacuity_audit || VACUOUS=1
+
 case_run diagnostics   "diagnostic string(s) leaked into release"       mut_diagnostics
 case_run perf          "contains perf instrumentation"                  mut_perf
 case_run payload       "libAngryBirdsClassic.so != libengine32.so"      mut_payload
-case_run sockets       "network-capable symbol"                    mut_sockets
+case_run sockets       "the socket-import scan failed"                 mut_sockets
 case_run manifest      "STILL LIVE in the shipped manifest"            mut_manifest
 # The SAME mutation, asserted against the OTHER check it must trip. Restoring Rovio's manifest
 # removes the layer-4 kill-switches as well as un-mangling the permissions, and case_run greps for
