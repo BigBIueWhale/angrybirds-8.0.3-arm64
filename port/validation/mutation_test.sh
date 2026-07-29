@@ -334,6 +334,22 @@ PYEOF
 }
 mut_jni_thunk() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_drop_thunk; }
 
+# Give a $PFX-parameterised capture script a FIXED provenance label. The claim's own comment says
+# this bug has been made TWICE: a script parameterised by ABSHIM_OUTPFX writes its row under a
+# hardcoded name, so two different runs (different AVD, different API) overwrite each other's
+# provenance and the ledger quietly describes only the last one.
+mut_prov_label() {
+    # Pick a file that has BOTH the $PFX parameter AND the record_build call. Selecting merely the
+    # first ^PFX= script chose one that never records provenance, the guard refused, and the case
+    # SKIPped — correctly, but for a reason that looked like the mutation being impossible.
+    local f
+    f=$(grep -l 'record_build "\$APK" "\$PFX"' $(grep -l '^PFX=' "$1"/port/validation/emu_*.sh 2>/dev/null) 2>/dev/null | head -1)
+    [ -n "$f" ] || return 1
+    cp "$f" "$f.mut" && rm -f "$f" && mv "$f.mut" "$f" || return 1   # break the cp -al hard link
+    sed -i 's/record_build "\$APK" "\$PFX"/record_build "$APK" "fixedlabel"/' "$f" || return 1
+    grep -q 'fixedlabel' "$f" || return 1
+}
+
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
 mut_perf()        { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_perf; }
 mut_payload()     { repack_member "$1" lib/arm64-v8a/libengine32.so          m_flip_byte;  }
@@ -554,6 +570,7 @@ case_run extractnative "the manifest sets extractNativeLibs"           mut_extra
 case_run phantom_mark  "names markers the shim never emits"            mut_phantom_marker
 case_run audio_payload "DIFFERS from the silent build"                 mut_audio_payload
 case_run jni_thunk     "MISSING thunks for engine natives"             mut_jni_thunk
+case_run prov_label    "record a FIXED provenance label"               mut_prov_label
 
 echo
 echo "== control: the real tree must still PASS =="

@@ -135,10 +135,25 @@ helper scripts the claim calls, since several print their own failure lines):
   and `libm_gone` asserts both `libm` **and** import-resolvability — the latter previously rested on
   a manual check of mine rather than on the suite.
 
-**27 cases, 27/27 detected, 0 skipped.** Two claims remain unconfirmed *by the map*: engine
-authenticity and the provenance label lint. Both build their failure text from shell variables
-(`bad "$o != $m"`), so no static search can match them — that is a limit of the audit tool, not
-evidence of a gap, and it is recorded as such rather than counted either way.
+Both claims the map could not confirm were then settled **empirically**, since a static search cannot
+match a message built from shell variables:
+
+- **engine authenticity** — applying the `payload` mutation and reading the gate shows
+  `[FAIL] libAngryBirdsClassic.so != libengine32.so` under that very claim. It was covered all along;
+  the map simply could not see `bad "$o != $m"`.
+- **provenance label lint** — genuinely had no case. Now `prov_label` gives a `$PFX`-parameterised
+  capture script a hardcoded provenance label, which is the bug the claim's own comment says *"has
+  been made TWICE"*: two runs at different API levels then overwrite each other's row and the ledger
+  quietly describes only the last. Caught: *"these take $PFX but record a FIXED provenance label:
+  emu_modern_playthrough.sh"*.
+
+Writing that last case produced one more small lesson. Its first version selected the first script
+matching `^PFX=`, which turned out never to call `record_build`; the guard refused and the case
+**SKIPped** — correct behaviour, but it reads like "this mutation is impossible" rather than "the
+harness picked the wrong file". It now selects a script that has both.
+
+**28 cases, 28/28 detected, 0 skipped**, vacuity audit clean, control passing — and every one of the
+29 claims is now either matched by the coverage map or confirmed by running its mutation.
 
 ### R25. Two of twenty-one mutation cases could not fail — now audited mechanically
 
