@@ -134,9 +134,21 @@ mut_align() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_align4k
 # 64 KB" long after both architectures measured 605096. The filler lines matter — the checker looks
 # at a +/-6 line window for framing words, so the mutation has to land somewhere genuinely unframed
 # or it would be (correctly) tolerated as history and the case would prove nothing.
-mut_stale() {
+# NAME COLLISION, found the hard way. This was called mut_stale — and so is the pre-existing
+# provenance-staleness mutation further down. Bash keeps the LAST definition, so `case_run stale_doc
+# ... mut_stale` silently ran the PROVENANCE mutation instead of this one. It looked green because
+# the expected string ("quotes a superseded measurement") also appears in the claim's HEADER line,
+# which the gate prints on every run, pass or fail. A vacuous case inside the very suite that exists
+# to prove checks are not vacuous.
+mut_stale_doc() {
     local f="$1/port/ONDEVICE.md"
     [ -f "$f" ] || return 1
+    # BREAK THE HARD LINK FIRST. The work tree is cp -al'd from the real repo, so `>>` on this path
+    # appends THROUGH the link into the actual port/ONDEVICE.md. It did — twice, once here and once
+    # in mut_proof_bytes — and the only reason it was caught is that the new integrity and staleness
+    # checks started failing on the CONTROL run. The file header warns about this in its first
+    # sentence; both functions were written without following it.
+    cp "$f" "$f.mut" && rm -f "$f" && mv "$f.mut" "$f" || return 1
     { printf '\n## Guest heap size\n\n'
       printf 'Filler line one, deliberately free of any qualifying language.\n\n'
       printf 'Filler line two, likewise.\n\n'
@@ -174,6 +186,26 @@ mut_prov_env() {
     awk -F'\t' 'BEGIN{OFS="\t"} NF==5 && $5!="" && !done {$5=""; done=1} {print}' "$f" > "$f.tmp" || return 1
     grep -qP '\t$' "$f.tmp" || return 1          # the blanked row must actually be blank
     mv "$f.tmp" "$f"
+}
+
+# Corrupt one byte of a proof image. reports/shots/README.md opens with "every correctness claim in
+# this repo ultimately rests on these images", and until the integrity section existed a proof could
+# be replaced or truncated with every check still green. One byte is the smallest possible version of
+# that, and it must be caught.
+mut_proof_bytes() {
+    local f
+    f=$(ls "$1"/reports/shots/PROOF_*.png 2>/dev/null | head -1) || return 1
+    [ -n "$f" ] || return 1
+    # COPY, REMOVE, THEN WRITE. The work tree is hard-linked to the real repo (cp -al), so an
+    # in-place `dd conv=notrunc` writes THROUGH the link and corrupts the actual evidence file. It
+    # did: this function's first version silently damaged reports/shots/PROOF_10_audio_levelwin.png
+    # in the real tree, which the new integrity check then caught on the control run. The file header
+    # warns about exactly this ("Each rm's before writing"); the warning was there and I did not
+    # follow it.
+    cp "$f" "$f.mut" || return 1
+    rm -f "$f" || return 1
+    mv "$f.mut" "$f" || return 1
+    printf '\x00' | dd of="$f" bs=1 seek=64 conv=notrunc status=none || return 1
 }
 
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
@@ -383,9 +415,10 @@ case_run doc_hash      "documented SHA-256 does not match the artifact"  mut_doc
 case_run signer        "signed by an UNEXPECTED key"                     mut_signer
 case_run camera        "without resetting the camera"                  mut_camera
 case_run align16k      "NOT 16 KB-aligned"                             mut_align
-case_run stale_doc     "quotes a superseded measurement"               mut_stale
+case_run stale_doc     "a doc quotes a superseded measurement as current" mut_stale_doc
 case_run libm_gone     "libm.so MISSING"                               mut_libm
 case_run prov_env      "not the environment it ran on"                 mut_prov_env
+case_run proof_bytes   "does not match the bytes the index recorded"   mut_proof_bytes
 
 echo
 echo "== control: the real tree must still PASS =="

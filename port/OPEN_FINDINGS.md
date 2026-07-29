@@ -186,10 +186,22 @@ original framing keywords. That is a false positive of an over-narrow vocabulary
 claim, so `replaced` and `stale` were added to the list. The alternative — rewording documentation
 until a regex is satisfied — would have been the checker dictating prose, which is backwards.
 
-Proven able to fail: `mutation_test.sh`'s `stale_doc` case appends an unframed *"the guest heap holds
-539536 bytes on arm64"* to `ONDEVICE.md`, padded with neutral filler so it lands outside any framing
-window, and the gate catches it — **18/18 mutations detected, 0 skipped**, unmutated control still
-passing.
+**Correction — that "mutation-proven" claim was false when it was written.** The `stale_doc` case
+appends an unframed *"the guest heap holds 539536 bytes on arm64"* to `ONDEVICE.md`, padded with
+neutral filler so it lands outside any framing window. It reported detected, and it was not testing
+anything:
+
+- its function was named `mut_stale`, and so is the pre-existing **provenance**-staleness mutation.
+  Bash keeps the last definition, so the case silently ran the wrong mutation;
+- it "passed" because the expected substring also appears in the claim's **header** line, which the
+  gate prints on every run whether the claim passes or fails.
+
+A vacuous case, inside the suite whose entire purpose is proving checks are not vacuous. It surfaced
+only when the expectation was tightened to match the `[FAIL]` text rather than any line — at which
+point it immediately went **NOT DETECTED**.
+
+Fixed by renaming to `mut_stale_doc` and matching the failure line. Now genuinely proven:
+**21/21 mutations detected, 0 skipped**, unmutated control passing.
 
 ### R20. The reproducible build, re-verified end to end today
 

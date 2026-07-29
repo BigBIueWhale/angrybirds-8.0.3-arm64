@@ -906,6 +906,40 @@ else
   fi
 fi
 
+echo "== CLAIM: every proof on disk IS the proof the index recorded =="
+# The index said what each proof SHOWS, which build made it and how to regenerate it — but never what
+# it IS. A proof could be replaced, truncated or corrupted and every check here would still pass,
+# while reports/shots/README.md opens by saying every correctness claim rests on these images.
+#
+# Regenerate the section with port/validation/proof_hashes.sh after deliberately re-capturing a proof.
+PIDX=reports/shots/README.md
+if [ ! -f "$PIDX" ] || ! grep -q "Integrity — sha256 of every proof" "$PIDX"; then
+  skip "proof integrity (no integrity section in the index — run port/validation/proof_hashes.sh)"
+else
+  PH_BAD=""; PH_OK=0
+  while read -r h f; do
+    [ -n "$f" ] || continue
+    if [ ! -f "reports/shots/$f" ]; then PH_BAD="$PH_BAD $f(missing)"; continue; fi
+    a=$(sha256sum "reports/shots/$f" | cut -d' ' -f1)
+    if [ "$a" = "$h" ]; then PH_OK=$((PH_OK+1)); else PH_BAD="$PH_BAD $f(CHANGED)"; fi
+  # Match the hash lines themselves rather than counting fenced blocks. The first version keyed on
+  # "the first ``` block", which is not the integrity block — the index has earlier code fences for
+  # regeneration commands — so it parsed nothing and the check SKIPPED. It reported that honestly
+  # instead of passing, which is the only reason it was noticed.
+  done < <(grep -oE '^[0-9a-f]{64}  PROOF_[A-Za-z0-9_.-]+\.png$' "$PIDX")
+  # every proof on disk must also BE listed, or a new one could appear unpinned
+  for f in reports/shots/PROOF_*.png; do
+    b=$(basename "$f"); grep -q " $b\$" "$PIDX" || PH_BAD="$PH_BAD $b(unlisted)"
+  done
+  if [ -n "$PH_BAD" ]; then
+    bad "a proof does not match the bytes the index recorded:$PH_BAD"
+  elif [ "$PH_OK" -gt 0 ]; then
+    ok "all $PH_OK proof image(s) match their recorded sha256"
+  else
+    skip "proof integrity (no hashes parsed from the index)"
+  fi
+fi
+
 echo "== CLAIM: the screenshot index describes exactly the proofs that exist =="
 # PROOF_2/3/4 silently went stale for a day: they showed a binary that no longer existed, and
 # nothing noticed because nothing recorded what they were supposed to show. reports/shots/README.md
