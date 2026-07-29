@@ -10,6 +10,7 @@ source "$(dirname "$0")/lib_provenance.sh"
 source "$(dirname "$0")/lib_metrics.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_install.sh"
 source "$(dirname "$0")/lib_wincheck.sh"
+source "$(dirname "$0")/lib_playassert.sh"   # the verdict, kept separately so it can be tested offline
 source "$(dirname "$0")/lib_selfhash.sh"
 ( sleep 2200; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-audio.apk
@@ -68,9 +69,6 @@ done
 FE=$(fnow)
 adb exec-out screencap -p > "$OUT/audioplay_end.png" 2>/dev/null
 
-# see lib_wincheck.sh: three outcomes, and a missing interpreter is not a verdict
-win_check "$OUT/audioplay_end.png"
-
 say "== RESULTS (audio playthrough) =="
 say "  install:            ok"
 say "  card frame:         $FB"
@@ -79,7 +77,15 @@ say "  nativeMixData:      $(marker_report "$ABLOG" 'nativeMixData ENABLED')"
 say "  h_fatal:            $(h_fatal_report "$ABLOG")"
 say "  stack_chk_fail:     $(marker_report "$ABLOG" stack_chk_fail)"
 say "  WATCHDOG/FROZEN:    $(marker_report "$ABLOG" 'WATCHDOG|FROZEN')"
-say "  final pid:          [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]"
-selfhash_verify
-say DONE
+PID=$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')
+say "  final pid:          [${PID:-none}]"
+say
+say "== ASSERTIONS =="
+# win_check ran above and its return was discarded; selfhash_verify's too. This script had no
+# failure variable, so it exited 0 whatever happened. See lib_playassert.sh.
+assert_playthrough "$ABLOG" "$OUT/audioplay_end.png" "$PID"
+FAIL=$?
+selfhash_verify; [ $? -eq 0 ] || FAIL=$((FAIL+1))
+say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
+exit "$FAIL"

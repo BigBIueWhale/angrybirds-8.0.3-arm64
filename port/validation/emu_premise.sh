@@ -107,7 +107,11 @@ say
 say "  What this shows: a 32-bit-only payload is refused by a 64-bit-only Android, and the SAME"
 say "  game runs there once re-hosted by the shim. On x86_64, because an arm64 AVD cannot boot on"
 say "  an x86_64 host. The A56 is this situation with ARM in place of x86."
-selfhash_verify
+# selfhash_verify RETURNS a verdict (0 unchanged / 1 edited mid-run / 2 cannot tell). It was
+# called and discarded here, so a run whose script changed underneath it printed
+# "*** DISCARD THESE RESULTS ***" and still exited 0 — the one failure that invalidates every
+# other line above it.
+selfhash_verify; [ $? -eq 0 ] || FAIL=$((FAIL+1))
 say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
 exit "$FAIL"

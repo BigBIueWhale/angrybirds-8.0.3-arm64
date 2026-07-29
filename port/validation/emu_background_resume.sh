@@ -130,7 +130,11 @@ HF=$(grep -ac 'h_fatal' "$ABLOG"); [ "${HF:-0}" -eq 0 ] || { say "  [FAIL] h_fat
 say "  capture: bg_resume_screen.png — LOOK at it; counting frames is not the same as being visible"
 
 say
-selfhash_verify
+# selfhash_verify RETURNS a verdict (0 unchanged / 1 edited mid-run / 2 cannot tell). It was
+# called and discarded here, so a run whose script changed underneath it printed
+# "*** DISCARD THESE RESULTS ***" and still exited 0 — the one failure that invalidates every
+# other line above it.
+selfhash_verify; [ $? -eq 0 ] || FAIL=$((FAIL+1))
 say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
 exit "$FAIL"

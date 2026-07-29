@@ -8,6 +8,7 @@ set +e
 source "$(dirname "$0")/lib_settle.sh"
 source "$(dirname "$0")/lib_provenance.sh"
 source "$(dirname "$0")/lib_metrics.sh"   # frame-based settle (replaces flaky fixed sleeps)
+source "$(dirname "$0")/lib_playassert.sh"   # the verdict, kept separately so it can be tested offline
 ( sleep 1650; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/progressR.txt"; : >"$LOG"
@@ -26,7 +27,10 @@ sleep 8
 adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
 adb push "$APK" /data/local/tmp/ab.apk >/tmp/push.log 2>&1
 INST=fail; for t in 1 2 3 4; do adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | grep -q Success && { INST=ok; break; }; sleep 4; done
-say "install=$INST"; [ "$INST" = ok ] || { say DONE; adb emu kill; exit 0; }
+# exit 1, not 0 — see emu_playthrough_release.sh.
+say "install=$INST"
+[ "$INST" = ok ] || { say "  [FAIL] install failed — nothing below could run"
+                      say "DONE (FAIL=1)"; adb emu kill; exit 1; }
 record_build "$APK" "progR"
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
@@ -83,6 +87,14 @@ say "  logic_error:       $(marker_report "$ABLOG" 'logic_error\|logicerr')"
 say "  lua_longjmp:       $(marker_report "$ABLOG" 'lua_longjmp\|longjmp')"
 say "  --- last level markers ---"
 grep -aE 'levelComplete|levelCleared|loadLevel|startLevel|\[h_fatal\]' "$ABLOG" 2>/dev/null | tail -20 | tee -a "$LOG"
-say "  final_pid: [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]"
-say DONE
+PID=$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')
+say "  final_pid: [${PID:-none}]"
+say
+say "== ASSERTIONS =="
+# This printed level markers and a pid and then said DONE. Both captures — the cleared screen and
+# the level-2 screen — were written and never examined. See lib_playassert.sh.
+assert_progression "$ABLOG" "$OUT/progR_1_cleared.png" "$OUT/progR_2_level2.png" "$PID"
+FAIL=$?
+say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
+exit "$FAIL"

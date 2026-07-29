@@ -8,6 +8,7 @@ source "$(dirname "$0")/lib_settle.sh"
 source "$(dirname "$0")/lib_provenance.sh"
 source "$(dirname "$0")/lib_metrics.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_wincheck.sh"
+source "$(dirname "$0")/lib_playassert.sh"   # the verdict, kept separately so it can be tested offline
 source "$(dirname "$0")/lib_selfhash.sh"
 ( sleep 1300; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
@@ -23,7 +24,11 @@ sleep 8
 adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
 adb push "$APK" /data/local/tmp/ab.apk >/tmp/push.log 2>&1
 INST=fail; for t in 1 2 3 4; do adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | grep -q Success && { INST=ok; break; }; sleep 4; done
-echo "install=$INST" | tee -a "$LOG"; [ "$INST" = ok ] || { echo DONE|tee -a "$LOG"; adb emu kill; exit 0; }
+# exit 1, not 0: a run that installed nothing played nothing, and must not report the status of a
+# run that played through.
+echo "install=$INST" | tee -a "$LOG"
+[ "$INST" = ok ] || { echo "  [FAIL] install failed — nothing below could run" | tee -a "$LOG"
+                      echo "DONE (FAIL=1)" | tee -a "$LOG"; adb emu kill; exit 1; }
 record_build "$APK" "playthroughR"
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
@@ -44,13 +49,18 @@ adb shell input swipe 207 118 118 136 700
 settle_frames "$ABLOG" 120 300
 adb exec-out screencap -p > "$OUT/playthroughR_end.png" 2>/dev/null
 
-# see lib_wincheck.sh: three outcomes, and a missing interpreter is not a verdict
-win_check "$OUT/playthroughR_end.png"
-
 echo "== RESULT: logic_error capture ==" | tee -a "$LOG"
 grep -aE 'levelComplete|THROW #1[5-9]|THROW #2[0-9]|logicerr-msg|logicerr-bt|\[h_fatal\]' "$ABLOG" 2>/dev/null | tail -30 | tee -a "$LOG"
 echo "guard-fired: $(marker_report "$ABLOG" 'empty-json-guard\] empty')" | tee -a "$LOG"
-echo "final_pid: [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]" | tee -a "$LOG"
-echo DONE | tee -a "$LOG"
+PID=$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')
+echo "final_pid: [${PID:-none}]" | tee -a "$LOG"
+echo "" | tee -a "$LOG"
+echo "== ASSERTIONS ==" | tee -a "$LOG"
+# win_check was CALLED above and its return discarded, and selfhash_verify ran AFTER `echo DONE`
+# and after the emulator was killed — both verdicts computed, neither acted on. See lib_playassert.sh.
+assert_playthrough "$ABLOG" "$OUT/playthroughR_end.png" "$PID"
+FAIL=$?
+selfhash_verify; [ $? -eq 0 ] || FAIL=$((FAIL+1))
+echo "DONE (FAIL=$FAIL)" | tee -a "$LOG"
 adb emu kill >/dev/null 2>&1
-selfhash_verify
+exit "$FAIL"

@@ -141,7 +141,11 @@ say "   (the command works; the VALUE here is the emulator's. On the A56 it read
 say "    what makes the arm64 deliverable installable there and this x86 proxy not.)"
 
 say
-selfhash_verify
+# selfhash_verify RETURNS a verdict (0 unchanged / 1 edited mid-run / 2 cannot tell). It was
+# called and discarded here, so a run whose script changed underneath it printed
+# "*** DISCARD THESE RESULTS ***" and still exited 0 — the one failure that invalidates every
+# other line above it.
+selfhash_verify; [ $? -eq 0 ] || FAIL=$((FAIL+1))
 say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
 exit "$FAIL"
