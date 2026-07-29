@@ -95,9 +95,28 @@ platform policy against this app's very low `minSdk=16` / `targetSdk=26`. That w
 Rovio's original build exactly as much as to this port — it is a property of a 2016-era APK meeting a
 2025-era platform, not damage done by the conversion.
 
-**Untested, and the obvious next step:** raise `minSdk`/`targetSdk` in the manifest and re-run the
-same A/B. If that restores resolution on 36.1, the deliverable can be future-proofed; if not, the
-limit is the platform's and should be documented for the user rather than worked around.
+**That next step was taken, and it does NOT fix it.** Patching `uses-sdk` in place (values only, no
+length changes — same principle as `depermission.py`) and re-testing on 36.1:
+
+| variant | outcome on API 36.1 |
+|---|---|
+| `minSdk=24 targetSdk=34` | install **rejected**: *"Targeting S+ (31 and above) requires an explicit android:exported when intent filters are present"* |
+| `minSdk=24 targetSdk=30` | install **rejected**: *"Targeting R+ (30 and above) requires resources.arsc … uncompressed and 4-byte aligned"* |
+| `minSdk=24 targetSdk=29` | **installs** (`dumpsys`: `minSdk=24 targetSdk=29`) — and still `No activity found` |
+
+So the SDK levels are not the cause either. Also ruled out, each by measurement rather than argument:
+the manifest declares no `<activity-alias>`; and the `android.intent.category.LAUNCHER` /
+`android.intent.action.MAIN` pool strings are byte-clean in **both** our manifest and Rovio's
+original (a `strings` dump appeared to show leading whitespace on one — an artifact of `strings`, not
+of the file, checked with `repr()` on the parsed pool).
+
+**What this does and does not license saying.** Confirmed: on this `android-36.1` system image the
+app's MAIN/LAUNCHER filter never registers, while its VIEW/BROWSABLE filter does, and the same APK is
+fine on API 36. Not confirmed: that a shipping Android 16 QPR phone behaves this way. This is an
+emulator system image, and an unusually new one; treating it as proof about the A56's future firmware
+would be exactly the over-reach this document keeps correcting. The honest status is **an unexplained
+incompatibility on one newer image, cause unknown, not attributable to the port** — worth knowing,
+not worth alarming the user with.
 
 ### R17. "arm64 cannot be emulated on this host" is a claim about the LAUNCHER — the engine gets to a running machine and dies on an audio device
 
