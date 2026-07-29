@@ -111,7 +111,7 @@ original (a `strings` dump appeared to show leading whitespace on one — an art
 of the file, checked with `repr()` on the parsed pool).
 
 **The filter IS registered on 36.1 — resolution is what fails.** A full `dumpsys package` capture from
-both images (`reports/shots/dump_api36.txt`, `dump_api361.txt`) shows the launcher filter present and
+both images shows the launcher filter present and
 byte-for-byte equivalent on each:
 
 ```
@@ -138,6 +138,12 @@ Further eliminations, each measured on 36.1:
   and the resolve still fails — so it is a symptom, not the cause.
 - **`query-activities -c LAUNCHER -a MAIN`** returns 6 launchable activities on the device and
   **0** matching our package.
+
+The two raw dumps are **not in the repository** — `.gitignore` excludes `/reports/shots/*` apart from
+`PROOF_*.png`, because everything under `reports/` is regenerable. (A commit message here claimed
+they were committed; they were not, and `git ls-files --error-unmatch` says so.) Regenerate with the
+`dumpsys package com.rovio.angrybirds` step against `ab-emu-36` and `ab-emu-361`; the excerpt above
+is the part that carries the finding.
 
 **What this does and does not license saying.** Confirmed: on this `android-36.1` system image the
 app's MAIN/LAUNCHER filter never registers, while its VIEW/BROWSABLE filter does, and the same APK is
