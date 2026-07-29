@@ -10,8 +10,10 @@
 # looking. A single entry point makes "did I break anything" a question you can actually answer.
 #
 # What this covers:
-#   1. assertion self-tests the save-persistence verdict and the capture-sanity check, each fed
-#                           synthetic evidence and required to reject it (host-only, ~10s)
+#   1. assertion self-tests every verdict that judges a run — save persistence, capture sanity,
+#                           prose-in-command-position — fed synthetic evidence and required to
+#                           reject it (host-only, ~10s). Not enumerated by count: this list said
+#                           "two" for about an hour after a third was added.
 #   2. host test suite      x86, ASan+UBSan, 10 module + 7 device tests + the coverage hard-gate
 #   3. arm64 cross suite    the SAME 17 tests on AArch64 — the ABI the phone uses — plus binary
 #                           architecture assertions
@@ -52,14 +54,14 @@ stage "1/5 assertion self-tests (can the checkers themselves fail?)"
 # FIRST, and on the host: no image, no emulator, about ten seconds. Every stage below is only as
 # trustworthy as the code that judges it, and this project's most repeated defect is a check that
 # cannot fail — found in the claim gate, in this file's own allocation-compare stage, and once
-# inside the mutation harness written to catch checks that cannot fail. These two suites feed
-# synthetic evidence to the save-persistence verdict and the capture-sanity check and require each
-# one to fire. Stages are referred to by NAME here, not by number: an earlier draft of this comment
+# inside the mutation harness written to catch checks that cannot fail. Each suite below feeds
+# deliberately broken evidence to one of those verdicts and requires every check in it to fire.
+# Stages are referred to by NAME here, not by number: an earlier draft of this comment
 # said "stage 4", which silently became a different stage the moment one was inserted above it.
 # Positive evidence required, for the reason spelled out in the allocation-compare stage below:
 # a suite that ran zero cases and printed nothing must not be indistinguishable from one where
 # everything passed.
-for t in port/validation/test_saveassert.sh port/validation/test_pngsane.sh; do
+for t in port/validation/test_saveassert.sh port/validation/test_pngsane.sh port/validation/test_prose.sh; do
   OUT=$(bash "$t" 2>&1); rc=$?
   NM=$(basename "$t")
   NOK=$(printf '%s' "$OUT" | grep -c '^  \[ OK \]')
