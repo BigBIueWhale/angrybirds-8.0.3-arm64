@@ -1,3 +1,29 @@
+/* =============================================================================================
+ * SUPERSEDED — THIS FILE IS NOT PART OF THE DELIVERABLE. DO NOT READ ITS TODOs AS OPEN WORK.
+ * =============================================================================================
+ *
+ * This is the Stage-3 single-file skeleton that proved the shim could be cross-compiled and could
+ * drive the ARM32 engine at all. The shipping shim is built from port/shim/src/, from the module
+ * list in port/build_apk.sh:
+ *
+ *   cpu loader dispatch sched jni_passthrough jni_entry jni_thunks.gen jni_argbuild galloc elf32
+ *   ctype_tables marshal format utf handle_table fdtable bridge_gl bridge_asset bridge_libc
+ *   bridge_file
+ *
+ * `grep -c abshim.c port/build_apk.sh` is 0. Only port/shim/build_test.sh (an early host harness)
+ * still compiles this file.
+ *
+ * WHY THE BANNER. The TODOs below say things like "Stage 4/5: real-JNIEnv passthrough + the 72
+ * Java_* entry thunks" and "Stage 5/6: load g_elf from the bundled asset, run init_array". All of
+ * that is DONE, elsewhere: src/jni_passthrough.c + src/jni_entry.c do the passthrough,
+ * src/jni_thunks.gen.c carries 216 generated Java_ thunks, and src/elf32.c handles DT_INIT_ARRAY /
+ * DT_INIT_ARRAYSZ (125/125 constructors run clean, and the game plays and wins).
+ *
+ * Left in place rather than deleted because build_test.sh uses it and it records how the port
+ * started — but a reader who opens this file first would conclude the shim is unfinished, which is
+ * the opposite of what the evidence shows. That is a defect in the record, so it is labelled here.
+ * ============================================================================================= */
+
 // abshim.c — arm64 JNI shim that runs the 32-bit libAngryBirdsClassic.so under Unicorn.
 // Direct C port of the proven port/poc_load.py. Built for arm64-v8a/android-24, linked
 // against libunicorn-static.a + libunicorn-common.a + libarm-softmmu.a.
