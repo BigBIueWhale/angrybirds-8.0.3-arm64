@@ -33,7 +33,21 @@ emulator -avd "${ABSHIM_AVD:-ab36}" -no-window -no-audio -no-boot-anim -no-snaps
 adb wait-for-device
 for i in $(seq 1 120); do [ "$(adb shell getprop sys.boot_completed 2>/dev/null|tr -d '\r')" = "1" ] && break; sleep 5; done
 say "  android $(adb shell getprop ro.build.version.release 2>/dev/null|tr -d '\r') (API $(adb shell getprop ro.build.version.sdk 2>/dev/null|tr -d '\r'))"
-adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
+# NETWORK STATE — same reasoning as emu_jni_exception_probe.sh (R32). One of the checks below is
+# "no ESTABLISHED socket owned by the app", and on a device with the radios off that is true for
+# reasons having nothing to do with this build. ABSHIM_NETWORK=1 leaves the stack up so the check is
+# about the app. It is still not live internet — every container runs `--network none` — but with no
+# INTERNET permission the kernel refuses socket creation outright, so the claim does not depend on
+# anything being reachable.
+if [ "${ABSHIM_NETWORK:-1}" = "1" ]; then
+    adb shell settings put global airplane_mode_on 0 >/dev/null 2>&1
+    adb shell svc wifi enable >/dev/null 2>&1
+    adb shell svc data enable >/dev/null 2>&1
+    say "  network: LEFT UP (default) — the socket check is about the app, not about airplane mode"
+else
+    adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
+    say "  network: airplane mode ON (ABSHIM_NETWORK=0) — the weaker form; the network claim is then guaranteed by the environment"
+fi
 install_apk "$APK" 4 2>&1 | tee -a "$LOG"
 adb shell pm list packages 2>/dev/null | grep -q rovio || { say "[FAIL] install"; adb emu kill; exit 1; }
 adb shell monkey -p com.rovio.angrybirds -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1

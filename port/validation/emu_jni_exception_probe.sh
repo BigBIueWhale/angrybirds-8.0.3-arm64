@@ -67,14 +67,14 @@ sleep 10
 # claim being made — the app has no INTERNET permission, so the kernel refuses socket creation
 # outright (EPERM) regardless of whether anything is reachable — but it is the reason this is a
 # stronger test rather than a complete one, and it is written down instead of glossed.
-if [ "${ABSHIM_NETWORK:-0}" = "1" ]; then
+if [ "${ABSHIM_NETWORK:-1}" = "1" ]; then
     adb shell settings put global airplane_mode_on 0 >/dev/null 2>&1
     adb shell svc wifi enable >/dev/null 2>&1
     adb shell svc data enable >/dev/null 2>&1
-    echo "  network: LEFT UP (ABSHIM_NETWORK=1) — the socket/DNS assertions are about the app, not about airplane mode"
+    echo "  network: LEFT UP (default) — the socket/DNS assertions are about the app, not about airplane mode"
 else
     adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
-    echo "  network: airplane mode ON (default) — re-run with ABSHIM_NETWORK=1 for the stronger form"
+    echo "  network: airplane mode ON (ABSHIM_NETWORK=0) — the weaker form; the network claim is then guaranteed by the environment"
 fi
 # see lib_install.sh: this used to be a bare 4x retry on ANY failure, which neither waits for the
 # package service to be publishable nor tells a transient service error apart from a real

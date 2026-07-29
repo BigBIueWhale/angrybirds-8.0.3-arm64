@@ -88,8 +88,24 @@ ours.
 nowhere to go: this is a live network *stack*, not live internet. That is adequate for the claim being
 made — the app holds no `INTERNET` permission, so the kernel refuses socket creation outright with
 `EPERM` regardless of reachability — but it makes this a stronger test rather than a complete one, and
-the script says so in its own comments rather than leaving a reader to assume otherwise. The default
-remains airplane mode; the flag selects the stronger form.
+the script says so in its own comments rather than leaving a reader to assume otherwise. **The stronger form is now the default** for both scripts whose subject is the network claim —
+`emu_jni_exception_probe.sh` and `emu_doc_verify.sh`. A flag that selects the meaningful test is a
+flag someone forgets; `ABSHIM_NETWORK=0` opts back out for a deterministic run, and says so in the
+output rather than silently reverting to the easy conditions.
+
+`emu_doc_verify.sh` had the same weakness and the same fix. Its check is *"no ESTABLISHED socket
+owned by the app"*, which on a radios-off device is true for reasons unrelated to this build. With
+the stack up the result is stronger than the documented claim:
+
+```
+network: LEFT UP (default)
+[ OK ] and the same command DOES find INTERNET on a package that has it
+rows owned by uid 10216: 0   (ESTABLISHED, state 01: 0)
+[ OK ] no ESTABLISHED socket owned by the app, as documented
+```
+
+**Zero socket rows of any state**, not merely zero established ones — while the positive control
+confirms the same command still finds `INTERNET` on a package that holds it.
 
 ### R31. Ten capture scripts wrote images with no provenance — two of them produced cited PROOFs
 
