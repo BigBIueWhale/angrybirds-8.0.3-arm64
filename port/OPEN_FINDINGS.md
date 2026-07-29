@@ -56,6 +56,37 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R28. Saves survive a real device reboot, and the game reads them back — tested on the phone's OS
+
+Persistence was proven across an **app** restart only: `emu_save_test.sh` force-stops the process and
+relaunches, `emu_update_install.sh` replaces the package. Neither restarts the **device**, and a
+reboot is materially different — the process, its ART state and every mapping are gone rather than
+force-stopped, `/data` is remounted, credential-encrypted storage unlocks afresh, and the app then
+launches on a device where it is *already* installed, with no first-install state and no warm cache.
+
+That matters more here than for a normal app: the shim finds its ARM32 payload by taking `dladdr()`
+of one of its own functions and `open()`ing `libengine32.so` beside it. That path exists because the
+installer extracted the native libs. Nothing had checked it is still valid, and still points at an
+intact file, after a full boot.
+
+`emu_reboot_persist.sh` on **`ab36` — API 36, the A56's own OS**:
+
+```
+saves before reboot: 786b666074b0a1396a98f0907be76de7 3beb37249fe64e2f7af961140c5c08e3
+boot_id before: 6c173d5d-a08e-4d27-bc7d-885cfef769e1
+boot_id after : 71d7cf4f-0f1e-4dfd-bad3-f27423aa0dbe   [ OK ] the device really rebooted
+saves after reboot : 786b666074b0a1396a98f0907be76de7 3beb37249fe64e2f7af961140c5c08e3
+frames after reboot: 901   h_fatal: 0  (5596 shim log lines, so this was measured)
+```
+
+The **boot-id comparison is load-bearing**: an `adb reboot` that silently did nothing would leave
+every check below it passing on a device that never restarted. Same for the "saves exist before"
+guard — without it the test would happily prove that nothing survives nothing.
+
+And the capture is better evidence than the hashes. `reboot_persist_screen.png` shows the game
+running after the reboot with **`HIGHSCORE 43270`** in the HUD: the save files were not merely left
+intact, they were **read back and applied** — the score earned before the restart is on screen.
+
 ### R27. "This is checked automatically" is itself an unverified claim
 
 Adding a pre-install integrity check to `ONDEVICE.md` produced a lesson worth generalising: the
