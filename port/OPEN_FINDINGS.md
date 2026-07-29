@@ -120,7 +120,7 @@ arm64. And "no `-soundhw` in the argv" also happens when the run dies *before* g
 observed, and initially misread as progress — so the probe counts the argv line itself rather than
 scoring an absent symptom as a solved problem.
 
-### R16. Progression measured across the whole tutorial episode — after two harness bugs that blamed the game
+### R16. Progression measured across six sequential levels — after two harness bugs that blamed the game
 
 Multi-level progression rested on a single step. `PROOF_9` shows a second level loading after a win,
 and everything past that was generalisation. `emu_progression.sh` was written to drive the
@@ -148,27 +148,40 @@ spares behind, pig towers right, while the harness dragged from (207,118): open 
 slingshot. `find_bird.py` now locates the bird per shot and applies the proven pull vector relative
 to it.
 
-**Measured, API 34, shipping config — two runs, the longer one superseding the first:**
+**Measured, API 34, shipping config — three runs, each superseding the last:**
 
-| | 6 cycles | **10 cycles** |
-|---|---|---|
-| distinct level files | 4 | **5** |
-| wins confirmed from pixels | 3 of 6 | 4 of 10 |
-| `h_fatal` | 0 (26 085 log lines) | **0** (39 057 log lines) |
-| process | alive | alive |
+| | 6 cycles | 10 cycles | **18 cycles** |
+|---|---|---|---|
+| distinct level files | 4 | 5 | **6** |
+| wins confirmed from pixels | 3 of 6 | 4 of 10 | 5 of 18 |
+| `h_fatal` | 0 (26 085 lines) | 0 (39 057 lines) | **0** (67 507 lines) |
+| process | alive | alive | alive |
 
-The five are `Tutorial_red_niko`, `Tutorial_red2_niko`, `Tutorial_chuck_niko`, `Tutorial_bomb_niko`
-and `Tutorial_blues_niko` — **the whole `0_Tutorial` episode**, covering four different bird types
-(Red, Chuck, Bomb, the Blues), each level reached by winning the previous one and tapping NEXT.
-Every level transition survived: that is the path where this port's deepest bug lived, a session-long
-`std::string` UAF that killed the process on the results screen.
+In order: `Tutorial_red_niko`, `Tutorial_red2_niko`, `Tutorial_chuck_niko`, `Tutorial_blues_niko`,
+`Tutorial_bomb_niko`, `Tutorial_6_niko` — four bird types (Red, Chuck, the Blues, Bomb), each level
+reached by winning the previous one and tapping NEXT. Every level transition survived: that is the
+path where this port's deepest bug lived, a session-long `std::string` UAF that killed the process on
+the results screen.
 
-The win rate is ~40% and does not need to be better. A lost cycle replays the same level, so the
-harness advances whenever it happens to win, and ten cycles was enough to walk the episode end to
-end. Nothing here suggests a ceiling at five — that is simply where the tutorial ends.
+**Correction — "the whole tutorial episode" was wrong, twice.** At four levels this section implied a
+ceiling; at five it claimed the episode was complete. The 18-cycle run then opened a sixth,
+`Tutorial_6_niko`. The denominator was never measured, so it has now been read straight out of the
+shipped APK: **`assets/data/levels/0_Tutorial/` holds 15 `.lua` files**, and the APK carries 20-plus
+further episode directories (`1_PoachedEggs`, `10_Birdday5` … `21_PiggyFarm`). So the honest figure is
+**6 distinct level files opened, all inside `0_Tutorial`** — the game has never been driven into a
+non-tutorial episode here.
 
-**What it still does not show.** This is the tutorial episode, not the whole game, and the harness
-loses more often than it wins: 4 of 10. The losses are aiming, which is genuine and uninteresting. The
+Nine of those 15 tutorial files (`birdquake`, `bubbles`, `kingsling`, `powerpotion`, `shockwave`,
+`slingscope`, `terence`, `mayhem_niko`, `pucombo_niko`) teach power-ups and later birds and are not
+obviously part of the opening sequence, so 6-of-15 is not the same as 40% of a linear episode. What
+is certain is the direction: six sequential levels, and a seventh never reached.
+
+Cycles 12-18 produced no wins and no new levels — the run stalled on `Tutorial_6_niko`, which the
+fixed pull vector does not solve. That is a limit of the harness's aim, not evidence about the port.
+
+**What it still does not show.** This is six files inside the tutorial episode, not the whole game
+— `1_PoachedEggs` and twenty other episodes are present in the APK and have never been entered — and
+the harness loses more often than it wins: 5 of 18. The losses are aiming, which is genuine and uninteresting. The
 finder is a red-blob heuristic, and it is honest about that in its own header — on a tutorial
 instruction card it will happily report the *illustrated* bird.
 
