@@ -112,3 +112,32 @@ install_apk() {                       # $1 = host path to apk   $2 = tries (defa
     echo "  install: still failing after $tries attempts on transient errors"
     return 1
 }
+
+# apk_signer — a stable per-signer fingerprint for an APK, WITHOUT requiring apksigner.
+#
+# apksigner lives in ab-port, NOT in the ab-emu* images, and two separate scripts have now been
+# written against it there and failed the same way: emu_signature_clash.sh got two EMPTY digests
+# (and would have "proved" they differ), and emu_update_install.sh aborted with "the two builds do
+# not share a signer (A=? B=?)". Same fix twice is a fix that will drift, so it lives here once.
+#
+# Falls back to the CERTIFICATE inside the v1 signature block, extracted with openssl.
+#
+# NOT a hash of META-INF/*.RSA itself. That file is the signature BLOCK, whose bytes depend on the
+# APK's content, so two APKs signed with the SAME key hash differently — the first version of this
+# fallback did exactly that and reported the release and audio builds as differently signed when
+# apksigner says both are d56d5b2e…. It would also have let emu_signature_clash.sh's "the two APKs
+# must really differ" premise pass for the wrong reason. Caught only by printing both values and
+# noticing they disagreed with the known answer.
+#
+# The returned fingerprint is comparable only against another value from the SAME method — apksigner
+# and openssl hash different encodings. Every caller compares two APKs within one run, so that holds.
+apk_signer() {                        # $1 = apk path
+    local d
+    d=$(apksigner verify --print-certs "$1" 2>/dev/null | grep -m1 'SHA-256 digest' | awk '{print $NF}')
+    [ -n "$d" ] && { echo "$d"; return 0; }
+    d=$(unzip -p "$1" 'META-INF/*.RSA' 2>/dev/null \
+        | openssl pkcs7 -inform DER -print_certs -outform DER 2>/dev/null \
+        | sha256sum | cut -d' ' -f1)
+    [ -n "$d" ] && [ "$d" != "$(printf '' | sha256sum | cut -d' ' -f1)" ] && { echo "$d"; return 0; }
+    return 1                          # could not determine — caller must not treat this as "equal"
+}

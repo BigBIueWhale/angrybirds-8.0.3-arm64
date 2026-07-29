@@ -545,7 +545,10 @@ restricted by it.
 
 Two consequences worth knowing:
 
-- Saves survive an **update-install** (same signer, same package) and are deleted by an
+- Saves survive an **update-install** (same signer, same package) — **measured**, not inferred:
+  `emu_update_install.sh` plays until saves exist, hashes them, installs the *audio* variant over
+  the release build with no uninstall, and finds `settings.lua`/`highscores.lua` byte-identical;
+  the round trip back is verified too. They are deleted by an
   **uninstall**. That is the mechanism behind the signer check in `verify_claims.sh` and the
   `INSTALL_FAILED_UPDATE_INCOMPATIBLE` row in `ONDEVICE.md`: a mismatched key forces an uninstall,
   and the uninstall is what costs the saves — not the reinstall.

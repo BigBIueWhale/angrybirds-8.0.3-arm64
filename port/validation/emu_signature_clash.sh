@@ -69,13 +69,7 @@ say "== 0. the two APKs must really be signed by different keys =="
 # script assumed it was: both digests came back empty. The check failed loudly rather than passing on
 # empty strings, which is the only reason that was obvious — but a premise check that cannot run is
 # useless, so fall back to hashing the v1 certificate block, which needs only unzip + sha256sum.
-sigof(){                              # $1 = apk -> a stable per-signer fingerprint
-    local d
-    d=$(apksigner verify --print-certs "$1" 2>/dev/null | grep -m1 'SHA-256 digest' | awk '{print $NF}')
-    [ -n "$d" ] && { echo "$d"; return; }
-    unzip -p "$1" 'META-INF/*.RSA' 2>/dev/null | sha256sum | cut -d' ' -f1
-}
-S1=$(sigof "$ORIG"); S2=$(sigof "$OURS")
+S1=$(apk_signer "$ORIG"); S2=$(apk_signer "$OURS")   # shared helper, see lib_install.sh
 say "  rovio signer : ${S1:0:32}…"
 say "  our signer   : ${S2:0:32}…"
 if [ -z "$S1" ] || [ -z "$S2" ]; then
