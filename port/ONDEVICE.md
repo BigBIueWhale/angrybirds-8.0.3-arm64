@@ -81,6 +81,42 @@ can settle:** real-hardware frame-rate under the emulation lock, and the real Ma
 shader-compile path (the emulator uses software SwiftShader). This guide maps every `abshim` log
 line to a diagnosis so one `adb logcat` run pinpoints anything device-specific.
 
+## Before you install: check you have the file this repo built
+
+The APK is distributed through a **public** repository, so confirm the bytes before trusting them.
+Both commands are offline and take a second:
+
+```bash
+sha256sum out/angrybirds-8.0.3-arm64.apk
+```
+
+which must print exactly
+
+```
+27548721a456ea99295469c30c247e3f9519878a3d40abb817a148801af04851  angrybirds-8.0.3-arm64.apk
+```
+
+and
+
+```bash
+apksigner verify --print-certs out/angrybirds-8.0.3-arm64.apk | grep 'SHA-256 digest'
+# expect: d56d5b2eabc7953917e5d85605842548b0dfafe183b0aa1b75174b5fffd5deb4
+#         (the repo's committed port/debug.ks — same key for every build here, so any build
+#          update-installs over any other and your saves survive)
+```
+
+If the first differs, you do not have this build — rebuild with `bash port/reproduce.sh`, which
+reproduces that exact hash byte-for-byte offline. If the *second* differs, that APK came from a
+checkout missing the keystore (the build scripts mint a random key in that case) and it will not
+update-install over an existing copy; see the triage table below.
+
+The APK hash above is not hand-maintained: it is written in `sha256sum` output form precisely so
+`verify_claims.sh` re-derives it from the artifact and **fails if it ever stops matching** — a stale
+number here is a build error, not a documentation error. (Written as a `# expect:` comment first, it
+was *not* picked up: the check only recognises literal `sha256sum` output, so the "self-checking"
+claim was false until the line was reshaped. Verified by corrupting it in a scratch copy and watching
+the gate go red.) The signer digest is checked by its own claim against `port/debug.ks`.
+
 ## Install + run
 
 ```bash
