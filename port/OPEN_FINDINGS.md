@@ -56,6 +56,51 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R17. "arm64 cannot be emulated on this host" is a claim about the LAUNCHER — the engine gets to a running machine and dies on an audio device
+
+The deliverable has never been executed anywhere. The reason on record is that the Android emulator
+refuses an arm64 AVD on an x86_64 host:
+
+```
+FATAL | Avd's CPU Architecture 'arm64' is not supported by the QEMU2 emulator on x86_64 host.
+```
+
+That refusal comes from the `emulator` **launcher**, before it builds anything. The engine it would
+drive ships in the same x86_64 distribution:
+`/opt/android-sdk/emulator/qemu/linux-x86_64/qemu-system-aarch64` — an ordinary x86_64 ELF that
+accepts the full emulator option set, including `-avd` and an explicit `-avd-arch`.
+
+Driven directly (`port/validation/arm64_boot_probe.sh`, image `port/docker/Dockerfile.ab-qemu-arm64`),
+it does not refuse. It reports `Target arch = 'arm64'`, assembles a complete ranchu machine —
+`-cpu cortex-a57 -machine type=ranchu -smp cores=4 -m 2048`, `kernel-ranchu`, `ramdisk.img`, five
+virtio drives, `-android-hw` — **starts the QEMU main loop, and opens the control console on 5554
+and ADB on 5555.** Then:
+
+```
+qemu-system-aarch64: PCI bus not available for hda
+WARNING | QEMU main loop exits abnormally with code 1
+```
+
+The argv it generated contains `-soundhw hda`, and the arm64 ranchu machine has no PCI bus to hang
+an Intel HDA device on. Same stopping point on three consecutive runs.
+
+**That option cannot be removed from outside**, which was checked rather than assumed:
+`hw.audioInput`/`hw.audioOutput` set to `no` in the AVD (the script prints the patched config back,
+because an unverified patch is a guess), plus `-no-audio`, plus `-audio none` — and the generated
+argv still carries `-soundhw hda`. The emulator builds that argv in-process and calls QEMU directly,
+so there is no command line to intercept.
+
+**Status: not an architecture limitation, and not a boot either.** The blocker is one unconditional
+device option in emulator 36.6.11's arm64 argv generation. The untried next step is an older
+emulator — ARM images on x86 hosts were routine for years — which needs a network download.
+
+Two traps the probe pre-empts, each of which would have produced a confident wrong answer. The
+committed arm64 AVD specifies **`hw.ramSize=96M`**, which cannot boot Android 11 on any
+architecture, so a run left as-configured would have failed for a reason with nothing to do with
+arm64. And "no `-soundhw` in the argv" also happens when the run dies *before* generating an argv —
+observed, and initially misread as progress — so the probe counts the argv line itself rather than
+scoring an absent symptom as a solved problem.
+
 ### R16. Progression measured across FOUR levels — after two harness bugs that blamed the game
 
 Multi-level progression rested on a single step. `PROOF_9` shows a second level loading after a win,

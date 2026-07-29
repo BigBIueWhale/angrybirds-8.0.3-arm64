@@ -1,0 +1,11 @@
+FROM ab-emu-arm64
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+      libxkbfile1 libxcb-cursor0 libnss3 libxcomposite1 libxdamage1 libxrandr2 \
+      libasound2 libpulse0 libxtst6 libxkbcommon-x11-0 libxi6 libxcursor1 \
+      libxinerama1 libegl1 libgl1 libglx0 libopengl0 libxss1 libdbus-1-3 \
+      libfontconfig1 libfreetype6 libx11-6 libx11-xcb1 libxext6 libxfixes3 \
+      libxcb1 libxcb-xkb1 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+      libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-sync1 libxcb-xfixes0 \
+      libxcb-xinerama0 libxcb-glx0 libxcb-shm0 libxcb-dri2-0 libxcb-dri3-0 \
+      libxcb-present0 libxcb-util1 >/dev/null 2>&1 \
+    && rm -rf /var/lib/apt/lists/*
