@@ -350,6 +350,18 @@ mut_prov_label() {
     grep -q 'fixedlabel' "$f" || return 1
 }
 
+# Let the advertised claim count drift from reality. README.md tells a reader how many claims the
+# gate enforces; it said 18 while the file had 29, having quietly fallen behind every claim added
+# since. That is the same defect as a stale measurement, sitting in the sentence that tells someone
+# how much checking exists at all.
+mut_claim_count() {
+    local f="$1/README.md"
+    [ -f "$f" ] || return 1
+    cp "$f" "$f.mut" && rm -f "$f" && mv "$f.mut" "$f" || return 1   # break the cp -al hard link
+    sed -i 's/checks all [0-9]\+ documented claims/checks all 3 documented claims/' "$f" || return 1
+    grep -q 'checks all 3 documented claims' "$f" || return 1
+}
+
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
 mut_perf()        { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_perf; }
 mut_payload()     { repack_member "$1" lib/arm64-v8a/libengine32.so          m_flip_byte;  }
@@ -571,6 +583,7 @@ case_run phantom_mark  "names markers the shim never emits"            mut_phant
 case_run audio_payload "DIFFERS from the silent build"                 mut_audio_payload
 case_run jni_thunk     "MISSING thunks for engine natives"             mut_jni_thunk
 case_run prov_label    "record a FIXED provenance label"               mut_prov_label
+case_run claim_count   "the docs advertise"                            mut_claim_count
 
 echo
 echo "== control: the real tree must still PASS =="

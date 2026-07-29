@@ -953,6 +953,27 @@ else
   fi
 fi
 
+echo "== CLAIM: the docs state the right number of claims in this file =="
+# README.md advertises how many claims this gate enforces. It said 18 while the file had 29 — the
+# number drifted every time a claim was added and nothing noticed, which is the same defect class as
+# a stale measurement, in the sentence that tells a reader how much checking exists at all.
+#
+# Counted from this file rather than trusted, and the docs are searched for whatever figure they
+# quote, so adding a claim without updating the prose fails here.
+NCLAIM=$(grep -c '^echo "== CLAIM:' "$0")
+# Matches from "checks all N documented claims" onward. The first version anchored on `re.?checks`
+# and matched nothing: README.md uses a NON-BREAKING hyphen in "re‑checks", three bytes in UTF-8
+# where `.` matches one. The check SKIPped rather than passing, which is the only reason it showed.
+DOCN=$(grep -rhoE 'checks all [0-9]+ documented claims' --include='*.md' . 2>/dev/null \
+       | grep -oE '[0-9]+' | sort -u)
+if [ -z "$DOCN" ]; then
+  skip "documented claim count (no doc states one)"
+elif [ "$DOCN" = "$NCLAIM" ]; then
+  ok "the docs say $DOCN documented claims and this file has $NCLAIM"
+else
+  bad "the docs advertise $DOCN documented claims but this file has $NCLAIM"
+fi
+
 echo "== CLAIM: the screenshot index describes exactly the proofs that exist =="
 # PROOF_2/3/4 silently went stale for a day: they showed a binary that no longer existed, and
 # nothing noticed because nothing recorded what they were supposed to show. reports/shots/README.md

@@ -56,6 +56,41 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R27. "This is checked automatically" is itself an unverified claim
+
+Adding a pre-install integrity check to `ONDEVICE.md` produced a lesson worth generalising: the
+sentence *"`verify_claims.sh` fails if any SHA-256 printed in these docs stops matching"* was **false
+when written**. The hash claim only recognises literal `sha256sum` output (`^<64hex>  <name>.apk`),
+and the doc had written the value as a `# expect:` comment — invisible to it. Corrupting the line in
+a scratch copy left the gate green.
+
+So every assurance of that shape in the user-facing docs was audited by trying to break it. Most held
+— the socket-import claim, the 16 KB alignment claim, the `coverage_check.py` hard gate. One did not:
+
+> `port/validation/verify_claims.sh`  re-checks all **18** documented claims against the shipped bytes
+
+The gate had **29**. That number had fallen behind every claim added since it was written, in the one
+sentence that tells a reader how much checking exists at all — the same defect class as a stale
+measurement, in a more load-bearing place.
+
+Both are fixed the same way: **make the assurance self-policing rather than corrected.**
+
+- the APK hash is now written in `sha256sum` output form, so the existing check parses it and the
+  existing `doc_hash` mutation covers it. Verified by corrupting it: *"docs say 0000000000000000…,
+  artifact is 27548721a456ea99…"*.
+- a new claim counts the `== CLAIM:` lines in the gate and compares that with the figure the docs
+  advertise. Its first run failed with *"the docs advertise 29 … but this file has 30"* — because
+  adding the counting claim had changed the count. Mutation `claim_count` rewrites the advertised
+  number and is caught.
+
+Two smaller notes from doing it. The count check's first regex anchored on `re.?checks` and matched
+nothing, because README.md uses a **non-breaking hyphen** in "re‑checks" — three UTF-8 bytes where
+`.` matches one. It **skipped rather than passed**, which is the only reason it was noticed. And the
+correction to `ONDEVICE.md` is recorded in the document itself rather than quietly applied, since
+"this number is machine-checked" is exactly the kind of assurance a reader cannot verify by looking.
+
+**30 claims, 29 mutation cases, 29/29 detected, 0 skipped**, vacuity audit clean, control passing.
+
 ### R26. A security-relevant check had never been able to fail — `git grep` was aborting, silently
 
 The gate's header asserts *"Every check in this file has now been deliberately broken at least
