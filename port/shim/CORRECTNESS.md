@@ -14,7 +14,22 @@ ONE return-writer, driven by a per-symbol signature descriptor.** No handler may
 
 ## Audit 01 — ABI marshalling boundary  (agent a8394b0eac96d5a1b)
 
-### Confirmed defects in current `abshim.c` (all silent wrong-value, none fault)
+> **Read "current" as "as of 2026-07-24".** These audits were performed against
+> `port/shim/abshim.c`, the Stage-3 single-file skeleton, and that file is **superseded and no longer
+> built** — `grep -c abshim.c port/build_apk.sh` is 0; the shipping shim is the 20-module `MODS` list
+> under `port/shim/src/`. The defect list below is the *input* that produced the architecture stated
+> at the top of this file (one arg-walker, one return-writer, per-symbol signature descriptors), not
+> a list of things wrong with what ships.
+>
+> Concretely for **D1**, the Critical one: `src/marshal.c` implements the full AAPCS walk — r0–r3
+> *and* stack spill, 8-byte alignment, NCRN clamping, "once on the stack, stay on the stack", and
+> fundamental 8-byte types never split across r3/stack. The "reads only r0/r1/r2" defect is gone by
+> construction.
+>
+> Each other finding should be re-checked against `src/` before being quoted as live; several are
+> annotated as fixed further down, and the architectural rule above is what closes most of them.
+
+### Confirmed defects in `abshim.c` as audited on 2026-07-24 (all silent wrong-value, none fault)
 - **D1 (Critical)** `dispatch()` reads only r0/r1/r2 — cannot read r3 or stack args. Every ≥4-arg
   import (glTexImage2D/9, glVertexAttribPointer/6, glDrawElements/4, pthread_create/4, qsort/4…)
   is under-served. Masked today only because GL is a no-op catch-all.
