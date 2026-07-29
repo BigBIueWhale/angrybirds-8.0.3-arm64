@@ -80,7 +80,9 @@ it has been built, signed, aligned and statically audited only.
 
 arm64 execution is `arm64_cross_test.sh` (and the older, slower `arm64_unicorn_test.sh`), and it
 is not the game. Under qemu-user it runs the project's whole test suite on AArch64 — the seven
-device tests and all ten mode-agnostic module tests, 19 checks — including the pieces that are
+device tests and all ten mode-agnostic module tests, **20 checks** (17 tests plus three explicit
+assertions: test_boot and test_ctors really are AArch64 binaries, and 125/125 constructors run
+clean) — including the pieces that are
 genuinely ABI-sensitive and had **never** run on AArch64 before 2026-07-28:
 
 | test | why the architecture matters |

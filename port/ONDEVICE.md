@@ -35,7 +35,8 @@ unmodified, inside an ARM32→ARM64 emulation shim (Unicorn). targetSdk 26, self
 - **The arm64 ABI itself is validated** via qemu-user: the real engine loads, all 125 C++
   constructors run under emulation on aarch64, and every ABI-sensitive logic suite passes.
 - **The shim source is host-suite-green** (`Dockerfile.ab-hosttest` → `run_tests.sh` exits 0):
-  15 module tortures + nativeInit boot-drive + the coverage hard-gate (343 engine imports,
+  **11 module tests + 7 device tests** (boot, ctors, longjmp, sched, libc, file, and the
+  nativeInit boot-drive) **+ the coverage hard-gate** (343 engine imports,
   0 unbridged).
 - **It runs on MODERN Android** (validated on Android 14 / API 34 — same W^X + install regime the
   A56's Android 16 enforces): the targetSdk=26 APK installs with a plain `pm install`, the shim
