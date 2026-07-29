@@ -1110,6 +1110,58 @@ would be exactly the over-reach this document keeps correcting. The honest statu
 incompatibility on one newer image, cause unknown, not attributable to the port** — worth knowing,
 not worth alarming the user with.
 
+### R47. R18's only explanation is REFUTED: targetSdk is not why the app is unlaunchable on Android 36.1
+
+R18 left one hypothesis on record — that 36.1 refuses to register this app's `MAIN`/`LAUNCHER` filter
+because of its very low `minSdk=16` / `targetSdk=26`. It was never settled, because the one attempt at
+`targetSdk=34` was rejected at install. It is settled now, and the answer is **no**.
+
+**A ladder of install-time blockers appeared on the way**, each one only visible after the previous was
+cleared — worth recording because anyone raising `targetSdk` on this APK will hit them in this order:
+
+| `targetSdk` | what Android says |
+|---|---|
+| 26 *(shipped)* | installs; **launchable on 36, not on 36.1** |
+| 30 | `-124: Targeting R+ (version 30 and above) requires the resources.arsc of installed APKs to be stored uncompressed and aligned on a 4-byte boundary` |
+| 30 *(with `resources.arsc` Stored + aligned)* | **installs** — `Success` |
+| 34 | rejected: *"Targeting S+ (31 and above) requires an explicit `android:exported` when intent filters are present"* |
+
+Ours ships `resources.arsc` as `Defl:N` (643096 → 161837, 75%), which is fine at 26 and fatal at 30.
+`port/tools/make_sdk30_variant.sh` removes and re-adds it with `-0`, zipaligns to 4 bytes **before**
+signing, and asserts `unzip -v` really reports `Stored` rather than trusting the flag it just passed.
+
+**The result.** With `minSdk=24 targetSdk=30` installed successfully on the 36.1 image:
+
+```
+resolve-activity -c LAUNCHER com.rovio.angrybirds  ->  No activity found
+am start -n .../com.rovio.fusion.App               ->  Activity class {…} does not exist
+com.android.settings                               ->  com.android.settings/.Settings   (control, resolves)
+```
+
+The control resolving on that same device is what makes the app's "no" a fact about the app rather than
+about the query. So raising the SDK levels — the only mechanism R18 proposed — **does not restore
+launchability**, and the cause of the 36.1 behaviour remains unidentified. That is a genuine narrowing:
+the leading explanation is gone, and nobody should spend time on it again.
+
+**Practical consequence for the phone:** unchanged and still fine. The A56 runs Android 16 / API 36,
+where the shipped APK installs and plays (`PROOF_18`, 3 stars, 42920). 36.1 is a QPR-level update it
+*may* receive, and if it ever does, this rules out "just bump targetSdk" as the fix.
+
+**Two self-inflicted process faults in this experiment, both instructive:**
+
+- The first attempt repacked the APK *inside the emulator image* and died on `zip: command not found`.
+  Measured afterwards: `ab-port` has `zip unzip apksigner python3`; `ab-emu-361` has only
+  `unzip python3 adb`. The rig's existing split — build in `ab-port`, run in an emulator image — was
+  right and I had ignored it. It failed honestly (`DONE (FAIL=1)`) rather than inventing a result.
+- Worse: the install-failure reporter used `tail -2`, which on a rejected install is the **bottom of a
+  Java stack trace**. The actual `-124` reason was discarded *by the line whose only job was to report
+  it*, and the run had to be repeated to recover it. The moment a diagnostic matters most is the moment
+  it must not be truncated. Now the whole installer output is saved and the meaningful lines grepped.
+
+Also removed from that script: an image-wide "launchable activities" count that printed **0** where R18
+counted 6 — the query form differs on this build, so the number measured my `grep`, not the device. A
+wrong number beside a correct result invites doubt about the result.
+
 ### R46. Fresh clone verified, and every run now names its own floors
 
 Two loose ends from R42–R45, closed.
