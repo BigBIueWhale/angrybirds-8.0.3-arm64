@@ -10,3 +10,4 @@ emu_fatal	c5911a79ad4272999a2a0faa33937dd489e7a66157048ac22bbe3a90d7128ddd	angry
 interactive	c5911a79ad4272999a2a0faa33937dd489e7a66157048ac22bbe3a90d7128ddd	angrybirds-8.0.3-x86shim.apk	emu_interactive_capture.sh	
 modplay	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybirds-8.0.3-x86shim-release.apk	emu_modern_playthrough.sh	
 modplay36	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybirds-8.0.3-x86shim-release.apk	emu_modern_playthrough.sh	ab36
+regr36	45d174843a0aec0b47d8010b9fe13954eb64def8d62b316d7272b5527db304b6	angrybirds-8.0.3-x86shim-release.apk	emu_modern_playthrough.sh	ab36
