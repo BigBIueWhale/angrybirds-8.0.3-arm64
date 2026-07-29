@@ -2171,3 +2171,29 @@ The eight layers compose into one coherent single-path design once **S1** (map t
 comparators; verify on device), and **S6** (fault→fatal) are adopted; the remaining seams are width/
 placement/tuning. Correctness is achievable; the residual risks are all **throughput and driver/DEX
 facts** that only the A56 can settle — none are architectural.
+
+## Audit note: the unknown-`FILE*` convention is deliberate, and consistent
+
+Swept `bridge_file.c` for the "reports success without doing the work" class (the same lens that
+produced R40 in `port/OPEN_FINDINGS.md`). The result is a **negative** one, recorded so the next
+reader does not re-derive it:
+
+An unknown `FILE*` is not a bug path. The guest's `stdin`/`stdout`/`stderr` are static structs in
+bionic's `__sF` array; they never pass through our `fopen`, so `hf_of()` cannot find them and returns
+NULL. `f_fwrite` handles that explicitly — *"pretend success + discard, so the engine sees no write
+error"* — and every sibling follows the same rule, in the correct direction for each function:
+
+| call | unknown stream | why that is the right answer |
+|---|---|---|
+| `fwrite` | returns `n` | all items "written"; engine logging must not see a short write |
+| `fputs` | returns `0` | `fputs` returns a **non-negative** value on success, `EOF` on error — so 0 *is* success |
+| `fputc`, `putc` | return the character | that is the success value for those |
+| `ferror` | returns `0` | no error |
+| `fflush` | returns `0` | flushed |
+| `fgets` | returns `0`/NULL | **read fails** — there is nothing to read from a log stream |
+| `fgetc`, `ungetc` | return `-1` | same |
+| `fseek`, `ftell` | return `-1` | same |
+
+Writes to an unknown stream succeeding while reads from it fail is the correct asymmetry, not an
+inconsistency: the engine writes diagnostics to those streams and never reads them. Nothing here
+needs changing.
