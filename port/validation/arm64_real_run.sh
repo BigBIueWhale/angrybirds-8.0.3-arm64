@@ -77,7 +77,14 @@ else
 fi
 
 # --- the AVD changes that remove the PCI devices (see the header) --------------------------------
-A=/root/.android/avd/arm64.avd/config.ini
+# AVD is parameterised so the SAME script covers both arm64 tiers without a second copy:
+#   arm64     android-30 (API 30) — boots, then stalls on the missing IComposer HIDL service (R39)
+#   arm64_25  android-25 (API 25) — predates Treble, so SurfaceFlinger loads hwcomposer.ranchu.so
+#             in-process and there is no composer SERVICE to be missing. Also the tier this
+#             project's x86 validation used, so a result is directly comparable.
+AVD="${ABSHIM_AVD:-arm64}"
+A=/root/.android/avd/${AVD}.avd/config.ini
+[ -f "$A" ] || { say "  [FAIL] no AVD config at $A (ABSHIM_AVD=$AVD)"; say "DONE (FAIL=1)"; exit 1; }
 sed -i 's/^hw\.screen=.*/hw.screen=touch/'            "$A"
 sed -i 's/^showDeviceFrame=.*/showDeviceFrame=no/'    "$A"
 sed -i 's/^hw\.ramSize=.*/hw.ramSize=2048/'           "$A"   # 96M cannot boot Android 11 anywhere
@@ -99,9 +106,9 @@ say "== AVD, after patching (printed because an unverified patch is a guess) =="
 grep -iE '^(hw\.screen|hw\.audio|hw\.ramSize|showDeviceFrame|hw\.gpu|hw\.camera)' "$A" | sed 's/^/  /' | tee -a "$LOG"
 
 say
-say "== boot arm64 Android (TCG, no KVM — this is slow) =="
+say "== boot arm64 Android on AVD '$AVD' (TCG, no KVM — this is slow) =="
 timeout "${BOOT_TIMEOUT:-9000}" "$QEMU" \
-    -avd arm64 -no-window -no-audio -no-snapshot -no-boot-anim -no-qt -no-skin -qt-hide-window \
+    -avd "$AVD" -no-window -no-audio -no-snapshot -no-boot-anim -no-qt -no-skin -qt-hide-window \
     -memory 2048 -cores 4 -wipe-data -gpu swiftshader_indirect -show-kernel -verbose \
     -feature -VirtioWifi \
     >>"$BOOTLOG" 2>&1 &

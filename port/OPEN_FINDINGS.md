@@ -1159,6 +1159,42 @@ init-line counter reads exactly like progress. The first attempt was allowed to 
 20,268 init lines deep on that signal alone. What actually distinguishes the two is whether services
 are *repeating* — hence the crash-loop table above rather than a progress number.
 
+**AND THE OBVIOUS NEXT TIER WAS TRIED: API 25, where the composer wall genuinely does not exist — and
+zygote segfaults instead.** R17 named "try an older emulator/image" as the obvious next step, so it is
+worth closing properly rather than leaving as a maybe.
+
+The reasoning was sound and the prediction held. `IComposer` is a Treble/HIDL service introduced in
+Android 8; on API 25 SurfaceFlinger loads `hwcomposer.ranchu.so` in-process, so there is no service
+to be missing. `Dockerfile.ab-qemu-arm64-25` installs `system-images;android-25;google_apis;arm64-v8a`
+(3.1 GB) — the same API level as this project's primary x86 validation, so a result would have been
+directly comparable. Measured:
+
+```
+  IComposer complaints : 0          (on android-30: 964 / 813 / 491)
+  surfaceflinger       : started ONCE, no loop
+  Freeing unused kernel: yes        bootanim: running
+  init lines @300s     : 1260       (android-30: 3315-6531 — the difference IS the absent loop)
+```
+
+So the R39 wall is genuinely a property of the android-30 image, exactly as predicted. What is behind
+it is a different wall:
+
+```
+  init: Starting service 'zygote'          163 times
+  init: Service 'zygote' (pid 10165) killed by signal 11      <- SIGSEGV
+  init: Service 'zygote' (pid 10245) killed by signal 11
+```
+
+**ART cannot initialise.** zygote segfaults, init restarts it and the core service group with it
+(`netd`, `media`, `audioserver`, `cameraserver` — 163 restarts each), forever.
+
+**Conclusion, and why this route is now closed rather than merely unfinished.** Two independent API
+levels fail in two independent ways — a missing HIDL composer on 30, a segfaulting runtime on 25 —
+both inside the arm64-on-x86_64 path that Google dropped support for. This is not one bug with one
+more flag behind it; the path is broken in several places at once. Further tiers (API 21-24, other
+`-cpu` values) would be guessing against an abandoned code path, and the phone settles the same
+question in ten minutes with a real Mali GPU and a real runtime.
+
 **Status: the deliverable still has never been executed.** `arm64_real_run.sh` is committed and would
 carry it through install-and-launch the moment a composer exists; it refuses to report an arm64
 result unless the APK really contains `lib/arm64-v8a/` **and** the guest's `ro.product.cpu.abi` really

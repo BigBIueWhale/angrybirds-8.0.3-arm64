@@ -1,0 +1,39 @@
+# Dockerfile.ab-qemu-arm64-25 — an ARM64 Android 7.1 (API 25) tier, to get past the R39 wall.
+#
+# WHY API 25 AND NOT THE android-30 IMAGE ALREADY PRESENT
+# ------------------------------------------------------
+# R39 established that an arm64 ranchu machine boots fine on this x86_64 host once five blockers are
+# removed, and then stalls forever because SurfaceFlinger cannot obtain
+#
+#     android.hardware.graphics.composer@2.1::IComposer/default
+#
+# That interface is a **Treble/HIDL service**, introduced with Android 8. On API 25 there is no such
+# service to find: SurfaceFlinger loads `hwcomposer.ranchu.so` in-process as an ordinary HAL module.
+# So the wall R39 documents is a property of the android-30 image, not of arm64 emulation — which
+# makes API 25 the obvious tier to try, and it was never tried.
+#
+# API 25 is also exactly the tier this project's primary x86 validation used, so a result here is
+# directly comparable with the existing evidence rather than being a new baseline.
+#
+# NO `|| true` ANYWHERE IN THIS FILE, on purpose. An earlier Dockerfile in this project applied
+# `|| true` to a whole `&&` chain, so a failed download produced a "successful" build with an empty
+# directory. Every step here fails the build if it fails, and the last step ASSERTS the image tree
+# and the AVD actually exist rather than trusting that the installer said so.
+FROM ab-qemu-probe
+
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV ANDROID_AVD_HOME=/root/.android/avd
+ENV SM=/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager
+ENV AM=/opt/android-sdk/cmdline-tools/latest/bin/avdmanager
+
+RUN yes | "$SM" --install "system-images;android-25;google_apis;arm64-v8a" >/dev/null
+
+RUN echo no | "$AM" create avd -n arm64_25 \
+      -k "system-images;android-25;google_apis;arm64-v8a" --force
+
+# Verify, because "the installer printed no error" is not the same as "the files are there".
+RUN test -f /opt/android-sdk/system-images/android-25/google_apis/arm64-v8a/system.img \
+ && test -f /opt/android-sdk/system-images/android-25/google_apis/arm64-v8a/kernel-ranchu \
+ && test -f /root/.android/avd/arm64_25.avd/config.ini \
+ && echo "arm64-v8a android-25 image + arm64_25 AVD present" \
+ && du -sh /opt/android-sdk/system-images/android-25/google_apis/arm64-v8a
