@@ -105,6 +105,9 @@ assert_playthrough() {
     # REPORTED, not asserted — see waf_report in lib_metrics.sh (R42). A release log always reads 0
     # because the diagnostic is compiled out, so asserting 0 here would be a check that cannot fail.
     sa_pa_say "  [note] write-after-free: $(waf_report "$ablog")"
+    # Which of THIS run's numbers are floors rather than totals. R42/R43 were both a log cap quoted
+    # as a measurement; stating it per-run means nobody has to go and read the guard in the source.
+    sa_pa_say "  [note] saturated counters: $(saturated_report "$ablog")"
 
     if [ -n "$pid" ]; then
         sa_pa_say "  [ OK ] the process was still alive at the end (pid $pid)"

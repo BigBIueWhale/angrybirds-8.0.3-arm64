@@ -1110,6 +1110,49 @@ would be exactly the over-reach this document keeps correcting. The honest statu
 incompatibility on one newer image, cause unknown, not attributable to the port** — worth knowing,
 not worth alarming the user with.
 
+### R46. Fresh clone verified, and every run now names its own floors
+
+Two loose ends from R42–R45, closed.
+
+**The fresh-clone path, executed rather than cited.** `REPRODUCE.md` claims a clone builds the
+deliverable bit-for-bit; that was last actually done in an earlier session against a hash three
+revisions old, and twelve files were added to the tree since. So: `git clone` into a clean directory,
+nothing pre-staged, `bash port/reproduce.sh`. Result — **byte-identical `27548721a456ea99…`**, matching
+the working tree. All twelve new files present; `out/` and `work803/` correctly absent (built, not
+committed) with `prepare_inputs.sh` unpacking the tracked `.xz`. **42 checks, 0 failed, 1 skip** — and
+the skip is legitimate and self-describing (`out/…-audio.apk not built`: a bare clone builds only the
+default variant, which is the gate's existing "not built here is NOT stale" distinction working). R45's
+fix held there too: `[ OK ] all 179 imported symbol(s) resolve against the shim's own DT_NEEDED
+libraries` ran rather than skipping.
+
+**Every playthrough now annotates which of its own numbers are floors.** `capped_counts.py` existed
+but nothing invoked it, so the R42/R43 defect — a log cap quoted as a measurement — could simply
+recur. `saturated_report` in `lib_metrics.sh` is now called from the playthrough verdict.
+
+Getting that useful took two corrections, both of them the failure modes this session keeps hitting:
+
+- The first version printed *"5 counter(s) saturated"* beside a list of **eight** marker names,
+  because it scraped names from every line rather than the `[FLOOR]` lines. Worse, the list included
+  `[WAF]` — whose 41-of-64 is precisely the *real count* R42 went to the trouble of establishing. A
+  report that contradicts the finding it exists to protect is worse than no report.
+- The second version was correct but useless: five sites saturate in **every run ever recorded here**
+  — `[audio-isolate]`@3, three `[S2]` sites, `[u16conv]`@14 — because they are early-boot and
+  scheduler tracing that fills in the first moments regardless of build variant, API level, or run
+  length. Verified identical across a diagnostic playthrough, a release playthrough and a save-test
+  relaunch. Reporting them every time is noise, and a mostly-noise report gets ignored, which is how
+  a real one gets missed.
+
+So it reports **deviations from that baseline**, which gives exactly the discrimination R42 needed:
+
+```
+playthrough_abshim.txt   only the 5 always-saturated tracing sites; every other count is a real total
+modplay_abshim.txt       only the 5 always-saturated tracing sites; every other count is a real total
+emu_fatal_abshim.txt     1 counter BEYOND the baseline is a floor: [WAF]
+```
+
+`emu_fatal`'s 64 is named as a floor; `playthrough`'s 41 is confirmed as a total. Nobody has to read a
+guard in the shim source to know which is which.
+
 ### R45. `reproduce.sh` — the command the user runs — skipped the one check that catches the `-lm` class of bug
 
 Found by running the full reproducible build after this session's changes, which was itself the point:

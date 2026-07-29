@@ -114,3 +114,33 @@ waf_report() {                 # $1 = abshim log
     else echo "$n write-after-free event(s), absorbed by galloc's targeted leak (expected on a diagnostic build; baseline 41 for an API-25 playthrough)"
     fi
 }
+
+# ---------------------------------------------------------------------------------------------
+# saturated_report — name this run's own saturated counters, so no number in its log can later be
+# quoted as a total by mistake. This is the standing fix for R42/R43: twice a log cap was written
+# into the record as a measurement ("bounded ~64 tiny _Reps", "the mixer fills ~8 buffers"), and both
+# times the only way to tell was to go and read the guard in the shim source. Now every run says it.
+#
+# Report-only. Saturation is not a fault — [S2] do_call saturating at 24 is normal tracing — it just
+# means that particular number is a FLOOR. Printing which ones they are costs nothing and removes the
+# need for anyone to remember.
+saturated_report() {           # $1 = abshim log
+    local py; py="$(dirname "${BASH_SOURCE[0]}")/capped_counts.py"
+    [ -f "$py" ] && command -v python3 >/dev/null 2>&1 || { echo "not checked (capped_counts.py or python3 unavailable)"; return 0; }
+    local out floors extra
+    out=$(python3 "$py" "$1" 2>/dev/null)
+    floors=$(printf '%s\n' "$out" | grep '\[FLOOR\]' | grep -oE "'\[[a-zA-Z0-9_ -]+\][^']*'" | tr -d "'" | sort -u)
+    # BASELINE. These five sites saturate in EVERY run ever recorded here — diagnostic and release,
+    # API 25 through 36, a 2-minute capture and a 20-minute soak — because they are early-boot and
+    # scheduler tracing that fills up in the first moments regardless of what the run then does.
+    # Verified identical across playthrough_abshim.txt, modplay_abshim.txt and save_ab2.txt.
+    # Reporting them every time would be noise, and a report that is mostly noise gets ignored, which
+    # is how a real one gets missed. So only DEVIATIONS are called out.
+    extra=$(printf '%s\n' "$floors" | grep -vE '^\[audio-isolate\]|^\[S2\] do_call ENTER|^\[S2\] do_call RET|^\[S2\] stash|^\[u16conv\] src')
+    extra=$(printf '%s' "$extra" | grep -c .)
+    if [ "${extra:-0}" -eq 0 ]; then
+        echo "only the 5 always-saturated tracing sites (early-boot/scheduler); every other count in this log is a real total"
+    else
+        echo "$extra counter(s) BEYOND the always-saturated baseline are floors: $(printf '%s\n' "$floors" | grep -vE '^\[audio-isolate\]|^\[S2\] do_call|^\[S2\] stash|^\[u16conv\] src' | tr '\n' ' ')"
+    fi
+}
