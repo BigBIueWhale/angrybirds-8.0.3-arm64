@@ -73,7 +73,12 @@ echo "   exports: $(readelf --dyn-syms -W /tmp/shim_x86.so 2>/dev/null | grep -c
 # count is only PRINTED. Same shape as depermission.py reporting "0 neutralised" as a result.
 # Assert instead. This only adds a failure path: when it passes the artifact is byte-identical.
 JNIN=$(readelf --dyn-syms -W /tmp/shim_x86.so 2>/dev/null | grep -cE ' (Java_com_rovio_|JNI_OnLoad$)')
-[ "${JNIN:-0}" -ge 8 ] || { echo "FATAL: shim exports only ${JNIN:-0} JNI entry points (expected ~73)."; \
+# Floor 70, not 8. The engine exports 72 Java_* thunks + JNI_OnLoad = 73, and the input APK is
+# sha256-pinned, so that number is stable. A floor of 8 caught only the catastrophic case this
+# guard was written for (gen_thunks.py failing and '>' having already truncated the file to
+# empty); a PARTIAL generation producing 20 thunks would have sailed through while the message
+# beside it said "expected ~73". A check should fail for the failure it describes.
+[ "${JNIN:-0}" -ge 70 ] || { echo "FATAL: shim exports only ${JNIN:-0} JNI entry points (expected ~73)."; \
     echo "       jni_thunks.gen.c is $(wc -c < "$S/jni_thunks.gen.c" 2>/dev/null) bytes — if that is 0,"; \
     echo "       gen_thunks.py failed and '>' had already truncated it. Refusing to emit an APK that"; \
     echo "       would die at launch with UnsatisfiedLinkError."; exit 1; }
