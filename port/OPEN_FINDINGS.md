@@ -110,6 +110,35 @@ the manifest declares no `<activity-alias>`; and the `android.intent.category.LA
 original (a `strings` dump appeared to show leading whitespace on one — an artifact of `strings`, not
 of the file, checked with `repr()` on the parsed pool).
 
+**The filter IS registered on 36.1 — resolution is what fails.** A full `dumpsys package` capture from
+both images (`reports/shots/dump_api36.txt`, `dump_api361.txt`) shows the launcher filter present and
+byte-for-byte equivalent on each:
+
+```
+Non-Data Actions:
+    android.intent.action.MAIN:
+      … com.rovio.angrybirds/com.rovio.fusion.App filter …
+        Action: "android.intent.action.MAIN"
+        Category: "android.intent.category.LAUNCHER"
+```
+
+Same counts on both (`MAIN` 4, `LAUNCHER` 2, `com.rovio.fusion.App` 10). So the manifest parses
+correctly on 36.1 and the component reaches the resolver table; what fails is resolution itself —
+`resolve-activity` finds nothing and `am start` on the **explicit component** answers *"Activity class
+does not exist"*.
+
+Further eliminations, each measured on 36.1:
+
+- **User/multi-user**: `am get-current-user` = 0, one user only, `--user 0` explicitly on both
+  `resolve-activity` and `am start` — no change. `com.android.settings` resolves on the same device
+  in the same breath, so the command works.
+- **Credential-encrypted storage**: the one concrete difference between the dumps is `ceDataInode`
+  (**360573** on API 36, **0** on 36.1), i.e. the app's CE data dir was never created. Waiting for
+  `sys.user.0.ce_available=true`, dismissing the keyguard, and installing only then leaves it at 0
+  and the resolve still fails — so it is a symptom, not the cause.
+- **`query-activities -c LAUNCHER -a MAIN`** returns 6 launchable activities on the device and
+  **0** matching our package.
+
 **What this does and does not license saying.** Confirmed: on this `android-36.1` system image the
 app's MAIN/LAUNCHER filter never registers, while its VIEW/BROWSABLE filter does, and the same APK is
 fine on API 36. Not confirmed: that a shipping Android 16 QPR phone behaves this way. This is an
