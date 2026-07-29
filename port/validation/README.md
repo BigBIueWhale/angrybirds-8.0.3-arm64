@@ -772,6 +772,26 @@ not hardcoded, so it cannot silently screen the wrong list. Self-tested in three
 The rig's answer is saved to `reports/gl_extensions_rig.txt` so a device capture can be **diffed**
 against it rather than eyeballed. See `port/OPEN_FINDINGS.md` R11.
 
+### Offline self-tests — proving the checkers can fail
+
+Everything above needs an emulator, /dev/kvm, and twenty to forty minutes. That has a consequence
+worth naming: an assertion that only ever runs at the end of such a job gets written once, passes
+once, and is never perturbed again. Several checks in this tree turned out to be **incapable of
+failing**, and nobody noticed, because a green line looks identical either way — see R25, R26, R33
+and R35 in `port/OPEN_FINDINGS.md`.
+
+These run on the host in seconds, need no device, and exist to feed deliberately broken evidence to
+the code that judges runs, requiring each check to reject it. `port/validate_all.sh` runs them
+**first**, before anything else: every later stage is only as trustworthy as the code that judges it.
+
+| script | what it proves |
+|---|---|
+| `port/validation/test_saveassert.sh` | the save-persistence verdict fires on each failure it names — a dead relaunch, a vanished or truncated `settings.lua`, constructors stopping at 124/125, a stalled renderer, saves never read back, an `h_fatal`, an empty log, a missing log. Includes a vacuity guard that counts the passing checks, so a silently-empty verdict cannot pass as a clean one. |
+| `port/validation/png_sane.py` | a capture is a decodable PNG of the expected geometry and not a blank/solid frame. Answers only the mechanical question — whether the shutter caught the intended instant still needs a person. Thresholds measured across all 27 real captures, not guessed. |
+| `port/validation/test_pngsane.sh` | `png_sane.py` rejects the frames a broken run actually produces (solid black, solid white, two-tone, an error message named `.png`, a missing file, wrong geometry) and accepts every real capture in `reports/shots`, including the dimmest win screen and the sparsest menu. |
+| `port/validation/prose_as_code.py` | no English sentence sits in command position. A comment continuation that loses its `#` becomes an executable line; `bash -n` cannot see it, and it was live in `emu_layer4_fcm_test.sh` for an unknown period (R35). |
+| `port/validation/test_prose.sh` | the detector fires on the real defect and on the dangerous `exit`-prefixed variant, stays silent on valid shell (heredocs, multi-line strings, `command -v`, `export VAR="$(...)"`), skips non-shell files, and treats "scanned nothing" as an error rather than a pass. |
+
 ### Shared libraries
 
 One implementation each, sourced by the scripts — because a fix pasted into eight scripts is a fix
@@ -786,6 +806,7 @@ the net that catches a doc pointing at something not in the repo.
 | `port/validation/lib_metrics.sh` | `h_fatal: 0` printed from a log that was never written — a clean result from a measurement that did not happen |
 | `port/validation/lib_provenance.sh` | screenshots going stale silently; rows now carry the producing script and AVD so a stale verdict prints a command that reproduces *that* row |
 | `port/validation/lib_install.sh` | `boot_completed=1` ≠ package service ready; a transient "Broken pipe" install failure reads exactly like a broken build |
+| `port/validation/lib_saveassert.sh` | a test that DISPLAYS its numbers instead of checking them: the save-persistence verdict lived inline in a 20-minute emulator job, printed four values and said DONE regardless of all four. Kept apart so `test_saveassert.sh` can prove each check fails. |
 | `port/validation/lib_wincheck.sh` | conflating "cannot check" with "not a win" — a missing interpreter once reported a winning run as a failure |
 | `port/validation/lib_selfhash.sh` | a script edited *while a container executes it*: bash reads by byte offset, so the run silently re-enters or skips whole sections |
 

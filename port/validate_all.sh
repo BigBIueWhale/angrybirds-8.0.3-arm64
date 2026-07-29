@@ -10,11 +10,13 @@
 # looking. A single entry point makes "did I break anything" a question you can actually answer.
 #
 # What this covers:
-#   1. host test suite      x86, ASan+UBSan, 10 module + 7 device tests + the coverage hard-gate
-#   2. arm64 cross suite    the SAME 17 tests on AArch64 — the ABI the phone uses — plus binary
+#   1. assertion self-tests the save-persistence verdict and the capture-sanity check, each fed
+#                           synthetic evidence and required to reject it (host-only, ~10s)
+#   2. host test suite      x86, ASan+UBSan, 10 module + 7 device tests + the coverage hard-gate
+#   3. arm64 cross suite    the SAME 17 tests on AArch64 — the ABI the phone uses — plus binary
 #                           architecture assertions
-#   3. allocation compare   the guest's allocation sequence, x86 vs AArch64, at two depths
-#   4. verify_claims        every documented claim re-checked against the shipped artifact
+#   4. allocation compare   the guest's allocation sequence, x86 vs AArch64, at two depths
+#   5. verify_claims        every documented claim re-checked against the shipped artifact
 #
 # What this does NOT cover, and why:
 #   - the emulator play/win/progression tests (`emu_*.sh`) need /dev/kvm, take 20-40 minutes each,
@@ -46,7 +48,32 @@ need_image(){   # $1=image  $2=dockerfile
     && { echo "  built $1"; return 0; } || { fail "could not build $1"; return 1; }
 }
 
-stage "1/4 host test suite (x86, ASan+UBSan, + coverage hard-gate)"
+stage "1/5 assertion self-tests (can the checkers themselves fail?)"
+# FIRST, and on the host: no image, no emulator, about ten seconds. Every stage below is only as
+# trustworthy as the code that judges it, and this project's most repeated defect is a check that
+# cannot fail — found in the claim gate, in this file's own allocation-compare stage, and once
+# inside the mutation harness written to catch checks that cannot fail. These two suites feed
+# synthetic evidence to the save-persistence verdict and the capture-sanity check and require each
+# one to fire. Stages are referred to by NAME here, not by number: an earlier draft of this comment
+# said "stage 4", which silently became a different stage the moment one was inserted above it.
+# Positive evidence required, for the reason spelled out in the allocation-compare stage below:
+# a suite that ran zero cases and printed nothing must not be indistinguishable from one where
+# everything passed.
+for t in port/validation/test_saveassert.sh port/validation/test_pngsane.sh; do
+  OUT=$(bash "$t" 2>&1); rc=$?
+  NM=$(basename "$t")
+  NOK=$(printf '%s' "$OUT" | grep -c '^  \[ OK \]')
+  if [ "$rc" -ne 0 ] || printf '%s' "$OUT" | grep -q '^  \[FAIL\]'; then
+    printf '%s\n' "$OUT" | grep -E '^  \[FAIL\]' | sed 's/^/    /'
+    fail "$NM"
+  elif [ "$NOK" -eq 0 ]; then
+    fail "$NM ran zero cases — nothing was tested, which is not a pass"
+  else
+    pass "$NM ($NOK cases, each proven to fire)"
+  fi
+done
+
+stage "2/5 host test suite (x86, ASan+UBSan, + coverage hard-gate)"
 if need_image ab-hosttest port/docker/Dockerfile.ab-hosttest; then
   OUT=$(docker run --rm --network none -v "$PWD":/work -w /work ab-hosttest \
           bash port/shim/test/run_tests.sh 2>&1)
@@ -55,7 +82,7 @@ if need_image ab-hosttest port/docker/Dockerfile.ab-hosttest; then
   echo "$OUT" | grep -q "COVERAGE OK" && pass "every engine import is bridged" || fail "coverage gate"
 fi
 
-stage "2/4 arm64 cross suite (the same tests on AArch64 — the phone's ABI)"
+stage "3/5 arm64 cross suite (the same tests on AArch64 — the phone's ABI)"
 if need_image ab-arm64x port/docker/Dockerfile.ab-arm64x; then
   OUT=$(docker run --rm --network none -v "$PWD":/work -w /work ab-arm64x \
           bash port/validation/arm64_cross_test.sh 2>&1)
@@ -64,7 +91,7 @@ if need_image ab-arm64x port/docker/Dockerfile.ab-arm64x; then
   echo "$OUT" | grep -q "ARM64 CROSS TEST PASSED" && pass "arm64 suite" || fail "arm64 suite"
 fi
 
-stage "3/4 guest allocation sequence: x86 vs AArch64"
+stage "4/5 guest allocation sequence: x86 vs AArch64"
 # Wired in because anything not run here goes stale - which is how the claim this checks became
 # wrong twice (first "bit-identical across hosts", false; then a true-but-unrepeatable
 # "7792 of 7793"). It needs both images, so it is skipped rather than failed if either is absent.
@@ -93,7 +120,7 @@ else
   echo "    needs both ab-hosttest and ab-arm64x"; fail "allocation comparison (image missing)"
 fi
 
-stage "4/4 documented claims vs the shipped artifact"
+stage "5/5 documented claims vs the shipped artifact"
 if [ ! -f out/angrybirds-8.0.3-arm64.apk ]; then
   echo "    no artifact yet — run port/reproduce.sh first"; fail "verify_claims (no artifact)"
 elif need_image ab-port port/docker/Dockerfile.ab-port; then

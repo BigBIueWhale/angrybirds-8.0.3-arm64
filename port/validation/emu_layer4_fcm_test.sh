@@ -143,9 +143,14 @@ say "== VERDICT =="
 say "  control token-registration attempts: ${CN:-0}"
 say "  shipped token-registration attempts: ${SN:-0}"
 # Refuse anything that is not an integer. Every failure path in run_one emits -1, but if a future
-one forgets, CN/SN would hold a message string and the comparisons below would be decided by a
-bash "integer expression expected" error — printing a confident verdict about an experiment that
-never produced a number. Fail loudly instead of guessing.
+# one forgets, CN/SN would hold a message string and the comparisons below would be decided by a
+# bash "integer expression expected" error — printing a confident verdict about an experiment that
+# never produced a number. Fail loudly instead of guessing.
+#
+# (These four lines were themselves the bug for a while: the last three lost their `#` and so ran
+# as commands — `one: command not found`, bash trying to execute a file called "integer expression
+# expected", `never: command not found`. Harmless by luck, invisible to `bash -n`, which is why
+# prose_as_code.py now scans for it.)
 case "${CN:-x}${SN:-x}" in
   *[!0-9-]*) bad "an arm returned a non-numeric result (CN='${CN}' SN='${SN}') — verdict void" ;;
 esac

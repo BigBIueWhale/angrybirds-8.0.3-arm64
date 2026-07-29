@@ -6,6 +6,7 @@ set +e
 source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_install.sh"
+source "$(dirname "$0")/lib_saveassert.sh"   # the verdict, kept separately so it can be tested offline
 ( sleep 1550; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk
 # AVD/prefix overridable so the SAME save test can run on the API 36 tier (the A56's actual OS,
@@ -32,7 +33,7 @@ adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
 # [FAIL] and exit 0.
 install_apk "$APK" 4 > /tmp/inst.$$ 2>&1; irc=$?
 while IFS= read -r _l; do say "$_l"; done < /tmp/inst.$$; rm -f /tmp/inst.$$
-[ "$irc" -eq 0 ] || { say "install FAIL"; say DONE; adb emu kill; exit 1; }
+[ "$irc" -eq 0 ] || { say "install FAIL"; say "DONE (FAIL=1)"; adb emu kill; exit 1; }
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$AB1" 2>/dev/null & C1=$!
 adb shell monkey -p com.rovio.angrybirds -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
@@ -67,10 +68,25 @@ for s in $(seq 1 110); do sleep 5; fn=$(grep -aoE 'frame\[[0-9]+\]' "$AB2" 2>/de
 sleep 6
 adb exec-out screencap -p > "$OUT/${PFX}_relaunch.png" 2>/dev/null
 kill $C2 2>/dev/null
+# Evidence is CAPTURED here and JUDGED by lib_saveassert.sh. Until now this section printed four
+# numbers and said DONE: nothing was checked, so a run where saves had stopped persisting would have
+# printed different numbers and still exited 0.
+PID2=$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')
+SAVES=$(adb shell "wc -c /data/data/com.rovio.angrybirds/files/settings.lua \
+                         /data/data/com.rovio.angrybirds/files/highscores.lua 2>/dev/null" 2>/dev/null | tr -d '\r')
 say "== RESULTS (save persistence on modern Android) =="
 say "  1st-launch saves written:  $NF private files"
 say "  2nd-launch boot:           init_array=$(grep -aoE 'init_array [0-9]+/125' "$AB2" 2>/dev/null|tail -1)  last-frame=$(grep -aoE 'frame\[[0-9]+\]' "$AB2" 2>/dev/null|tail -1)  h_fatal=$(marker_report "$AB2" '\[h_fatal\]')"
 say "  2nd-launch reads own files: $(marker_report "$AB2" 'fopen.*com.rovio.angrybirds|AAsset.*profile|fopen.*(save|profile|progress|settings|\.lua)') (reloaded persisted data)"
-say "  2nd-launch pid:            [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')] (alive => reloaded OK, no crash)"
-say DONE
+say "  2nd-launch pid:            [${PID2:-none}]"
+say "  save files after the relaunch:"
+printf '%s\n' "$SAVES" | sed 's/^/    /' | tee -a "$LOG"
+say
+say "== ASSERTIONS =="
+# NOT called through a pipe: $? would be the pipeline's last element, the same defect the install
+# check above was fixed for.
+assert_save_persistence "$NF" "$AB2" "$PID2" "$SAVES"
+FAIL=$?
+say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
+exit "$FAIL"

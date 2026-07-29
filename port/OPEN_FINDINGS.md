@@ -56,6 +56,127 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R35. Three lines of prose were executing as shell commands on every run — and `bash -n` says the file is fine
+
+`emu_layer4_fcm_test.sh` carries the runtime proof for de-phone-home layer 4. Four lines of it
+explained why the verdict refuses non-numeric input. The first line had its `#`; **the other three
+did not**, so on every invocation the shell ran them:
+
+```
+bash: line 1: one: command not found
+bash: integer expression expected: No such file or directory
+bash: line 3: never: command not found
+```
+
+The middle one is bash being asked to execute a file named `integer expression expected`. All three
+were harmless **by luck** — the first words happened not to be commands. That is the only reason
+this cost nothing, and it is not a property anyone chose.
+
+`bash -n` passes on the file, and always did: the lines are syntactically valid commands. Every
+syntax check run on this tree, including mine earlier today, was incapable of seeing it.
+
+The variant worth worrying about starts with a word that **is** a command. A wrapped comment line
+beginning `exit ...` ends the script, and every check below it silently never runs — a test file
+that passes because it stopped before testing anything.
+
+`prose_as_code.py` now scans for it, with `test_prose.sh` (7 cases) proving it fires on the real
+defect, fires on the `exit` variant, and stays quiet on valid shell. **Every shell file in the tree
+is now clean** (71 files at the time of writing; 16 non-shell files skipped, and the skip count is
+printed, because "0 findings" from a run that scanned nothing is the defect this suite exists to
+hunt).
+
+Two things the detector got wrong first, both fixed:
+
+- Its own docstring named `exit` as *the one to worry about*, and its code did not catch it —
+  `exit` was whitelisted as a shell keyword, so `exit early is what this would do` read as valid.
+  A document claiming more than the code does, in the tool written to catch exactly that.
+- The first tree scan produced **163 findings**, nearly all false. 150 were GLSL shader sources
+  under `work803/assets/` that end in `.sh` and no shell will ever run; 12 were calls to functions
+  defined in the scanned file itself. A checker that flags valid code gets switched off, which is
+  the same outcome as not having one.
+
+### R34. The regenerator for the interactive proofs exited 0 when it captured nothing
+
+`emu_interactive_capture.sh` produces the source images for PROOF_2/3/4 — the bird on the slingshot,
+the launch, the mid-arc frame. Two defects, both in the "absent symptom reads as success" class:
+
+- **Install failure was an `exit 0` path**: `[ "$INST" = ok ] || { say DONE; adb emu kill; exit 0; }`.
+  A run that installed nothing reported the same status as a run that captured three good frames.
+- **The previous run's captures were never cleared.** So a run that died before the capture steps
+  left `interactive_2/3/4.png` sitting in `reports/shots` — the *old build's* screenshots, beside a
+  fresh log saying DONE. Anyone regenerating the proofs against a new build would have compared the
+  new build to pictures of the old one.
+
+Fixed: the three files are deleted before anything else happens, install failure exits 1, and the
+captures are now checked mechanically by `png_sane.py` — a decodable PNG of the expected geometry
+that is not a blank or solid frame — plus assertions that the app was alive and `h_fatal` was 0 when
+the shutter fired. A capture of a crashed app is not evidence.
+
+Thresholds were **measured before being written**, across all 27 real captures in `reports/shots`:
+
+| | dominant-colour share | distinct colours |
+|---|---|---|
+| real captures | 0.072 (mid-flight) – **0.283** (dimmed win screens) | **570** (a menu) – 1947 |
+| a solid frame | 1.000 | 1 |
+
+The limit sits mid-gap at 0.650, not at the edge of the observed data. The first draft of that file
+asserted "well under 0.5" and "thousands of colours" *before* measuring; both were wrong.
+
+**What this deliberately still cannot do** is judge whether the shutter caught the intended instant.
+That needs a person, the script says so, and passing here means only that the frames are real,
+non-blank and from a live app.
+
+### R33. A test of a documented promise printed four numbers and asserted none of them
+
+`emu_save_test.sh` covers save persistence — "your progress is still there next time", a user-facing
+claim in the shipped documentation. It ended like this:
+
+```
+  1st-launch saves written:  44 private files
+  2nd-launch boot:  init_array 125/125  last-frame=frame[301]  h_fatal=0
+  2nd-launch pid:   [2668] (alive => reloaded OK, no crash)
+DONE
+```
+
+Four numbers **displayed**, none **checked**, and a bare `DONE` rather than `DONE (FAIL=n)`. Had
+saves stopped persisting, it would have printed different numbers, exited 0, and read exactly like a
+pass. The parenthetical `(alive => reloaded OK, no crash)` states the conclusion the script never
+tested.
+
+The verdict now lives in `lib_saveassert.sh` as a function of four plain arguments, so it can be
+exercised **without a device**: `test_saveassert.sh` feeds it synthetic evidence and requires each of
+the eight checks to fire on the failure it names — 15 cases, about a second, including a vacuity
+guard that counts the `[ OK ]` lines so a silently-empty verdict cannot pass as a clean one. An
+assertion that only ever runs at the end of a 20-minute emulator job is an assertion nobody can
+prove works.
+
+Re-run on API 34, all eight now assert rather than narrate:
+
+```
+  [ OK ] settings.lua survived the relaunch (1552 bytes)
+  [ OK ] highscores.lua survived the relaunch (272 bytes)
+  [ OK ] all 125 constructors ran on the second launch
+  [ OK ] the second launch read its own files back (40 reads)
+DONE (FAIL=0)
+```
+
+**The way this was nearly botched is the finding.** The first attempt inserted the assertions with a
+scripted text replacement anchored on `say DONE` — which occurs **twice**, and the guard was
+`assert old in s`, proving only that the string appeared *at all*, not that it was unique. The
+assertions landed inside the install-failure branch `[ "$irc" -eq 0 ] || { ... }`. The install
+succeeded, that branch never executed, the script ran its original path, printed the old output and
+exited 0.
+
+Both verification steps then agreed it was fine: `bash -n` passed, because the splice was still
+syntactically valid, and the run exited 0, because the dead branch was never entered. Two checks
+that could not fail, used to confirm a fix for a check that could not fail. The corrupted file was
+restored from git; edits now anchor on unique multi-line context (which refuses ambiguous matches)
+and are verified by reading the resulting `git diff` **hunk positions**, not by asking whether the
+file still parses.
+
+`validate_all.sh` gained a first stage that runs these self-tests before anything else, on the host,
+in about ten seconds: every stage below it is only as trustworthy as the code that judges it.
+
 ### R32. The de-phone-home runtime proof was measured with the radios off
 
 Every script in this rig sets `airplane_mode_on 1` — 36 of them. For most that is right: it keeps

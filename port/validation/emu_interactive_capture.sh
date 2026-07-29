@@ -26,6 +26,12 @@ OUT=/work/reports/shots; mkdir -p "$OUT"
 LOG="$OUT/interactive_capture.txt"; : >"$LOG"
 ABLOG="$OUT/emu_interactive_abshim.txt"; : >"$ABLOG"
 say(){ echo "$@" | tee -a "$LOG"; }
+FAIL=0
+# Delete the PREVIOUS run's captures before doing anything. Without this, a run that dies before the
+# capture steps — a failed install was an `exit 0` path until now — leaves three images sitting in
+# reports/shots that were never regenerated, next to a log saying DONE. Somebody comparing them
+# against a new build would be looking at the old build's screenshots.
+rm -f "$OUT/interactive_2.png" "$OUT/interactive_3.png" "$OUT/interactive_4.png"
 
 say "== boot (API 25) =="
 emulator -avd abtest -no-window -no-audio -no-boot-anim -no-snapshot -accel on \
@@ -37,7 +43,10 @@ adb shell settings put global airplane_mode_on 1 >/dev/null 2>&1
 adb push "$APK" /data/local/tmp/ab.apk >/dev/null 2>&1
 INST=fail
 for t in 1 2 3 4; do adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | grep -q Success && { INST=ok; break; }; sleep 4; done
-say "install=$INST"; [ "$INST" = ok ] || { say DONE; adb emu kill; exit 0; }
+# exit 1, not the exit 0 this used to be: a run that installed nothing captured nothing, and must
+# not report the same status as a run that captured three good frames.
+say "install=$INST"; [ "$INST" = ok ] || { say "  [FAIL] install failed — nothing below could be captured"
+                                           say "DONE (FAIL=1)"; adb emu kill; exit 1; }
 record_build "$APK" "interactive"
 adb logcat -c >/dev/null 2>&1; adb logcat -G 32M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
@@ -71,10 +80,31 @@ adb exec-out screencap -p > "$OUT/interactive_4.png" 2>/dev/null
 say "  captured interactive_4.png ($(wc -c < "$OUT/interactive_4.png" 2>/dev/null) bytes)"
 
 say "== RESULTS =="
+PID=$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')
+HF=$(grep -ac 'h_fatal' "$ABLOG" 2>/dev/null); HF=${HF:-0}
 say "  h_fatal:     $(h_fatal_report "$ABLOG")"
 say "  last frame:  $(grep -aoE 'frame\[[0-9]+\]' "$ABLOG" 2>/dev/null|tail -1)"
-say "  final pid:   [$(adb shell pidof com.rovio.angrybirds 2>/dev/null|tr -d '\r')]"
-say "  NOTE: the three captures are timing-sensitive (a launch and a mid-arc moment). Check the"
-say "        images — a blank or results screen means the timing missed, not that the shim failed."
-say DONE
+say "  final pid:   [${PID:-none}]"
+say
+# MECHANICAL checks only. Whether interactive_3 caught the bird in flight is a question for a person.
+# Whether the file is a picture of anything at all is not — and a run that captured three blank
+# rectangles printed DONE and exited 0 exactly like a good one until now.
+# NOT read through a pipe: $? would be tee's, the defect that once made a check print [FAIL] and
+# exit 0 elsewhere in this suite.
+say "== are the captures pictures of anything? =="
+python3 "$(dirname "$0")/png_sane.py" --expect 640x320 \
+        "$OUT/interactive_2.png" "$OUT/interactive_3.png" "$OUT/interactive_4.png" > /tmp/sane.$$ 2>&1
+SANE=$?
+while IFS= read -r _l; do say "$_l"; done < /tmp/sane.$$; rm -f /tmp/sane.$$
+[ "$SANE" -eq 0 ] || FAIL=$((FAIL+1))
+[ -n "$PID" ] && say "  [ OK ] the app was still alive when the captures were taken" \
+    || { say "  [FAIL] the app was dead when the captures were taken"; FAIL=$((FAIL+1)); }
+[ "$HF" -eq 0 ] && say "  [ OK ] no h_fatal during the capture run" \
+    || { say "  [FAIL] h_fatal during the capture run ($HF)"; FAIL=$((FAIL+1)); }
+say
+say "  STILL NEEDS A HUMAN: these captures are timing-sensitive (a launch, a mid-arc moment)."
+say "  Passing here means they are real, non-blank 640x320 frames from a live app — NOT that the"
+say "  timing caught the intended instant. Look at them before promoting any to a PROOF_ name."
+say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
+exit "$FAIL"
