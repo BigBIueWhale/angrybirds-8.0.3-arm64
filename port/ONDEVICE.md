@@ -119,6 +119,35 @@ reproduces that exact hash byte-for-byte offline. If the *second* differs, that 
 checkout missing the keystore (the build scripts mint a random key in that case) and it will not
 update-install over an existing copy; see the triage table below.
 
+### "I asked for an *unsigned* APK — why does `apksigner` print a certificate?"
+
+Because a truly unsigned APK cannot be installed on Android at all, and never could. The package
+manager verifies a signature before it will accept anything, and an APK with no signature is rejected
+outright — so "unsigned" is not an installable state, it is a build intermediate.
+
+(Precisely, since the temptation is to overstate this: Android 11 requires **v2 or higher** only for
+apps whose `targetSdk` is 30 or above. This one targets 26, so a v1 JAR signature alone would in fact
+be accepted. The build ships **v1 + v2 + v3 anyway** — `apksigner verify --verbose` reports all three
+true — because there is no reason to depend on a legacy path. The point stands either way: *some*
+signature is mandatory.)
+
+What "unsigned" means in practice is *not signed by anyone with authority over the app*: not
+Play-signed, not signed with Rovio's developer key. That is what this build is. It carries a
+throwaway debug key committed to the repo as `port/debug.ks`, which exists for exactly one reason:
+so every build from this repo shares a signer and therefore **update-installs over every other one
+without wiping your saves**. A freshly generated key per build would force
+`adb uninstall` — and lose your progress — on every update.
+
+The consequences you can see from the outside:
+
+- Android will treat it as a sideloaded app from an unknown source, which is the intended posture.
+- It cannot masquerade as, or update over, a Play-installed copy of Angry Birds: different signer.
+- The signer digest is a *published, checkable* value (above), so you can tell a build from this
+  repo apart from anything else claiming to be one.
+
+`README.md` and `port/REPRODUCE.md` say the same thing; it is repeated here because this is the
+document you have open when `apksigner` prints a certificate and the question actually arises.
+
 The APK hash above is not hand-maintained: it is written in `sha256sum` output form precisely so
 `verify_claims.sh` re-derives it from the artifact and **fails if it ever stops matching** — a stale
 number here is a build error, not a documentation error. (Written as a `# expect:` comment first, it
