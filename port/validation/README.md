@@ -422,6 +422,10 @@ and treats a self-skip as its own outcome, because a test that skipped proves no
 direction and must never be counted as a run.
 
 **2026-07-28: 15/15 mutations detected, 0 skipped, 0 open gaps.**
+**Re-run 2026-07-29 after the suite grew: 19/19 detected, 0 skipped, 0 documented gaps.** The earlier
+figure is kept because the paragraph below explains what the *15th* case covered; 15 is history, 19
+is current. (Found while auditing every number the docs assert — the same sweep that caught
+README.md advertising 18 gate claims when there were 29.)
 
 The 15th covers `coverage_check.py`, the hard gate behind the strongest single claim this project
 makes about the shim — **`UNBRIDGED: 0`**, i.e. every import the engine can call resolves to real

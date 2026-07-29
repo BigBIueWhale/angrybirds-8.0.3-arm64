@@ -89,6 +89,19 @@ nothing, because README.md uses a **non-breaking hyphen** in "re‑checks" — t
 correction to `ONDEVICE.md` is recorded in the document itself rather than quietly applied, since
 "this number is machine-checked" is exactly the kind of assurance a reader cannot verify by looking.
 
+**Then every other number the docs assert was audited the same way**, since a count that drifts is
+the same defect wherever it sits:
+
+| stated figure | verdict |
+|---|---|
+| `re-checks all 18 documented claims` (README) | **wrong** — the gate had 29. Fixed, and now self-policing |
+| `15/15 mutations detected` (validation README) | **stale** — that suite is at 19/19. Now records both: 15 is history, 19 is current |
+| `20 checks` on AArch64 | correct — matches `checks passed on AArch64: 20` from the run |
+| `125 constructors` (8 mentions) | correct, and **asserted programmatically**: `arm64_cross_test.sh` greps for `125/125 constructors ran CLEAN` and fails loudly otherwise |
+
+Two of four had rotted, and both were counts nobody re-derives. The two that held are the two a
+script re-checks on every run — which is the argument for deriving numbers rather than typing them.
+
 **30 claims, 29 mutation cases, 29/29 detected, 0 skipped**, vacuity audit clean, control passing.
 
 ### R26. A security-relevant check had never been able to fail — `git grep` was aborting, silently
