@@ -794,6 +794,14 @@ findings was not "the system is subtly wrong" but **"the rig already knew and I 
 4. **Premises retry; they do not query once.** A single `resolve-activity` 15 s after `boot_completed`
    found no launcher for *Settings* and failed a premise on timing rather than on the device.
 
+**On capturing evidence**
+
+4b. **`adb logcat` without `-T` re-dumps the whole ring buffer.** Appending several captures to one
+    file multiplies every count — a device log built that way came out **4.33× duplicated** (35,681
+    lines, 8,236 unique) and inflated `nativeUpdate` from 121 to 847, which was then quoted as
+    evidence (R50). Use `-T <time>` or `-c` first, or de-duplicate before counting. `capped_counts.py`
+    catches it for free: a count *above* its cap means the log is wrong, not the shim.
+
 **On reading evidence**
 
 5. **Absence from a log is evidence only if the log would have recorded presence.** `bridge_gl.c` has

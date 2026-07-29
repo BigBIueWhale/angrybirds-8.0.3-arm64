@@ -97,15 +97,94 @@ copy installed on 27 July is also the signer proof, since Android refuses a repl
 demonstrably *working*, not merely present: `s-construct-null-guard` fired **15** times and
 `empty-json-guard` **29** times during the run.
 
-**Final on-device figures** (35,681 shim log lines):
+**Final on-device figures — CORRECTED.** My first write-up of this entry quoted counts from a log I had
+built by appending `adb logcat -s abshim` seven times **without `-T`**. Each invocation re-dumps the
+whole ring buffer, so the file was **4.33× duplicated**: 35,681 lines, 8,236 unique. `capped_counts.py`
+exposed it by reporting counts *above* their caps (`[u16conv]` 98 vs cap 14, `[S2] stash` 280 vs cap
+40) — impossible for a per-process `static int`, so the log had to be the problem, not the shim.
+
+Separating what survives from what does not:
+
+| figure | first reported | actual | status |
+|---|---|---|---|
+| `init_array` | 125/125 | 125/125 | **sound** |
+| frame heartbeats | frame[2101] | same | **sound** — distinct monotonic values cannot be inflated (`frame[5101]` is from `PHONE_fps.txt`, a *separate* capture of the same pid 11197 — see R51, not this log) |
+| `h_fatal` | 0 | 0 | **sound** — a zero cannot be duplicated upward |
+| `uaf-survive` | 0 | 0 | **sound** |
+| `THROW St11logic_error` | 0 | 0 | **sound** |
+| `nativeUpdate` | 847 | **121 unique** | **CONTAMINATED** — 847/121 ≈ 7 = the number of appends |
+| `s-construct-null-guard` | 15× | **≥5** | corrected — see the caveat below, 5 is *also* a floor |
+| `empty-json-guard` | 29× | **≥7** | corrected — likewise a floor |
+
+**And de-duplication does not fully recover the guard counts.** My first correction said "actually 5"
+and "actually 7", from `sort -u`. That is wrong too, for a reason worth stating: the duplicated lines are
+byte-identical *including* timestamp and pid —
 
 ```
-init_array 125/125     frame[2101]     nativeUpdate 847
-h_fatal 0              uaf-survive 0   THROW St11logic_error 0
+07-30 02:16:32.897 11197 11197 I abshim  : [s-construct-null-guard] empty std::string _Rep @0x50000060 …
+07-30 02:16:32.897 11197 11197 I abshim  : [s-construct-null-guard] empty std::string _Rep @0x50000060 …
 ```
 
-`uaf-survive 0` is worth noting against R41/R42: on real hardware, across a full play-win-advance
-cycle, **zero** wild memory accesses needed absorbing.
+— so `sort -u` cannot distinguish a re-dumped line from a genuine second firing inside the same
+millisecond, and collapses both. What is recoverable: the shim printed between 5 and 8 lines (5 unique,
+and the cap is 8), so the guard fired **at least 5 times**. The exact count is not recoverable from this
+log, and the cap would have hidden anything past 8 regardless. Report `≥5` and `≥7`.
+
+**One inference is withdrawn entirely.** I wrote that tapping the tutorial card moved `nativeUpdate`
+"+121, which proves the tap woke the loop". It proves nothing of the sort — +121 was the re-dump of the
+same 121 lines, and it appeared identically after *every* append, which is exactly why a suspiciously
+constant delta should have been checked before being used as evidence. What *does* prove the tap worked
+is independent and unaffected: the screenshots show the modal card gone and the level interactive, and
+the frame heartbeats advanced monotonically past it.
+
+**The headline is unaffected.** "It installs, plays, scores 15380, clears the level with 3 stars /
+45500, and advances to level 2" rests on six reviewed screenshots and eight distinct monotonic frame
+heartbeats — neither of which duplication can manufacture. `uaf-survive 0` also stands, and remains
+worth noting against R41/R42: on real hardware, across a full play-win-advance cycle, **zero** wild
+memory accesses needed absorbing.
+
+### R51. The A56 runs it at ~7 fps — which confirms R4/R4b and refutes the optimism in the record
+
+The last device-only unknown. R4/R4b measured the rasteriser at 5–7% of frame time and concluded
+**single-thread CPU sets the frame rate**, leaving the Exynos 1580 CPU term as the open question.
+The record then carried an optimistic gloss — that emulator frame rates were "an emulator artifact"
+and "the A56's real silicon is far faster".
+
+Measured from timestamped 300-frame heartbeats, keeping the FIRST sighting of each distinct frame
+number so the R50 duplication cannot affect it. **Every** window in the run is listed, because quoting
+only the fast ones is the same defect in a new costume:
+
+| window | frames | seconds | fps | |
+|---|---|---|---|---|
+| frame[1] → [301] | 300 | 352.6 | **0.85** | first-run shader compilation (one-time) |
+| frame[301] → [601] | 300 | 34.6 | **8.68** | steady play |
+| frame[601] → [901] | 300 | 36.6 | **8.20** | steady play |
+| frame[901] → [1201] | 300 | 90.0 | **3.33** | interactive: screenshots, drags, modal cards |
+| frame[1201] → [1501] | 300 | 45.9 | **6.54** | ″ |
+| frame[1501] → [1801] | 300 | 62.3 | **4.81** | ″ |
+| frame[1801] → [2101] | 300 | 36.6 | **8.19** | steady play |
+| frame[2101] → [5101] | 3000 | 369.8 | **8.11** | long unattended window |
+
+**Headline: ~7 fps.** Excluding only the one-time shader-compile window, the whole post-warmup run is
+**4800 frames / 676 s = 7.10 fps**. The steady-state ceiling is **~8.1–8.7 fps**, reached in four
+separate windows including an unattended 3000-frame one. The interior 3.3–6.5 windows are real and are
+not excluded as artifacts — they are what the frame rate does while a human is interacting with it.
+
+The last row spans two capture files (`PHONE_abshim.txt` → `PHONE_fps.txt`). That is sound and was
+checked rather than assumed: both lines carry **pid 11197, tid 11275** — the same process and the same
+render thread on one device clock, so the 369.8 s interval is a real interval.
+
+So the optimism was wrong: the phone is **not** dramatically faster than the SwiftShader rig (~2–16 fps).
+That is precisely what R4/R4b predicted — if the rasteriser is 5–7% of frame time, replacing a software
+rasteriser with a real Mali GPU cannot buy much, because the cost is Unicorn interpreting ARM32 on one
+thread. The real GPU confirms the diagnosis rather than rescuing the frame rate.
+
+**Playable, and honestly so:** the level was cleared with 3 stars at this frame rate, so ~8 fps is
+sufficient for this game's slingshot-and-settle pacing. It is choppy, not broken. Anyone expecting 60 fps
+from a 32-bit ARM binary emulated instruction-by-instruction on an AArch64-only phone should recalibrate
+against this number.
+
+
 
 **Clause 3 on the real device:** `dumpsys package` reports **0** `android.permission.INTERNET`
 entries. The permission is genuinely absent on the phone, so the kernel refuses socket creation
