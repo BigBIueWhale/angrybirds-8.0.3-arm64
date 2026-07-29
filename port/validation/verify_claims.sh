@@ -391,6 +391,23 @@ else
   bad "could not parse minSdk/targetSdk out of the manifest"
 fi
 
+echo "== CLAIM: the artifact names no build-host path =="
+# This repository is PUBLIC and the deliverable is meant to be handed to someone else, so a build
+# path from whoever built it must not travel inside the binaries. The in-container build embeds only
+# fixed container paths (/opt/unicorn/... from Unicorn's own assert __FILE__ strings), which is also
+# why it reproduces byte-for-byte; a build done outside the container could bake in /home/<user>/...
+# instead. Nothing else here would notice.
+HOSTPATH=0
+for f in "$T"/n/lib/arm64-v8a/*.so; do
+  [ -f "$f" ] || { bad "no arm64 libs to scan for host paths — not measured"; HOSTPATH=2; break; }
+  h=$(strings -a "$f" | grep -cE '^/(home|root|Users|builds?)/')
+  if [ "${h:-0}" -ne 0 ]; then
+    bad "$(basename "$f") embeds $h build-host path(s): $(strings -a "$f" | grep -oE '^/(home|root|Users|builds?)/[^ ]*' | head -2 | tr '\n' ' ')"
+    HOSTPATH=1
+  fi
+done
+[ "$HOSTPATH" = "0" ] && ok "no /home, /root, /Users or /builds path in any shipped lib"
+
 echo "== CLAIM: the SDK auto-init kill-switches are injected =="
 # PRESENT *AND FALSE*. This used to be `strings | grep -q <flag-name>`, which confirms the switch
 # exists but not which way it is thrown: the value is an AXML integer, invisible to grep, so an
