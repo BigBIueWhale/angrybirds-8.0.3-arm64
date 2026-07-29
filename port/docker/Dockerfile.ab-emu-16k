@@ -1,0 +1,81 @@
+# ab-emu-16k — Android 16 with a **16 KB memory page size**. The one device property this project
+# had no way to test.
+#
+# WHY THIS TIER EXISTS
+# --------------------
+# `port/OPEN_FINDINGS.md` carried this as an open gap: the shim and its payloads are built with
+# `-Wl,-z,max-page-size=16384` so that they load on a 16 KB-page device, and that alignment was
+# verified **statically** — in the ELF program headers — because "no 16 KB page-size image is
+# available on this host (API 25/34/36 x86_64 are all 4 KB, and the emulator exposes no page-size
+# option)". The property was therefore verified at the mechanism and inferred at the outcome.
+#
+# It is available now. Google ships 16 KB page-size system images, including an x86_64 one that runs
+# under KVM on this host:
+#
+#   system-images;android-36.1;google_apis_ps16k;x86_64   "16 KB Page Size Google APIs Intel x86_64"
+#
+# That matters for the Galaxy A56 specifically. Android 15 onwards moves toward 16 KB pages on
+# 64-bit devices, and a shared object whose segments are only 4 KB-aligned is REJECTED BY THE LOADER
+# there — the failure is `dlopen` refusing the library, not a subtle performance issue. This project
+# already shipped one bug of exactly that shape: the shim linked without `-lm` loaded fine on API 25
+# and would have died on the A56 with `cannot locate symbol "sin"`. A static check that "the headers
+# say 16384" is the same class of evidence that missed it.
+#
+# So this tier exists to turn an inference into a run: does the APK install, does the shim load, do
+# the constructors execute, and does the game render — on a kernel whose page size is 16 KB.
+#
+#   docker build -f port/docker/Dockerfile.ab-emu-16k -t ab-emu-16k port/docker
+#   docker run --rm --network none --device /dev/kvm --group-add "$(getent group kvm|cut -d: -f3)" \
+#       -v "$PWD":/work -e ABSHIM_AVD=ab16k -e ABSHIM_OUTPFX=play16k \
+#       ab-emu-16k bash /work/port/validation/emu_modern_playthrough.sh
+#
+# ---------------------------------------------------------------------------
+# NETWORK POLICY
+# ---------------------------------------------------------------------------
+# Building requires network (sdkmanager fetches the system image). Every RUN of the image is
+# launched `--network none`, like every other tier. Treat the build host as internet-reachable:
+# never `-p`/`--publish`, never `--network host`.
+#
+# ---------------------------------------------------------------------------
+# REPRODUCIBILITY LIMITATION
+# ---------------------------------------------------------------------------
+# Inherits every float described in Dockerfile.ab-emu / ab-emu-34. The installed revision is
+# appended to /IMAGE_VERSIONS at build time so whatever produced a given result stays recoverable
+# from the image itself.
+
+ARG BASE=ab-emu-34:latest
+FROM ${BASE}
+
+RUN yes | sdkmanager "system-images;android-36.1;google_apis_ps16k;x86_64" >/tmp/sdk16k.log 2>&1
+
+RUN echo "no" | avdmanager create avd -n ab16k \
+        -k "system-images;android-36.1;google_apis_ps16k;x86_64" --force >/tmp/avd16k.log 2>&1
+
+# The default userdata partition is 774 MB and Android 16 fills 97% of it on first boot, leaving
+# ~27 MB. `adb push` of the 98 MB APK then dies with "No space left on device", and the install layer
+# above reports four futile retries. So the data partition is sized here too.
+#
+# avdmanager creates these AVDs with hw.ramSize=96M, and Android 16 cannot boot in 96 MB — the
+# emulator dutifully passes `-m 96` to QEMU and the device sits at `offline` forever, which reads as
+# "the 16 KB image does not work here" when it is only starved. The arm64 AVD in this repo has the
+# same 96M default and cost a whole investigation before it was spotted, so it is fixed at build
+# time rather than left for each caller to remember.
+RUN set -e; \
+    C="$HOME/.android/avd/ab16k.avd/config.ini"; \
+    sed -i 's/^hw\.ramSize=.*/hw.ramSize=2048/' "$C"; \
+    grep -q '^hw\.ramSize=2048$' "$C" || echo 'hw.ramSize=2048' >> "$C"; \
+    grep -q '^hw\.ramSize=2048$' "$C" || { echo "FATAL: could not set hw.ramSize"; exit 1; }; \
+    sed -i '/^disk\.dataPartition\.size=/d' "$C"; \
+    echo 'disk.dataPartition.size=6G' >> "$C"; \
+    grep -E '^(hw\.(ramSize|cpu)|disk\.dataPartition)' "$C"
+
+# Fail the build rather than publish a broken image (same rule as every other tier). The `ps16k`
+# assertion is the load-bearing one: an AVD silently created against a 4 KB image would make every
+# result here a lie about the very property the tier exists to test.
+RUN set -e; \
+    test -f "$HOME/.android/avd/ab16k.avd/config.ini" || { echo "FATAL: AVD ab16k was not created"; cat /tmp/avd16k.log; exit 1; }; \
+    grep -q "ps16k" "$HOME/.android/avd/ab16k.avd/config.ini" || { echo "FATAL: ab16k is NOT a 16 KB page-size AVD"; cat "$HOME/.android/avd/ab16k.avd/config.ini"; exit 1; }; \
+    { echo -n "sysimg-36.1-ps16k  "; grep Pkg.Revision $ANDROID_SDK_ROOT/system-images/android-36.1/google_apis_ps16k/x86_64/source.properties; } >> /IMAGE_VERSIONS; \
+    cat /IMAGE_VERSIONS
+
+CMD ["/bin/bash"]

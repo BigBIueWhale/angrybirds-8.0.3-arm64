@@ -56,6 +56,49 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R18. 16 KB pages are FINE. Android **36.1** is where this app stops being launchable — and it is not our doing
+
+Two things were tested here. One closes an open gap; the other opens a new one that matters more.
+
+**The 16 KB page-size gap is closed at the mechanism, and the artifact installs.** This project linked
+the shim and payloads with `-Wl,-z,max-page-size=16384` and could only verify the alignment in the
+ELF headers, because no 16 KB image existed on this host. One exists now
+(`system-images;android-36.1;google_apis_ps16k;x86_64`), so `port/docker/Dockerfile.ab-emu-16k` +
+`port/validation/emu_16k_pagesize.sh` run it for real. The guest is genuinely 16 KB —
+`getconf PAGE_SIZE` returns **16384** and the kernel command line carries `page_shift=14` — and the
+**APK installs there**. On a 16 KB kernel a 4 KB-aligned library is rejected outright by the loader,
+so installing at all already excludes the alignment failure this was written to catch.
+
+**But the app does not become launchable, and that is an Android 36.1 property.** Controlled four
+ways rather than assumed:
+
+| what was varied | LAUNCHER resolves? |
+|---|---|
+| API 36 (Android 16) — the A56's OS | **yes** — `com.rovio.angrybirds/com.rovio.fusion.App` |
+| API 36.1, **16 KB** pages | no |
+| API 36.1, **4 KB** pages | no |
+| API 36.1, our APK carrying the **original untouched Rovio manifest** | no |
+
+So it is neither the page size (4 KB behaves identically) nor our de-phone-home manifest rewrite (the
+original manifest behaves identically). The positive control passes on the same device —
+`com.android.settings` resolves, and the image has 6 launchable activities — so the query works and
+this package genuinely has none.
+
+`dumpsys` shows the activity present with its `VIEW`/`BROWSABLE` deep-link filter, while
+`MAIN`/`LAUNCHER` never registers; `am start -n .../com.rovio.fusion.App` answers *"Activity class
+does not exist"*, even with `FLAG_INCLUDE_STOPPED_PACKAGES`. Both manifests still contain the `MAIN`
+and `LAUNCHER` strings, so nothing was stripped by our tooling.
+
+**Why this matters to the user.** The A56 runs Android 16 / API 36, where the game works and is
+proven to. API 36.1 is a QPR-level update the phone may receive, and the most likely mechanism is a
+platform policy against this app's very low `minSdk=16` / `targetSdk=26`. That would apply to
+Rovio's original build exactly as much as to this port — it is a property of a 2016-era APK meeting a
+2025-era platform, not damage done by the conversion.
+
+**Untested, and the obvious next step:** raise `minSdk`/`targetSdk` in the manifest and re-run the
+same A/B. If that restores resolution on 36.1, the deliverable can be future-proofed; if not, the
+limit is the platform's and should be documented for the user rather than worked around.
+
 ### R17. "arm64 cannot be emulated on this host" is a claim about the LAUNCHER — the engine gets to a running machine and dies on an audio device
 
 The deliverable has never been executed anywhere. The reason on record is that the Android emulator

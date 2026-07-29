@@ -51,6 +51,7 @@ ck 1 "binder death"                         "java.lang.IllegalStateException: De
 ck 1 "service dereg mid-call"               "Error: Service not registered: package"
 # Verbatim from the run it killed on 2026-07-29 (abtest34). Truncated only in the middle of the
 # trace; the two lines that classification depends on are exact.
+ck 1 "pushed payload missing (re-push, do not condemn)" "Error: Unable to open file: /data/local/tmp/ab.apk"
 ck 1 "StorageManagerService not yet wired up" "Exception occurred while executing 'install':
 java.lang.NullPointerException: Attempt to invoke virtual method 'void android.content.pm.PackageManagerInternal.freeStorage(java.lang.String, long, int)' on a null object reference
 	at com.android.server.StorageManagerService.allocateBytes(StorageManagerService.java:4047)

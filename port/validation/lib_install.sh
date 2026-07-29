@@ -102,6 +102,10 @@ install_classify() {                  # $1 = the pm install output
         *"Can't find service"*|*"Can not find service"*|\
         *"Service not registered"*|\
         *"Exception occurred while executing"*|*NullPointerException*)  return 1 ;;
+        # The pushed payload is missing. Retryable ONLY because install_apk re-pushes before each
+        # attempt now; on its own this string means "there is nothing to install", not "the system
+        # was busy", and treating it as an ordinary flake is what produced four futile retries.
+        *"Unable to open file"*|*"Can't open file"*)                     return 1 ;;
         *)                                               return 2 ;;
     esac
 }
@@ -114,8 +118,21 @@ install_apk() {                       # $1 = host path to apk   $2 = tries (defa
         echo "           which is NOT the same as the APK being bad. Nothing was proven here."
         return 1
     fi
-    adb push "$apk" /data/local/tmp/ab.apk >/dev/null 2>&1
+    # PUSH INSIDE THE LOOP, AND VERIFY IT. This used to push once, before the loop, and never check
+    # the result. On a slow device the push fails, every subsequent attempt reports
+    #     Error: Unable to open file: /data/local/tmp/ab.apk
+    # and install_apk retries an install of a file that is not there — four attempts that could never
+    # succeed, ending in "still failing after 4 attempts on transient errors". Observed 2026-07-29 on
+    # the android-36.1 16 KB-page image, where it cost a full run. The message even LOOKS transient,
+    # which is how it survived: the retry loop was faithfully retrying the wrong thing.
     for t in $(seq 1 "$tries"); do
+        if ! adb shell "test -s /data/local/tmp/ab.apk" >/dev/null 2>&1; then
+            adb push "$apk" /data/local/tmp/ab.apk >/dev/null 2>&1
+            if ! adb shell "test -s /data/local/tmp/ab.apk" >/dev/null 2>&1; then
+                echo "  install: attempt $t could not push the APK to the device, retrying"
+                sleep 10; continue
+            fi
+        fi
         out="$(adb shell pm install -r -d /data/local/tmp/ab.apk 2>&1 | tr -d '\r')"
         install_classify "$out"
         case $? in
