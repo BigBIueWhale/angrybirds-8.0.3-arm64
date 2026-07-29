@@ -56,6 +56,53 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R37. The one verdict that invalidates a whole run was the one verdict that could not fail it
+
+`lib_selfhash.sh` exists because a script edited *while a container is executing it* is a real hazard
+here: bash reads a script by byte offset, so an edit mid-run can make it re-enter or skip whole
+sections while the output still looks normal. `selfhash_verify` returns **0** unchanged, **1** edited
+mid-run, **2** cannot tell, and prints:
+
+```
+*** SCRIPT CHANGED WHILE RUNNING — DISCARD THESE RESULTS ***
+    the output above may look normal and mean nothing. Re-run.
+```
+
+**Seventeen scripts called it and discarded the return.** Fourteen of those already had a `FAIL`
+variable and a `DONE (FAIL=n)` line — they asserted carefully on everything else, and then ignored
+the single result that says *none of the above counts*. A run that told the reader to discard its
+own output still exited 0.
+
+Two of them were worse than ignoring it: `emu_playthrough.sh` and `emu_playthrough_release.sh` called
+`selfhash_verify` **after** `echo DONE` and **after** killing the emulator, so the warning appeared
+below the line a reader stops at.
+
+Now folded into the failure count everywhere, and proven by construction rather than by inspection —
+a script that appends one line to itself mid-run:
+
+```
+  unchanged:            script identity: unchanged during the run (a8e06619…)   DONE (FAIL=0)  rc=0
+  edited while running: *** SCRIPT CHANGED WHILE RUNNING ***                    DONE (FAIL=1)  rc=1
+```
+
+The same sweep found the last four `win_check` callers with the same shape, including two with no
+failure variable at all and three where a failed install was an `exit 0` path. Every computed verdict
+in the suite now feeds an exit status; the one deliberate exception is `emu_16k_pagesize.sh`, which
+discards its `win_check` explicitly (`>/dev/null`, with a comment saying reaching a level is enough
+there) rather than by omission.
+
+Verified on hardware-equivalent tiers rather than assumed — `emu_progress_release.sh` on API 25:
+
+```
+  [ OK ] rendered to frame[2101] (>= 601)
+  win check:  WIN CONFIRMED from pixels  [ WIN ] progR_1_cleared.png gold=0.0572 dark=0.5256 lum=57.9
+  [ OK ] the next capture is a fresh level, not the results screen — it advanced
+DONE (FAIL=0)
+```
+
+Also cross-checked mechanically: all nine screenshot paths handed to an `assert_*` call are paths the
+calling script actually captures, so no assertion can be scoring a file that is never written.
+
 ### R36. The win verdict was computed correctly, then thrown away — in the three scripts that produce the headline evidence
 
 `lib_wincheck.sh` is careful work. It returns **three** outcomes, never two, because a missing
