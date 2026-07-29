@@ -1149,6 +1149,28 @@ This is mildly **good** news for the device: there is no evidence the mixer stal
 emulator cannot make it audible. But the honest position is that the rate is unknown, and saying so
 is better than a number that came from a `printf` guard.
 
+**Mechanized, and the limits of mechanizing it.** `capped_counts.py` now extracts every `n++<N` site
+from the shim (**21** of them, caps 2–400) and reports which counts in which logs have saturated —
+a saturated counter is a floor, full stop. Run across every log: 195 saturated counters, almost all
+internal tracing (`[S2] do_call` at 24, `[u16conv]` at 14) that nobody quotes. Useful output: it
+confirms `[WAF] = 41 of max 64` in the playthrough log is a **real count**, while `emu_fatal`'s 64 is
+not.
+
+Automatic cross-referencing against the documentation was attempted **twice and abandoned**, which is
+itself worth recording:
+
+- Keying on the bracketed tag made `[audio]` into the keyword "audio", and flagged six documents as
+  quoting the cap. All six were false — I checked each one and the claim was not there. R43's fix had
+  been complete already.
+- Requiring a longer literal plus a word-boundary match on the cap value still produced false hits,
+  because `(?<![0-9])8(?![0-9])` matches the 8 in `angrybirds-8.0.3` and `64` matches `64-bit`. These
+  documents are full of version strings, sha256 digests and byte counts, so number-proximity carries
+  no signal in them.
+
+Both real cases were found by reading code. A third found that way is plausible; found by grepping
+numbers, it is not — so the tool does the part that is mechanical and reliable and says why it
+declines the rest, rather than shipping a check that cries wolf.
+
 Corrected in `ONDEVICE.md` and in the R-series note. The stale comment at `jni_entry.c:543` is
 **deliberately left alone**: no shim source has been touched this session, so every reproducibility
 claim stands unchanged. It is recorded here instead. (Comment-only edits would in fact be
