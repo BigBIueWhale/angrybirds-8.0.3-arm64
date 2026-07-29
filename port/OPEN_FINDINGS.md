@@ -176,6 +176,22 @@ Nine of those 15 tutorial files (`birdquake`, `bubbles`, `kingsling`, `powerpoti
 obviously part of the opening sequence, so 6-of-15 is not the same as 40% of a linear episode. What
 is certain is the direction: six sequential levels, and a seventh never reached.
 
+**Why the other 27 episodes were never entered: the GAME locks them.** This was assumed to be a
+harness limitation until a screenshot settled it. `prog_12_s1.png` is the episode-select screen, and
+it shows `TUTORIAL` at **9/45 stars** — 15 levels x 3 stars, matching the 15 `.lua` files exactly —
+with a **padlock on every other episode**: Flock Favorites, Danger Above, Short Fuse, The Big Setup,
+Ham 'Em High, Mine and Dine, Surf and Turf, Bad Piggies. So "episodes never entered: 27" is the
+game's own progression gating, not a defect in the port and not a failure of the driver. It also
+confirms the port persists progress (9 stars accumulated across runs) and renders the full episode
+carousel correctly.
+
+That screen was reached by accident, which is worth recording. A vertical pan sweep was added on the
+sound reasoning that the shot gesture drifts the view UP (`dy +32`) and a horizontal-only reset
+cannot undo that — `prog_16_s2.png`, a pre-shot frame, really is a screenful of cloud. Measured, it
+made things worse: **4 levels in 14 cycles, against 5 in 10 and 6 in 18** with the horizontal reset
+alone, because a long vertical drag does not pan this game's camera — it navigates out of the level.
+Reverted. The vertical drift is real and still unhandled.
+
 `emu_progression.sh` now prints the denominator itself, computed from the APK, so the number can no
 longer be read without its scale:
 

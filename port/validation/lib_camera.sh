@@ -41,7 +41,22 @@
 pan_to_slingshot() {
     local sweeps="${1:-4}" settle="${2:-3}" i
     for i in $(seq 1 "$sweeps"); do
+        # HORIZONTAL: finger right -> world right -> view moves LEFT, toward the launch point.
         adb shell input swipe 80 150 600 150 400 >/dev/null 2>&1
+        # NO VERTICAL SWEEP — tried, measured, reverted.
+        #
+        # The reasoning for one was sound: the shot gesture drags the finger left AND DOWN (dy +32),
+        # so a miss pushes the view right and UP, and a purely horizontal reset cannot undo that.
+        # prog_16_s2.png (a PRE-shot frame) really is a screenful of cloud. So a vertical sweep
+        # 300,270 -> 300,60 was added.
+        #
+        # It made things WORSE, measured: 4 levels in 14 cycles, against 5 in 10 and 6 in 18 with the
+        # horizontal reset alone. The capture says why — prog_12_s1.png is the EPISODE SELECT screen.
+        # A long vertical drag does not pan this game's camera, it navigates out of the level. The
+        # harness spent the back half of that run in menus.
+        #
+        # Kept as a comment rather than deleted: the vertical drift is real and still unhandled, and
+        # the next person to notice it will reach for exactly this fix.
         sleep 2
     done
     sleep "$settle"
