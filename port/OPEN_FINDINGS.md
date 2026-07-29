@@ -1110,6 +1110,48 @@ would be exactly the over-reach this document keeps correcting. The honest statu
 incompatibility on one newer image, cause unknown, not attributable to the port** — worth knowing,
 not worth alarming the user with.
 
+### R49. The VBO path the phone may take that the rig does not — bridged, and its exercise status is NOT knowable from the logs
+
+R11 measured that the engine issues exactly one `glGetString(GL_EXTENSIONS)` per run, contains three
+extension name strings, and that the rig advertises two of them but **not**
+`GL_OES_vertex_buffer_object`. It flagged the consequence — if the A56 advertises that one, the engine
+may take a path nothing here has run — and left it there. This pins down what that path costs.
+
+**The path exists in the engine.** Its dynamic imports include the whole buffer-object family:
+`glGenBuffers`, `glBindBuffer`, `glBufferData`, `glBufferSubData`, `glDeleteBuffers` (69 distinct GL
+imports in total). So this is not a hypothetical branch: the code to use VBOs is linked in.
+
+**Every one of them is bridged.** Verified individually in `bridge_gl.c` rather than inferred from the
+aggregate coverage number — all five have entries. Combined with the coverage hard-gate (343 engine
+imports, 0 unbridged), nothing on that path can fall through to an `UNIMPL→0` stub. That is the part
+that actually bounds the risk: a first execution on the phone runs real bridges, not silent no-ops.
+
+**What is NOT determinable, and I nearly claimed otherwise.** Grepping every `*_abshim.txt` for
+`glGenBuffers` / `glBindBuffer` / `glBufferData` returns **0** across all runs, and the obvious reading
+is "the VBO path is never exercised here". That reading is unsupported: **`bridge_gl.c` contains no
+`LOG(` calls at all.** There is no per-call GL logging — the logs carry only aggregates
+(`GL draws=`, `clears=1801`, `useProgram=17133`). Absence from a log is evidence only when the log
+would have recorded the presence, and here it would not. This is the same absent-symptom error as R41's
+`h_fatal`, reached from the opposite direction, and it was one step from being filed as a finding.
+
+Determining it either way needs instrumentation in `bridge_gl.c` — which would change the shipping
+binary, the APK hash and every reproducibility claim, to answer a question the phone answers for free
+on first launch. Not worth it.
+
+**Static xref analysis was also tried and does not work here**, recorded so it is not repeated: the
+three extension strings sit at `0xa2c7b8` / `0xa2ced4` / `0xa2cf04` (file offset == VA, since the first
+LOAD maps `0x0 → 0x0`), but searching for those as 4-byte literals finds **zero** occurrences for two of
+them and one *data*-segment pointer for ETC1. The engine is position-independent, so string addresses
+are formed `PC + offset` at runtime rather than stored absolutely, and `reports/eng.dis` covers only
+`.plt` and `.text` — its `ldr` annotations name the pool slot, not the word inside it. So "which code
+tests this extension" is not answerable by grepping addresses.
+
+**Net for the phone:** if the A56 advertises `GL_OES_vertex_buffer_object` — plausible, it is an ancient
+and near-universal mobile extension — the engine will use VBOs and five bridges will run that may never
+have run here. They exist, they are real implementations, and `ONDEVICE.md` already tells you to diff
+the device's extension list against `reports/gl_extensions_rig.txt`, which is exactly how you would
+find out. That diff is now worth doing deliberately rather than as a curiosity.
+
 ### R48. The 36.1 failure is located: the launcher FILTER is dropped, not the activity — and Android logs no reason
 
 R47 refuted the SDK-level explanation. This narrows *where* the failure happens, on the **shipped**
