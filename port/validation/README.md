@@ -294,6 +294,17 @@ dialogs are dismissed, and check the result.
   ~250 frames. The 07-27 09:29 run passed every log metric while screenshotting a level still
   in progress. `emu_modern_playthrough.sh` now waits for **+120 frames** (300 s cap, explicit
   warning if unmet) and its watchdog was raised 1450→2100 s.
+- **Any run that drove the game with repeated fixed drags was probably not touching it.** The
+  gesture every script calls "the slingshot drag" (`input swipe 207 118 110 150 700`) launches a
+  bird only when it starts ON the bird — true at level start, false once the level changes — and a
+  drag that misses **pans the camera**. Repeating it walks the view off the level. `prog_5.png`
+  caught it: empty sky, `SCORE 0`, live pause button, after five cycles that the log described as
+  perfectly healthy (frames advancing, `h_fatal` 0, level file open, process alive). Nothing about a
+  mispointed camera is visible from the process, so **no log from an older multi-shot run can tell
+  you whether the game was being played or the harness was swiping scenery**. Single-burst runs
+  (every playthrough script) are unaffected: they fire once, right after a level load, and their
+  wins are pixel-verified. Fixed by `lib_camera.sh` + `find_bird.py`; see R16.
+
 - **PROOF_6 is weaker than its filename.** `PROOF_6_levelend_survived.png` shows the game
   alive and rendering — not a results screen. It supports "did not crash"; the `h_fatal=0` log
   carries the "level end survived" claim, not the image.
