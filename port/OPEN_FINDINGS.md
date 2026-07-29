@@ -1110,6 +1110,64 @@ would be exactly the over-reach this document keeps correcting. The honest statu
 incompatibility on one newer image, cause unknown, not attributable to the port** — worth knowing,
 not worth alarming the user with.
 
+### R44. All three write-after-free sites identified in the engine — the dominant one is COW `std::string` refcount teardown
+
+R42 established that write-after-free fires ~41 times per run from three engine addresses. Those were
+recorded as bare offsets. Naming them costs one pass over the existing disassembly
+(`reports/eng.dis`) and tells a future maintainer where the actual bug is rather than where the
+mitigation catches it.
+
+The logged value is the guest **LR** — the return address *after* the deallocating call — so the call
+is the instruction before.
+
+**`engine+0xd4c40` — 33 of 41 events. GCC libstdc++ COW `std::string` `_Rep::_M_dispose`.**
+Unmistakable from the shape:
+
+```
+d4c10:  sub   r2, r2, #4        ; r2 = &_M_refcount — 4 bytes below the data pointer
+d4c14:  dmb   sy
+d4c18:  ldrex r3, [r2]          ; atomic decrement of the refcount
+d4c1c:  sub   r1, r3, #1
+d4c20:  strex r12, r1, [r2]
+d4c24:  cmp   r12, #0
+d4c28:  bne   0xd4c18           ; strex retry loop
+d4c2c:  dmb   sy
+d4c30:  cmp   r3, #0
+d4c34:  bgt   0xd4be0           ; OLD refcount > 0 -> not the last reference, nothing to free
+d4c38:  mov   r1, r8
+d4c3c:  blx   0x88d830          ; last reference -> deallocate
+d4c40:  b     0xd4be0           ; <-- the LR the WAF log records
+d4c44:  ldr   r3, [r2, #-0x4]   ; and here begins the NON-atomic twin (single-threaded path)
+```
+
+An `ldrex`/`strex` decrement of the word 4 bytes below the payload, freeing only when the old value
+was not greater than zero, is the COW string `_Rep` and nothing else. This confirms from the
+instruction stream what R42 inferred from canary deltas — and note the *direction* matters: the
+canaries **increase** (`0x7→0x197`), so the offending write is not this decrement. It is a *different*
+holder of the same `_Rep` touching it after this site freed it. Premature free, exactly as labelled.
+
+**`engine+0x7c2cb4` (7 events) and `engine+0x7363a8` (1 event) — plain `free()`.** Both return from
+`bl 0x374ac`, a PLT stub. Resolving it needed arithmetic rather than pattern-matching, and the
+pattern-match would have been wrong:
+
+```
+374ac:  add r12, pc, #0xA00000     ; pc = 0x374b4
+374b0:  add r12, r12, #0x82000
+374b4:  ldr pc, [r12, #0x820]!     ; GOT slot = 0x374b4 + 0xA00000 + 0x82000 + 0x820 = 0xAB9CD4
+```
+
+`0xAB9CD4` is **not** among the `free@LIBC` addresses that `objdump -R` lists first
+(`0xab98d0`, `0xaba9c8`, `0xabaa38`) — those are data relocations in `.rel.dyn`. Reading the
+`R_ARM_JUMP_SLOT` table at the computed address gives `00ab9cd4  R_ARM_JUMP_SLOT  free@LIBC`. So they
+are direct `free()` calls, but "the slot isn't in the list I grepped" would have concluded the
+opposite.
+
+**41 of 41 events now accounted for**, and no shim change follows. The root cause is a refcount that
+is wrong before this code runs — in stripped static engine code, in a COW string implementation whose
+copies are shared across the guest. galloc's targeted leak already neutralises it, bounded in absolute
+terms (R42), and altering the shim would move the APK hash and every reproducibility claim to chase a
+condition that is measurably benign. This is recorded so the next person starts from the answer.
+
 ### R43. A documented conclusion about audio rests on a log cap — the same defect as R42, in a load-bearing place
 
 R42 found a documented figure ("bounded, ~64 tiny `_Rep`s") that was really the point where a log
