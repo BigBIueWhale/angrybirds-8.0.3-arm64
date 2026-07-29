@@ -204,7 +204,7 @@ under the results-screen asset load → uncaught `io::IOException` → Lua panic
 crash paths are now eliminated at the source:** (1) the UAF is pinned by a **write-after-free
 canary** in the guest allocator — a freed block that gets *written while held in quarantine* (the
 tell-tale of a live stale pointer) is never reclaimed, so its address is never reused and the
-stale write lands harmlessly (bounded, ~64 tiny `_Rep`s per run); (2) an ad-config *null*
+stale write lands harmlessly (see R42 — the figure that used to sit here, *"bounded, ~64 tiny `_Rep`s per run"*, was **the log cap misread as a measurement**: `galloc.c` prints at most 64 `[WAF]` lines per run (`n++<64`), and the run someone counted had hit that cap. Measured properly across four diagnostic runs it is **not bounded at all** — 15–29 events in the first minute, then a sustained **~7–16 per minute**, every one a *distinct* block, so leaks equal events. It stays negligible in absolute terms rather than by being bounded: the 20-minute soak measured RSS at **101 %** of its first sample across frame[21601]); (2) an ad-config *null*
 `std::string` construction is caught by hooking `std::string::_S_construct` (NULL begin → a shared
 empty string instead of `__throw_logic_error`). With both fixes the game **wins the level, renders
 the “LEVEL CLEARED” results screen, and — on the next-level tap — loads and renders the following

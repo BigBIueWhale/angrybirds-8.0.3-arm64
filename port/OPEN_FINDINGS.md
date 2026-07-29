@@ -1170,6 +1170,29 @@ What the report gives instead is the quantity next to the build that produced it
 (41 for an API-25 diagnostic playthrough) stated, so a change in rate becomes visible rather than
 being averaged into a green line.
 
+**And measuring it corrected a documented figure that was never a measurement.** `REPRODUCE.md` said
+the leak was *"bounded, ~64 tiny `_Rep`s per run"*. It is not bounded, and 64 is not a count — it is
+where `galloc.c` stops printing (`n++<64`). The run that produced that number had hit the cap, and
+`emu_fatal_abshim.txt` still shows exactly 64 for the same reason. A logging limit was written into
+the record as a property of the allocator.
+
+What the numbers actually are, across four independent diagnostic runs:
+
+| run | span | events | first minute | steady rate | distinct blocks |
+|---|---|---|---|---|---|
+| `playthrough_abshim.txt` | 163 s | 41 | 29 | ~7/min | **41** |
+| `launch_timing_abshim.txt` | 133 s | 41 | 24 | ~14/min | **41** |
+| `emu_interactive_abshim.txt` | 112 s | 27 | 15 | ~12/min | **27** |
+| `shadercap3_abshim.txt` | 126 s | 36 | 18 | ~16/min | **36** |
+
+**Every event is a distinct block — zero repeats in any run — so leaks equal events**, and the rate is
+sustained rather than a startup burst: the last event in the playthrough log lands two seconds before
+the log ends.
+
+So the correct statement is not "bounded" but "**negligible in absolute terms**": a few hundred small
+`_Rep`s per hour, against a measured RSS of 101 % of the first sample over a 20-minute soak. That is
+a much weaker claim than the one on record, and it is the one the evidence supports.
+
 ### R41. `h_fatal == 0` was being read as a healthy address space — and a whole class of memory faults is neutralised before it can ever be fatal
 
 Every play assertion in this tree checks `h_fatal == 0` and treats it as evidence the run was clean.
