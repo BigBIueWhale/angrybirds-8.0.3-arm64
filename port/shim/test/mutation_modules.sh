@@ -49,10 +49,14 @@ build_run() {                          # $1=tree $2=module $3=extra srcs
     if [ -f "$UNI/lib/libunicorn.a" ]; then ULIB="$UNI/lib/libunicorn.a"; UINC="-I$UNI/include"; fi
     cc -w -O2 -DRTLD_DEFAULT=0 -I"$S" $UINC "$H/test_$mod.c" $extra $ULIB -lpthread -lm -ldl -o "$O/t" 2>"$O/cc.log" || {
         echo "BUILDFAIL"; rm -rf "$O"; return 9; }
-    # Point tests that need the engine at THIS tree's copy. Without it test_elf32 falls back to a
-    # hardcoded host path, does not find it, prints "SKIP: engine .so not found" and RETURNS 0 — so
-    # the mutated build looked like a pass and the case reported NOT DETECTED. The harness was
-    # skipping the test, not the test missing the bug.
+    # Point tests that need the engine at THIS tree's copy — the MUTATED one. Without it they would
+    # load the pristine engine and a mutation affecting engine handling could go unseen.
+    # HISTORY, since the original reason is now fixed at its source: these tests used to fall back to
+    # a hardcoded /home/<user>/... path, not find it, print "SKIP: engine .so not found" and RETURN 0,
+    # so a mutated build looked like a pass and the case reported NOT DETECTED — the harness skipping
+    # the test, not the test missing the bug. As of 2026-07-29 that fallback is repo-relative and a
+    # missing engine RETURNS 1, so the skip-reads-as-pass hazard is gone. This line stays because
+    # pointing at the mutated tree is required on its own merits.
     local out; out=$(ABSHIM_ENGINE_SO="$tree/work803/libv7/libAngryBirdsClassic.so" "$O/t" 2>&1); local rc=$?
     # A test that SKIPPED proves nothing either way — never let that count as a run.
     if printf '%s' "$out" | grep -qiE '^\s*SKIP:'; then rm -rf "$O"; return 8; fi
