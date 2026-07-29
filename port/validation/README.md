@@ -772,6 +772,53 @@ not hardcoded, so it cannot silently screen the wrong list. Self-tested in three
 The rig's answer is saved to `reports/gl_extensions_rig.txt` so a device capture can be **diffed**
 against it rather than eyeballed. See `port/OPEN_FINDINGS.md` R11.
 
+### Standing rules, learned the expensive way
+
+Distilled from the ~50 entries in `port/OPEN_FINDINGS.md`. Every one of these cost at least one wasted
+run or one retracted claim, and several cost both. They are here because the pattern in the recent
+findings was not "the system is subtly wrong" but **"the rig already knew and I did not look"**.
+
+**On writing a validation step**
+
+1. **Check whether `lib_*.sh` already owns it.** `lib_install.sh` handles the transient
+   `Failure calling service package: Broken pipe (32)`; `lib_settle.sh` handles frame-rate variance;
+   `lib_wincheck.sh` handles "cannot check" vs "not a win"; `lib_metrics.sh` handles h_fatal and
+   absorbed-fault reporting. R48 records sourcing `lib_install.sh` and then hand-rolling `adb install`
+   anyway — and getting exactly the error that library exists to absorb.
+2. **Read the tool's output to the end before building on its data.** `gl_caps.py` prints
+   *"GL_OES_vertex_buffer_object is a GLES1-era name"* every run. R49 was written on that tool's
+   numbers without reading its conclusion, and had to be retracted.
+3. **Never truncate on the failure path.** R48's install reporter used `tail -2`, which on a rejected
+   install is the bottom of a Java stack trace — it destroyed the actual `-124` reason. The moment a
+   diagnostic matters most is the moment it must not be trimmed.
+4. **Premises retry; they do not query once.** A single `resolve-activity` 15 s after `boot_completed`
+   found no launcher for *Settings* and failed a premise on timing rather than on the device.
+
+**On reading evidence**
+
+5. **Absence from a log is evidence only if the log would have recorded presence.** `bridge_gl.c` has
+   no `LOG(` calls at all, so zero `glGenBuffers` lines says nothing about whether it was called (R49).
+   Same error as reading `h_fatal == 0` as a healthy address space when wild writes are absorbed before
+   they can be fatal (R41).
+6. **A count that has reached its cap is a floor.** Twenty-one `n++<N` sites exist; two documented
+   numbers turned out to be caps rather than measurements ("bounded ~64 tiny `_Rep`s" — R42; "the mixer
+   fills ~8 buffers" — R43). `capped_counts.py` finds them; `saturated_report` names a run's own.
+7. **A skip is not a pass.** R45: `reproduce.sh` ran the claim gate on the host, silently skipping the
+   one check that catches the `-lm` class of bug, and still printed `ALL CHECKED CLAIMS HOLD`.
+
+**On changing anything**
+
+8. **Anchor edits on unique context, and verify by `git diff` hunk positions — not by "it still
+   parses".** R33: an anchor that appeared twice put assertions inside a dead branch; `bash -n` passed
+   and the run exited 0, so two checks that could not fail confirmed a fix for a check that could not
+   fail.
+9. **Do not touch the shipping shim to improve diagnostics.** It moves the APK hash and invalidates
+   every reproducibility claim. R41, R42, R48 and R49 all declined this; the checks live outside the
+   artifact instead.
+10. **Execute the user's actual commands, in order, periodically.** No check can catch a check that is
+    never invoked (R45). A fresh clone from the public URL, then `reproduce.sh`, is the only thing that
+    tests what a stranger gets.
+
 ### Offline self-tests — proving the checkers can fail
 
 Everything above needs an emulator, /dev/kvm, and twenty to forty minutes. That has a consequence
