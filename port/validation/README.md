@@ -723,7 +723,12 @@ once; on 2026-07-28 that turned out to be false for one of them — the provenan
 "fixed and negative-tested", but the fix was never applied to the file, because the negative test ran
 against a *copy* of the intended logic. It proved the idea and said nothing about the artifact.
 
-`mutation_test.sh` replaces that trust with evidence. It hard-links a copy of the tree (`cp -al`,
+`mutation_test.sh` replaces that trust with evidence. It runs **15** cases as of 2026-07-29 — the three most
+recent (`sockets`, `killswitch`, and a corrected `manifest`) were added when the gate's permission,
+socket and kill-switch checks were rewritten to derive their lists rather than hard-code them.
+Exit codes are distinct: **0** all detected, **1** some undetected, **2** the suite could not run
+(it needs docker + `ab-port` and must run on the HOST — invoking it *inside* `ab-port` used to exit 0
+and look like a pass). It hard-links a copy of the tree (`cp -al`,
 with a `cp -an` backfill for root-owned files that `fs.protected_hardlinks` refuses to link, then a
 file-count check so a partial copy cannot masquerade as a detection), breaks exactly one guarantee,
 and asserts the real `verify_claims.sh` reports it:

@@ -36,8 +36,15 @@ WORK="${ABSHIM_MUT_DIR:-/tmp/claude-1000/mutation}"
 ONLY="$1"
 PASS=0; FAILED=0; SKIPPED=0
 
+# EXIT 2, NOT 0. This suite exists to enforce "a skip is not a pass", and its own unavailable-image
+# path returned 0 — success to any automation that checked. Distinct code: 0 = all mutations
+# detected, 1 = some went undetected, 2 = the suite could not run at all.
+# It also has to run on the HOST: it spawns a container per case, so invoking it INSIDE ab-port hits
+# exactly this path (no docker in there) and used to look like a clean pass.
 command -v docker >/dev/null 2>&1 && docker image inspect ab-port >/dev/null 2>&1 || {
-    echo "[skip] mutation test needs the ab-port image"; exit 0; }
+    echo "[skip] mutation test needs docker + the ab-port image, and must run on the HOST (it starts"
+    echo "       a container per case). NOT a pass — exiting 2 so nothing can mistake it for one."
+    exit 2; }
 
 # Run verify_claims against a tree and echo its output.
 run_gate() {
@@ -101,6 +108,23 @@ m_flip_byte()    { printf '\x00' | dd of="$1" bs=1 seek=64 conv=notrunc status=n
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
 mut_perf()        { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_perf; }
 mut_payload()     { repack_member "$1" lib/arm64-v8a/libengine32.so          m_flip_byte;  }
+
+# Give the shim slot a binary that DOES import sockets. Rovio's own engine imports 18 network
+# symbols, so this is the mutation the socket scan exists to catch — and it is a real binary rather
+# than a corrupted one, so the failure is the scan firing rather than the file being unreadable.
+mut_sockets() {
+    local tree="$1"
+    local apk="$tree/out/angrybirds-8.0.3-arm64.apk"
+    local eng="$tree/work803/libv7/libAngryBirdsClassic.so"
+    [ -f "$eng" ] || return 1
+    local tmp; tmp=$(mktemp -d)
+    mkdir -p "$tmp/lib/arm64-v8a"
+    cp "$eng" "$tmp/lib/arm64-v8a/libAngryBirdsClassic.so" || { rm -rf "$tmp"; return 1; }
+    rm -f "$apk.new"; cp "$apk" "$apk.new"
+    ( cd "$tmp" && zip -q "$apk.new" lib/arm64-v8a/libAngryBirdsClassic.so ) || { rm -rf "$tmp"; return 1; }
+    rm -f "$apk"; mv "$apk.new" "$apk"
+    rm -rf "$tmp"; return 0
+}
 
 # Put the ORIGINAL (un-de-phone-homed) manifest back: INTERNET live, no kill-switch meta-data.
 mut_manifest() {
@@ -251,7 +275,12 @@ echo "== mutation test: break each guarantee, confirm the gate says so =="
 case_run diagnostics   "diagnostic string(s) leaked into release"       mut_diagnostics
 case_run perf          "contains perf instrumentation"                  mut_perf
 case_run payload       "libAngryBirdsClassic.so != libengine32.so"      mut_payload
-case_run manifest      "LIVE permission present in the manifest"        mut_manifest
+case_run sockets       "network-capable symbol"                    mut_sockets
+case_run manifest      "STILL LIVE in the shipped manifest"            mut_manifest
+# The SAME mutation, asserted against the OTHER check it must trip. Restoring Rovio's manifest
+# removes the layer-4 kill-switches as well as un-mangling the permissions, and case_run greps for
+# ONE string, so each check needs its own case or one of them is covered only by accident.
+case_run killswitch    "kill-switch MISSING"                           mut_manifest
 case_run alloc         "shim allocations used without a NULL check"     mut_alloc
 case_run docref        "docs reference files that are NOT in the repo"  mut_docref
 case_run stale         "capture(s) are from builds that are no longer current" mut_stale
