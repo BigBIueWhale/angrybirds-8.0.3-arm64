@@ -56,7 +56,7 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
-### R15. Sustained play: 10 minutes, frame[9001], memory flat
+### R15. Sustained operation: 20 minutes, frame[17401], memory flat — within the tutorial levels
 
 Every run in this project was 5-10 minutes and stopped at level 2; the longest ever reached
 frame[6301]. Nothing sampled memory at any point — `grep -l meminfo port/validation/*.sh` returned
@@ -95,6 +95,18 @@ Now that the trend is known, it can be tightened against evidence.
 **Doubling the session did not increase the growth** — that is the shape of no leak, since a leak
 would roughly double it. The threshold has therefore been tightened from 2× to 1.3×, which is
 justified by measurement rather than chosen in advance.
+
+**What this does NOT show, checked rather than assumed.** The input is blind taps and swipes on a
+timer, so "frames advanced" means the renderer kept running, not that the game kept progressing.
+Reading the capture back: the 20-minute soak opened **two** distinct level files, both under
+`data/levels/0_Tutorial/`. It replayed the tutorial rather than advancing through the game. The
+`levelComplete` marker appears 10 times and means nothing here — it counts particle-script
+preloads and was removed as a win metric for exactly that reason (it stayed constant even in
+crashing runs).
+
+So the claim is sustained **operation**: twenty minutes of continuous rendering and input
+handling, 17 401 frames, no fatal, flat memory. Multi-level *progression* is evidenced elsewhere
+(`PROOF_9`, `PROOF_21`), by scripts that check for a win screen rather than counting frames.
 
 Still bounded: twenty minutes is not an evening, and this is SwiftShader on x86_64. What it removes
 is the possibility that the port only survives the first few minutes — and, now, that it leaks

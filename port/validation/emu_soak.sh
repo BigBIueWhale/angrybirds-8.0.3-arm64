@@ -14,6 +14,11 @@
 # 8 fewer usable bytes than Android for a family of small sizes. A leak or slow corruption that only
 # shows after twenty minutes would be invisible to every existing test.
 #
+# WHAT IT DOES NOT SHOW. The input is blind — taps and swipes on a timer — so this measures that
+# the renderer and input path keep working, NOT that the game progresses. A 20-minute run opened
+# two distinct level files, both in data/levels/0_Tutorial/: it replayed the tutorial. Progression
+# is proven by the playthrough scripts, which check for a win screen instead of counting frames.
+#
 # WHAT IT MEASURES, per sample
 #   frame[N]   — must keep advancing, or the game has stalled even if the process is alive
 #   VmRSS      — the process's resident memory, straight from /proc/<pid>/status
