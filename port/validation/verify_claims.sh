@@ -837,6 +837,52 @@ else
   printf '%s\n' "$STALE" | sed 's/^/         /'
 fi
 
+echo "== CLAIM: every symbol the shim imports is provided by a library it actually declares =="
+# THE GENERIC FORM OF THE -lm BUG. The shim was once linked without -lm: it used sin/cos, did not
+# declare libm.so in DT_NEEDED, ran fine on API 25 (which happened to have libm already loaded) and
+# would have died on the A56 with `UnsatisfiedLinkError: cannot locate symbol "sin"`. There is a
+# check above for libm specifically, because that is the instance that bit. This is the class: ANY
+# future edit that uses a symbol from a library the shim does not declare fails the same way, on the
+# user's phone, at launch, with a different symbol name.
+#
+# Decidable statically: the NDK ships link-time stubs whose exported symbols are exactly what the
+# platform provides. So every UND symbol in the shipped .so must be exported by one of the .so files
+# named in its own DT_NEEDED. Anything left over is a symbol the device's linker would not resolve.
+UNRES_REPORT=""
+NDK_STUBS=$(ls -d /opt/android-ndk-*/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/24 2>/dev/null | head -1)
+if [ -z "$NDK_STUBS" ]; then
+  skip "import resolvability (no NDK sysroot stubs here - run inside ab-port)"
+else
+  for APK in out/angrybirds-8.0.3-arm64.apk out/angrybirds-8.0.3-arm64-audio.apk; do
+    [ -f "$APK" ] || continue
+    T=$(mktemp -d); unzip -o -q "$APK" 'lib/arm64-v8a/libAngryBirdsClassic.so' -d "$T" 2>/dev/null
+    SO="$T/lib/arm64-v8a/libAngryBirdsClassic.so"; [ -f "$SO" ] || { rm -rf "$T"; continue; }
+    readelf -dW "$SO" | grep -oE '\[lib[a-zA-Z0-9_]+\.so\]' | tr -d '[]' | sort -u > "$T/needed"
+    : > "$T/prov"
+    while read -r L; do
+      [ -f "$NDK_STUBS/$L" ] && readelf -sW --dyn-syms "$NDK_STUBS/$L" 2>/dev/null \
+        | awk '$7!="UND" {print $8}' | sed 's/@.*//' >> "$T/prov"
+    done < "$T/needed"
+    sort -u "$T/prov" -o "$T/prov"
+    readelf -sW --dyn-syms "$SO" | awk '$7=="UND" {print $8}' | sed 's/@.*//' | grep -v '^$' | sort -u > "$T/und"
+    MISS=$(comm -23 "$T/und" "$T/prov")
+    NU=$(grep -c . "$T/und"); NM=$(printf '%s' "$MISS" | grep -c . || true)
+    if [ "${NM:-0}" -gt 0 ]; then
+      UNRES_REPORT="$UNRES_REPORT $(basename "$APK"): $NM of $NU unresolved [$(printf '%s' "$MISS" | head -4 | tr '\n' ' ')]"
+    else
+      IMPORTS_OK="${IMPORTS_OK:-0}"; IMPORTS_OK=$((IMPORTS_OK + NU))
+    fi
+    rm -rf "$T"
+  done
+  if [ -n "$UNRES_REPORT" ]; then
+    bad "the shim imports symbols no declared library provides — this is an UnsatisfiedLinkError on the phone:$UNRES_REPORT"
+  elif [ "${IMPORTS_OK:-0}" -gt 0 ]; then
+    ok "all $IMPORTS_OK imported symbol(s) resolve against the shim's own DT_NEEDED libraries"
+  else
+    skip "import resolvability (no arm64 APK present to check)"
+  fi
+fi
+
 echo "== CLAIM: the screenshot index describes exactly the proofs that exist =="
 # PROOF_2/3/4 silently went stale for a day: they showed a binary that no longer existed, and
 # nothing noticed because nothing recorded what they were supposed to show. reports/shots/README.md

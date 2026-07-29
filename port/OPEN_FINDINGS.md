@@ -56,6 +56,35 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R22. Every symbol the shim imports is now proven resolvable on the phone — the generic form of the `-lm` bug
+
+The worst near-miss in this project was a link flag. The shim used `sin`/`cos`, was linked without
+`-lm`, did not declare `libm.so` in `DT_NEEDED`, ran perfectly on API 25 — and would have died on the
+A56 at launch with `UnsatisfiedLinkError: cannot locate symbol "sin"`. It was caught by running on a
+newer image, which is luck rather than method, and the gate has carried a `libm`-specific check ever
+since.
+
+That check covers the instance. The **class** is: any future edit that uses a symbol from a library
+the shim does not declare fails identically — on the user's phone, at launch, with some other symbol
+name. Nothing detected that.
+
+It is decidable statically. The NDK ships link-time stubs whose exported symbols are exactly what the
+platform provides, so every `UND` symbol in the shipped `.so` must be exported by one of the
+libraries named in its own `DT_NEEDED`. Anything left over is a symbol the device's linker will not
+resolve.
+
+**Measured on the shipped artifacts: all 358 imported symbols resolve, 0 unresolved.** The shim
+declares `liblog libandroid libGLESv2 libEGL libm libdl libc` and asks for nothing outside them.
+
+Proven able to fail, and proven to catch the *class* rather than the string: `mutation_test.sh`'s
+`libm_gone` case renames `libm.so` to `libq.so` inside the ELF's string table — same length, no
+offsets move — which is exactly "linked without `-lm`" as the loader sees it. The general check then
+reports **25 unresolved symbols**: `acos`, `acosf`, `asin`, `asinf`, `atan`, `atan2`, … The
+`libm`-specific claim fires too, which is the point: the specific check names the known bug, the
+general one would have caught it without knowing about it.
+
+**19/19 mutations detected, 0 skipped**, unmutated control still passing.
+
 ### R21. Stale measurements in docs are now caught mechanically, not one at a time
 
 Two rounds running, a user-facing document was found quoting a number that a later measurement had

@@ -147,6 +147,23 @@ mut_stale() {
     grep -q 539536 "$f" || return 1
 }
 
+# Rename libm.so in the shim's DT_NEEDED to a library that does not exist, keeping the string length
+# identical so no ELF offsets move. This reproduces the exact bug that nearly shipped: the shim used
+# sin/cos without declaring libm, ran on API 25, and would have died on the A56 with
+# `UnsatisfiedLinkError: cannot locate symbol "sin"`. It should trip BOTH the specific libm claim and
+# the general import-resolvability claim — if only the specific one fires, the general one is not
+# doing its job.
+m_unlink_libm() {
+    python3 - "$1" <<'PYEOF'
+import sys
+p = sys.argv[1]
+b = open(p, 'rb').read()
+assert b.count(b'libm.so\x00') > 0, "libm.so not found in the ELF strings — mutation would be a no-op"
+open(p, 'wb').write(b.replace(b'libm.so\x00', b'libq.so\x00'))
+PYEOF
+}
+mut_libm() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_unlink_libm; }
+
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
 mut_perf()        { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_perf; }
 mut_payload()     { repack_member "$1" lib/arm64-v8a/libengine32.so          m_flip_byte;  }
@@ -355,6 +372,7 @@ case_run signer        "signed by an UNEXPECTED key"                     mut_sig
 case_run camera        "without resetting the camera"                  mut_camera
 case_run align16k      "NOT 16 KB-aligned"                             mut_align
 case_run stale_doc     "quotes a superseded measurement"               mut_stale
+case_run libm_gone     "libm.so MISSING"                               mut_libm
 
 echo
 echo "== control: the real tree must still PASS =="
