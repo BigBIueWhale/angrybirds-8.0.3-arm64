@@ -209,7 +209,7 @@ What could NOT be settled without real audio hardware is **continuous playback**
 exactly why: the **emulator's host audio backend fails to init in a headless container** (`Could
 not init 'pa' audio driver` — reproduced even with a working PulseAudio null sink wired up via
 `Dockerfile.ab-emu-pa`; `pactl`/`parecord` connect fine but the emulator's own audio backend won't).
-So the guest `AudioTrack` buffer never drains → the mixer fills ~8 buffers then blocks. **This is an
+So the guest `AudioTrack` buffer never drains. **The "~8 buffers then blocks" part of that sentence has been withdrawn (R43): the 8 was a log cap, not a measurement.** `jni_entry.c` prints `nativeMixData ENABLED` at most eight times per run (`am++<8`), and all three audio logs show exactly 8 — three identical values across independent runs, which is what a cap looks like and not what a timing-dependent buffer limit looks like. So ≥8 mix calls happened and the rate is **unmeasurable from the logs**; the mixer may well be running continuously. What remains genuinely evidenced is the backend failure itself (`Could not init 'pa' audio driver`), which is a distinct error message rather than an inference from a count. **This is an
 emulator-infrastructure limitation, not a shim bug** — the game's audio path is correct (AudioTrack
 inits, mixer runs, no crash). On the A56 the real audio HAL drains to real speakers, so continuous
 mixing follows — this is exactly what the phone settles. If you try it, capture `adb logcat -s

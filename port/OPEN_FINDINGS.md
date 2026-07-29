@@ -797,7 +797,7 @@ Looked at rather than scored: `audiomod_end.png` is **LEVEL CLEARED**, three sta
 
 The known limit is unchanged and still honestly stated in `ONDEVICE.md`: *continuous* playback cannot
 be settled here, because the emulator's host audio backend will not initialise in a headless
-container, so the guest `AudioTrack` buffer never drains and the mixer blocks after ~8 buffers. That
+container, so the guest `AudioTrack` buffer never drains. (**"the mixer blocks after ~8 buffers" is withdrawn — see R43: 8 is the `am++<8` log cap, and the mix rate is not measurable from the logs at all.**) That
 is emulator infrastructure, not the shim — `nativeMixData: 8` is exactly that ceiling, and it is why
 the number is 8 rather than growing.
 
@@ -1109,6 +1109,52 @@ emulator system image, and an unusually new one; treating it as proof about the 
 would be exactly the over-reach this document keeps correcting. The honest status is **an unexplained
 incompatibility on one newer image, cause unknown, not attributable to the port** — worth knowing,
 not worth alarming the user with.
+
+### R43. A documented conclusion about audio rests on a log cap — the same defect as R42, in a load-bearing place
+
+R42 found a documented figure ("bounded, ~64 tiny `_Rep`s") that was really the point where a log
+stops printing. That raised an obvious follow-up: **how many other numbers in this project are log
+caps?** The shim has thirteen distinct rate limits — `2 3 4 8 12 14 16 20 24 40 64 220 400` — so the
+question is mechanical, and one of them landed on a conclusion.
+
+```c
+jni_entry.c:560   { static int am=0; if(am++<8) LOG("[audio] nativeMixData ENABLED ..."); }
+```
+
+The mixer log is capped at **8**. And the shim's own comment four lines above cites it as evidence:
+
+```
+jni_entry.c:543   * audiomod, audio): `nativeMixData ENABLED` appears 8x in each, so the mixer really is running,
+```
+
+From there the number became a conclusion, in `ONDEVICE.md` and in R-series notes: *"the guest
+`AudioTrack` buffer never drains → the mixer fills ~8 buffers then blocks"*, attributed to the
+emulator's audio backend failing headless.
+
+**All three audio logs show exactly 8.** Three identical values across three independent runs on two
+different API levels is what a cap looks like; a timing-dependent buffer limit would vary. There is
+**no uncapped audio marker anywhere in the shim**, so the true mix rate is not measurable from a log
+at all.
+
+**What survives and what is withdrawn:**
+
+- *Survives:* the mixer is running — ≥8 calls is a real lower bound, and `stack_chk_fail` and
+  `h_fatal` are 0 in all three runs. The backend failure is independently evidenced by a distinct
+  error string, `Could not init 'pa' audio driver`, reproduced even with a working PulseAudio null
+  sink — that is an error message, not an inference from a count.
+- *Withdrawn:* "the mixer fills ~8 buffers then blocks". Nothing measured supports the *stops* part.
+  The mixer may be mixing continuously; 8 is simply where the log goes quiet.
+
+This is mildly **good** news for the device: there is no evidence the mixer stalls, only that the
+emulator cannot make it audible. But the honest position is that the rate is unknown, and saying so
+is better than a number that came from a `printf` guard.
+
+Corrected in `ONDEVICE.md` and in the R-series note. The stale comment at `jni_entry.c:543` is
+**deliberately left alone**: no shim source has been touched this session, so every reproducibility
+claim stands unchanged. It is recorded here instead. (Comment-only edits would in fact be
+binary-neutral — no `__LINE__`/`__FILE__` appears anywhere in the shim sources, checked — but that
+would still need a rebuild-and-rehash to *prove* rather than assert, and an unverified binary is a
+worse trade than a stale comment.)
 
 ### R42. Write-after-free is happening on every run — known, mitigated, bounded, and invisible to every check in the suite
 
