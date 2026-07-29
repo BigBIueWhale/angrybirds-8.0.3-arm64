@@ -1110,6 +1110,61 @@ would be exactly the over-reach this document keeps correcting. The honest statu
 incompatibility on one newer image, cause unknown, not attributable to the port** — worth knowing,
 not worth alarming the user with.
 
+### R48. The 36.1 failure is located: the launcher FILTER is dropped, not the activity — and Android logs no reason
+
+R47 refuted the SDK-level explanation. This narrows *where* the failure happens, on the **shipped**
+artifact (targetSdk=26 — what you actually install, not a diagnostic variant), with all three premises
+holding: control resolves, `install rc=0`, 27,173 logcat lines captured.
+
+It also resolves a contradiction between the two earlier notes. R18 recorded the activity as *present*
+with its deep-link filter; R47's `am start -n` answered *"Activity class does not exist"*. R18 was
+right for the shipped APK:
+
+```
+Activity Resolver Table:
+  Schemes:
+      com.rovio.angrybirds-8.0.3:
+        com.rovio.fusion.App filter 41f0945
+```
+
+The component **is** registered. The resolver contains a `Schemes:` section and **no action table** —
+so the declared `MAIN`/`LAUNCHER` filter (its strings are in the manifest: LAUNCHER ×1, MAIN ×2,
+BROWSABLE ×3) never enters resolution, while the URI-scheme filter does.
+
+**And Android says nothing about it.** Every log line naming the package during install is routine:
+
+```
+LauncherAppsService  onPackageAdded: user=UserHandle{0}, packageName=com.rovio.angrybirds
+LauncherApps         onPackageAdded 0,com.rovio.angrybirds
+NativePermissionController  PackageState{packageName: com.rovio.angrybirds, targetSdk: 26, …}
+```
+
+No `PackageParser` / `ParsingPackageUtils` warning, nothing skipped, ignored, rejected or deprecated.
+The launcher is even *notified* of the install. So the filter is discarded without a diagnostic.
+
+**Where this leaves it.** Three things are now established rather than assumed: the install is clean,
+the component survives parsing, and the loss is specifically at launcher-filter registration. What
+remains unknown is the rule doing it — and answering that needs the 36.1 platform's own resolver
+source, not another emulator run. The honest state is *characterised, not explained*.
+
+**Still no impact on the phone.** The A56 runs Android 16 / API 36, where this APK installs and plays
+(`PROOF_18`, 3 stars, 42920). 36.1 is a QPR the phone *may* later receive; if it does, R47 rules out a
+targetSdk bump as the fix and this rules out a parse error as the cause.
+
+**Four self-inflicted faults in this one experiment, all the same shape: reimplementing what the rig
+already solved.**
+
+| what I did | what caught it |
+|---|---|
+| repacked the APK inside the emulator image → `zip: command not found` | the script failed honestly rather than faking a result |
+| reported install failure with `tail -2` → kept the bottom of a Java stack trace and **destroyed the actual `-124` reason** | had to repeat the run to recover it |
+| queried the control **once**, 15 s after boot → premise failed on timing, not on the device | the premise check itself, which is why it exists |
+| used a raw `adb install` after sourcing `lib_install.sh` → `Failure calling service package: Broken pipe (32)` | `lib_install.sh` exists precisely to absorb that |
+
+The last one is the most embarrassing: I sourced the library written for that exact transient and then
+hand-rolled the call anyway. Worth recording as a pattern — before writing a step, check whether
+`port/validation/lib_*.sh` already owns it.
+
 ### R47. R18's only explanation is REFUTED: targetSdk is not why the app is unlaunchable on Android 36.1
 
 R18 left one hypothesis on record — that 36.1 refuses to register this app's `MAIN`/`LAUNCHER` filter
