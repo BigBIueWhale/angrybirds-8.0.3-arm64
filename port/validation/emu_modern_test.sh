@@ -32,7 +32,12 @@ else
   say "  retry --bypass-low-target-sdk-block: [$R2]"
   echo "$R2" | grep -q Success && { INST=bypass; say "  => needs bypass flag (adb-only; note for the A56)"; } || INST=fail
 fi
-[ "$INST" = fail ] && { say "  => INSTALL FAILED on API 34"; say DONE; adb emu kill; exit 0; }
+# exit 1, not 0. This line ANNOUNCES a failure and used to return success, so any caller checking
+# the status saw a pass — the same "a skip is not a pass" defect found in mutation_test.sh's
+# unavailable-image path. The rest of this script is deliberately informational (it reports Q1/Q2
+# for a human to read, like the proof screenshots that must be looked at rather than scored), but
+# a declared failure has to be reflected in the exit code.
+[ "$INST" = fail ] && { say "  => INSTALL FAILED on API 34"; say DONE; adb emu kill; exit 1; }
 
 adb logcat -c >/dev/null 2>&1; adb logcat -G 64M >/dev/null 2>&1
 adb logcat -s abshim > "$ABLOG" 2>/dev/null &
