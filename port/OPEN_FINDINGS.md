@@ -1110,6 +1110,66 @@ would be exactly the over-reach this document keeps correcting. The honest statu
 incompatibility on one newer image, cause unknown, not attributable to the port** — worth knowing,
 not worth alarming the user with.
 
+### R42. Write-after-free is happening on every run — known, mitigated, bounded, and invisible to every check in the suite
+
+R41 asked what `h_fatal == 0` cannot see and found the zero-page absorber, which turned out to be
+dormant (0 events everywhere). The same question asked of galloc's *other* self-healing mechanism has
+the opposite answer: **it fires constantly.**
+
+`grep '\[WAF\]'` across every log in the repo — 209 lines, including runs from **today**:
+
+| log | `[WAF]` | build |
+|---|---|---|
+| `emu_fatal_abshim.txt` | **64** — at the log cap, so a floor | diagnostic |
+| `launch_timing_abshim.txt` | 41 | diagnostic |
+| `playthrough_abshim.txt` | 41 | diagnostic |
+| `shadercap3_abshim.txt` | 36 | diagnostic |
+| `emu_interactive_abshim.txt` | 27 | diagnostic |
+| every release-build log | 0 | release |
+
+`playthrough_abshim.txt` is the API-25 run from 2026-07-29 that reported `DONE (FAIL=0)` and
+`WIN CONFIRMED from pixels`. It contained **41 write-after-free events** and nothing in the suite
+looked.
+
+**What it is.** Three distinct engine free-sites — `+0xd4c40` (33 of 41), `+0x7c2cb4` (7),
+`+0x7363a8` (1) — and the canary deltas identify it precisely:
+
+```
+canary 00000007->00000197      canary 0000005f->000001cf      canary 00000055->000001c5
+```
+
+A near-constant increment to the **first word** of an already-freed block: a COW `std::string` `_Rep`
+refcount. This is the documented residual UAF, not a new defect.
+
+**Why it is tolerable.** galloc's targeted leak never reclaims the address of a block that was written
+while quarantined, so the stale refcount write lands on memory nobody owns. That fix is active in
+**release** too. And it is bounded in practice — the 20-minute soak measured
+**RSS 613,960 kB → 620,732 kB, 101 % of the first sample, across frame[21601]**.
+
+**Why it is nonetheless invisible, in two independent ways.**
+
+- The `[WAF]` log is `#if defined(__ANDROID__) && !defined(ABSHIM_RELEASE)`. Verified against the
+  shipped binaries rather than the source: the deliverable's `.so` contains `uaf-survive` **but not**
+  `[WAF]`. So the artifact the user installs can never report this, and most validation here runs the
+  *release* proxy.
+- The log caps at 64 (`n++<64`). `emu_fatal_abshim.txt`'s exactly-64 is therefore a floor with an
+  unknown total; `playthrough_abshim.txt`'s 41 is a real count.
+
+**Deliberately REPORTED, not asserted.** `waf_report` in `lib_metrics.sh`, surfaced as a `[note]` in
+the playthrough verdict. Three reasons an assertion would be wrong here, and the first is the
+important one:
+
+1. **`waf == 0` would pass on every release log for the wrong reason** — because the diagnostic is
+   compiled out, not because nothing happened. That is precisely a check that cannot fail, on the
+   majority of runs in this suite. The report says so in its own output instead of hiding it.
+2. A non-zero count on a diagnostic build is expected and accepted; failing would paint every
+   diagnostic run red for a condition deliberately tolerated.
+3. The cap makes ≥64 a floor, so the number cannot carry a threshold.
+
+What the report gives instead is the quantity next to the build that produced it, with the baseline
+(41 for an API-25 diagnostic playthrough) stated, so a change in rate becomes visible rather than
+being averaged into a green line.
+
 ### R41. `h_fatal == 0` was being read as a healthy address space — and a whole class of memory faults is neutralised before it can ever be fatal
 
 Every play assertion in this tree checks `h_fatal == 0` and treats it as evidence the run was clean.

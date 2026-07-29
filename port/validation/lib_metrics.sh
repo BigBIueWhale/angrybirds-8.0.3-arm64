@@ -80,3 +80,37 @@ assert_no_absorbed_faults() {  # $1 = abshim log
     if declare -F say >/dev/null 2>&1; then say "$out"; elif [ -n "$LOG" ]; then echo "$out" | tee -a "$LOG"; else echo "$out"; fi
     [ "$n" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------------------------
+# waf_report — write-after-free events, REPORTED and never asserted to be zero. See R42.
+#
+# The engine genuinely writes to blocks it has already freed: 41 events in the 2026-07-29 API-25
+# diagnostic playthrough, from three distinct engine free-sites (+0xd4c40 x33, +0x7c2cb4 x7,
+# +0x7363a8 x1). The canary deltas (0x7->0x197, 0x5f->0x1cf, 0x55->0x1c5) are a near-constant
+# increment to the FIRST word of a freed block — a COW std::string _Rep refcount, i.e. the documented
+# residual UAF, not a new defect.
+#
+# galloc mitigates it with a targeted leak: a block written while quarantined never has its address
+# reclaimed, so the stale refcount write lands on memory nobody owns. That FIX is always active,
+# including in release. It is bounded in practice — the 20-minute soak grew RSS 613960kB -> 620732kB,
+# 101% of the first sample, across frame[21601].
+#
+# WHY THIS IS NOT ASSERTED == 0, which would be the obvious thing to write:
+#   * On a RELEASE build the count is ALWAYS 0 because the [WAF] log is compiled out
+#     (`#if defined(__ANDROID__) && !defined(ABSHIM_RELEASE)` in galloc.c) — verified by grepping the
+#     shipped .so: it contains "uaf-survive" but no "[WAF]". So `waf == 0` on a release log means
+#     "the diagnostic does not exist here", not "no write-after-free happened". Asserting it would be
+#     a check that cannot fail, on the majority of runs in this suite.
+#   * On a DIAGNOSTIC build a non-zero count is EXPECTED and accepted. Failing on it would paint
+#     every diagnostic run red for a condition that is deliberately tolerated and bounded.
+#   * The log itself caps at 64 (`n++<64`), so any count of exactly 64 is a FLOOR, not a total.
+#     emu_fatal_abshim.txt hit that cap; playthrough_abshim.txt's 41 did not, so 41 is real.
+#
+# What IS useful is the number, next to the build that produced it, so a change in rate is visible.
+waf_report() {                 # $1 = abshim log
+    local n; n=$(grep -ac '\[WAF\]' "$1" 2>/dev/null); n=${n:-0}
+    if   [ "$n" -eq 0 ];  then echo "0 (either a release build, where the [WAF] diagnostic is compiled out, or none occurred — these are indistinguishable from a log)"
+    elif [ "$n" -ge 64 ]; then echo "$n — AT THE LOG CAP (n++<64), so this is a FLOOR, not a count"
+    else echo "$n write-after-free event(s), absorbed by galloc's targeted leak (expected on a diagnostic build; baseline 41 for an API-25 playthrough)"
+    fi
+}
