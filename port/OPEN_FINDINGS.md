@@ -102,9 +102,22 @@ build-host path to the shim inside the APK now yields
 
 **23/23 mutations detected, 0 skipped**, vacuity audit clean, control passing.
 
-Still without automated mutations, recorded so the header's blanket sentence is not inherited as true
-again: JNI thunk completeness, native-lib extraction, audio-variant sameness, documented log markers,
-and capture-build currency.
+**Closing the rest of the gap.** Four more claims had no automated case, and three are now covered:
+
+| claim | mutation | result |
+|---|---|---|
+| native libs are EXTRACTED to disk | append `extractNativeLibs` to the manifest — parsers read the chunk header and ignore trailing bytes, so every *other* claim still parses it, while the `strings` scan this claim uses sees it | caught |
+| every documented log marker is emitted | add `` `[no-such-marker]` `` to ONDEVICE.md | caught |
+| the audio variant ships identical payloads | append a byte to `libengine32.so` **inside the audio APK** — `repack_member` gained an optional 4th argument for this, defaulting to the silent build so existing cases are unchanged | caught |
+
+One earlier entry in this list was wrong: **capture-build currency was already covered** by the
+`stale` case, which rewrites a provenance hash. Listing it as a gap was itself an unverified claim.
+
+**26/26 mutations detected, 0 skipped**, vacuity audit clean, control passing.
+
+Still uncovered, honestly: **JNI thunk completeness** — mutating it means removing an exported
+`Java_` symbol from the shim, which is a different class of surgery from the byte-append and
+string-rename mutations here.
 
 ### R25. Two of twenty-one mutation cases could not fail — now audited mechanically
 

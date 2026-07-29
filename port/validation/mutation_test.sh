@@ -116,9 +116,11 @@ vacuity_audit() {
 # --- mutations. Each rm's before writing: the copy is hard-linked to the real repo. -------------
 
 # Repack an APK with one member replaced by a mutated version of itself.
-repack_member() {                      # $1=tree $2=member path in apk $3=shell fn applied to the file
+repack_member() {   # $1=tree $2=member path in apk $3=shell fn applied to the file $4=apk (optional)
     local tree="$1" member="$2" mutate="$3"
-    local apk="$tree/out/angrybirds-8.0.3-arm64.apk"
+    # $4 lets a case target the AUDIO variant. It defaults to the silent arm64 deliverable, which is
+    # what every pre-existing case mutates, so their behaviour is unchanged.
+    local apk="${4:-$tree/out/angrybirds-8.0.3-arm64.apk}"
     local tmp; tmp=$(mktemp -d)
     ( cd "$tmp" && unzip -o -q "$apk" "$member" ) || { rm -rf "$tmp"; return 1; }
     "$mutate" "$tmp/$member" || { rm -rf "$tmp"; return 1; }
@@ -259,6 +261,41 @@ m_hostpath() {
     printf '%s%s\x00' "$h" "$m" >> "$1"
 }
 mut_hostpath_apk() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_hostpath; }
+
+# Make the manifest look as though it sets extractNativeLibs. With that attribute false the libs stay
+# compressed inside the APK, dli_fname stops being a real filesystem path, and the shim can no longer
+# find libengine32.so beside itself — a silent payload-lookup failure on the phone. The attribute is
+# absent today and defaults to true, which is exactly why a future rebuild adding it must not pass
+# unnoticed.
+#
+# Appended rather than injected into the AXML string pool: parsers read the chunk header length and
+# ignore trailing bytes, so the manifest still parses for every OTHER claim, while `strings` — which
+# is what this claim uses — sees it. The mutation must break one claim, not corrupt the file.
+m_add_enl() { printf 'extractNativeLibs\x00' >> "$1"; }
+mut_extractnative() { repack_member "$1" AndroidManifest.xml m_add_enl; }
+
+# Document a log marker the shim never emits. ONDEVICE.md is the triage tree a user works through
+# with the phone in hand: it tells them to grep for `[marker]` strings, and two rows once named
+# markers that did not exist, so anyone following them would have found nothing and concluded the
+# shim had stalled. The doc is the source of truth for WHICH markers matter, so a newly documented
+# phantom must fail.
+mut_phantom_marker() {
+    local f="$1/port/ONDEVICE.md"
+    [ -f "$f" ] || return 1
+    cp "$f" "$f.mut" && rm -f "$f" && mv "$f.mut" "$f" || return 1   # break the cp -al hard link
+    printf '\nIf it stalls, grep for `[no-such-marker]` in the log.\n' >> "$f"
+    grep -q 'no-such-marker' "$f" || return 1
+}
+
+# Break the audio variant's promise that it ships the SAME payloads as the silent build — only the
+# mixer differs. If the engine inside the audio APK diverged, the "experimental audio build" a user
+# is offered would no longer be the validated game with sound enabled.
+m_append_audio() { printf 'AUDIO-DIVERGED' >> "$1"; }
+mut_audio_payload() {
+    local apk="$1/out/angrybirds-8.0.3-arm64-audio.apk"
+    [ -f "$apk" ] || return 1
+    repack_member "$1" lib/arm64-v8a/libengine32.so m_append_audio "$apk"
+}
 
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
 mut_perf()        { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_perf; }
@@ -476,6 +513,9 @@ case_run prov_env      "not the environment it ran on"                 mut_prov_
 case_run proof_bytes   "does not match the bytes the index recorded"   mut_proof_bytes
 case_run hostpath_src  "tracked files name a build-host path"          mut_hostpath_tracked
 case_run hostpath_apk  "build-host path(s)"                            mut_hostpath_apk
+case_run extractnative "the manifest sets extractNativeLibs"           mut_extractnative
+case_run phantom_mark  "names markers the shim never emits"            mut_phantom_marker
+case_run audio_payload "DIFFERS from the silent build"                 mut_audio_payload
 
 echo
 echo "== control: the real tree must still PASS =="
