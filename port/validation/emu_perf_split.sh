@@ -175,6 +175,7 @@ say "  the absolute frame rate does not."
 # "*** DISCARD THESE RESULTS ***" and still exited 0 — the one failure that invalidates every
 # other line above it.
 selfhash_verify; [ $? -eq 0 ] || FAIL=$((FAIL+1))
-say DONE
+# `DONE (FAIL=n)` like every other script here, so a log scan sees the verdict too.
+say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
 exit "$FAIL"

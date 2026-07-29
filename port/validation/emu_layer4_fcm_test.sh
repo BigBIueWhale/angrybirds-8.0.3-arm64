@@ -166,6 +166,9 @@ else
 fi
 say ""
 [ "$FAIL" = 0 ] && say "LAYER 4 TEST PASSED" || say "LAYER 4 TEST FAILED"
-say DONE
+# `DONE (FAIL=n)`, not a bare DONE: every other script in this suite ends that way and anything
+# scanning the logs greps for it. The exit status was always correct here (exit "$FAIL" below); this
+# only makes the LOG say so too.
+say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
 exit "$FAIL"

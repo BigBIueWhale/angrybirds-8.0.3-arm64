@@ -176,6 +176,7 @@ say "  full logcat kept at:      reports/shots/jniexc_full_logcat.txt ($(wc -c <
 say ""
 [ "$FAIL" = 0 ] && say "PROBE PASSED — no pending JNI exceptions, and the app itself did no network" \
               || say "PROBE FAILED — see [FAIL] lines above"
-say DONE
+# `DONE (FAIL=n)` like every other script here, so a log scan sees the verdict too.
+say "DONE (FAIL=$FAIL)"
 adb emu kill >/dev/null 2>&1
 exit "$FAIL"
