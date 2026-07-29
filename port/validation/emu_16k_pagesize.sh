@@ -121,7 +121,12 @@ done
 dismiss_system_dialogs
 adb shell input tap 390 266; sleep 4; adb shell input tap 390 266; sleep 8
 settle_frames "$ABLOG" 200 200
-adb exec-out screencap -p > "$OUT/PROOF_16k_pagesize.png" 2>/dev/null
+# Written under a NEUTRAL name. The first version wrote PROOF_16k_pagesize.png unconditionally, and
+# the run that produced it never launched the app — a zero-byte file called PROOF_. The claim gate
+# caught it ("every proof on disk is described in the index"), which is the check working as
+# intended. A capture only earns the PROOF_ prefix once the run it came from actually passed, so the
+# rename happens at the end, on success.
+adb exec-out screencap -p > "$OUT/pagesize16k_screen.png" 2>/dev/null
 
 say
 say "== RESULTS =="
@@ -147,6 +152,14 @@ say "  loader errors   : $DL  (dlopen/alignment/UnsatisfiedLinkError in UNFILTER
 [ -n "$FRAME" ] && [ "$FRAME" -ge 601 ] || { say "  [FAIL] never reached frame[601] — the engine did not render"; FAIL=1; }
 HF=$(grep -ac 'h_fatal' "$ABLOG"); [ "${HF:-0}" -eq 0 ] || { say "  [FAIL] h_fatal on a 16 KB-page kernel"; FAIL=1; }
 win_check "$OUT/PROOF_16k_pagesize.png" >/dev/null 2>&1   # informational: reaching a level is enough here
+
+# Promote the capture to PROOF_ only if everything above held.
+if [ "$FAIL" -eq 0 ] && [ -s "$OUT/pagesize16k_screen.png" ]; then
+    cp "$OUT/pagesize16k_screen.png" "$OUT/PROOF_16k_pagesize.png"
+    say "  capture promoted to PROOF_16k_pagesize.png (the run passed)"
+else
+    say "  capture left as pagesize16k_screen.png — this run did not earn a PROOF_ name"
+fi
 
 say
 selfhash_verify
