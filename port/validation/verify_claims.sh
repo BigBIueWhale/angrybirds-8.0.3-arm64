@@ -391,6 +391,25 @@ else
   bad "could not parse minSdk/targetSdk out of the manifest"
 fi
 
+echo "== CLAIM: no tracked file names a build-host path =="
+# The repository is PUBLIC. The artifact check below covers the shipped binaries; this covers the
+# SOURCE, which is the part people read. Six test files used to hard-code
+# /home/<user>/<repo>/work803/... as a fallback engine path — dead code, because run_tests.sh always
+# exports ABSHIM_ENGINE_SO from the repo root, but committed to a public repo and printed verbatim
+# ("SKIP: no engine at /home/...") by any test binary run directly.
+# Only build-host prefixes: Android device paths like /data/data/... are legitimate and appear
+# throughout the docs.
+if command -v git >/dev/null 2>&1 && [ -d .git ]; then
+  HP=$(git grep -InE '/home/[a-z_][a-z0-9_-]*/|/root/[a-z]|/Users/[A-Za-z]' -- . 2>/dev/null | head -5)
+  if [ -n "$HP" ]; then
+    bad "tracked files name a build-host path:"; printf '%s\n' "$HP" | sed 's/^/         /'
+  else
+    ok "no /home/<user>, /root or /Users path in any tracked file"
+  fi
+else
+  skip "host-path scan of tracked files (no git checkout available here)"
+fi
+
 echo "== CLAIM: the artifact names no build-host path =="
 # This repository is PUBLIC and the deliverable is meant to be handed to someone else, so a build
 # path from whoever built it must not travel inside the binaries. The in-container build embeds only

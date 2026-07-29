@@ -20,7 +20,7 @@ int main(void){
     setvbuf(stdout,NULL,_IONBF,0);
     printf("=== nativeInit drive test (fake-env JNI passthrough) ===\n");
     const char*path=getenv("ABSHIM_ENGINE_SO");
-    if(!path) path="/home/user/original_angry_birds/apk-binary-analysis/work803/libv7/libAngryBirdsClassic.so";
+    if(!path) path="work803/libv7/libAngryBirdsClassic.so";
     FILE*fp=fopen(path,"rb"); if(!fp){ printf("  SKIP: no engine\n"); return 0; }
     fseek(fp,0,SEEK_END); long len=ftell(fp); fseek(fp,0,SEEK_SET);
     uint8_t*elf=malloc(len); if(fread(elf,1,len,fp)!=(size_t)len)return 1; fclose(fp);

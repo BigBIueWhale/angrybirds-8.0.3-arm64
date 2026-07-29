@@ -37,7 +37,7 @@ int main(int argc,char**argv){
     setvbuf(stdout,NULL,_IONBF,0);
     printf("=== elf32 host test (real engine binary) ===\n");
     const char*path = argc>1 ? argv[1] : getenv("ABSHIM_ENGINE_SO");
-    if (!path) path = "/home/user/original_angry_birds/apk-binary-analysis/work803/libv7/libAngryBirdsClassic.so";
+    if (!path) path = "work803/libv7/libAngryBirdsClassic.so";
 
     FILE*f=fopen(path,"rb");
     if(!f){ printf("  SKIP: engine .so not found at %s\n",path); return 0; }

@@ -77,7 +77,7 @@ int main(void){
     printf("=== boot-with-assets drive (host AAsset backend) ===\n");
     if(!getenv("ABSHIM_ASSET_DIR")){ printf("  SKIP: set ABSHIM_ASSET_DIR to the extracted assets/ dir\n"); return 0; }
     const char *path=getenv("ABSHIM_ENGINE_SO");
-    if(!path) path="/home/user/original_angry_birds/apk-binary-analysis/work803/libv7/libAngryBirdsClassic.so";
+    if(!path) path="work803/libv7/libAngryBirdsClassic.so";
     long len; uint8_t *elf=load_file(path,&len); if(!elf){ printf("  SKIP: no engine\n"); return 0; }
 
     cpu_t cpu; if(cpu_create(&cpu)){ printf("cpu fail\n"); return 1; }

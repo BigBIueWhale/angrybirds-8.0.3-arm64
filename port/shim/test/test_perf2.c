@@ -28,7 +28,7 @@ static double run_ctors(const uint8_t*elf,long len,uint64_t*count,int*ran,int*to
 int main(void){
     setvbuf(stdout,NULL,_IONBF,0);
     const char*path=getenv("ABSHIM_ENGINE_SO");
-    if(!path) path="/home/user/original_angry_birds/apk-binary-analysis/work803/libv7/libAngryBirdsClassic.so";
+    if(!path) path="work803/libv7/libAngryBirdsClassic.so";
     long len; uint8_t*elf=load_file(path,&len); if(!elf){ printf("SKIP: no engine\n"); return 0; }
     printf("=== SR1 calibration on REAL engine code (125 C++ constructors) ===\n");
     uint64_t insns=0; int ran=0,tot=0;
