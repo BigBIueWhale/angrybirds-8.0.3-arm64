@@ -56,6 +56,37 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R15. Sustained play: 10 minutes, frame[9001], memory flat
+
+Every run in this project was 5-10 minutes and stopped at level 2; the longest ever reached
+frame[6301]. Nothing sampled memory at any point — `grep -l meminfo port/validation/*.sh` returned
+nothing. So "it plays" was established and "it keeps playing" was not, which is the half a player
+actually experiences.
+
+That gap mattered more here than it would for a normal app, because the guest heap is this project's
+own implementation (galloc, inside Unicorn's address space) and it has had a real corruption bug:
+`galloc_check` once reported -5 permanently, 383 of 384 checks failing. A slow leak or creeping
+corruption would have been invisible to every existing test.
+
+Measured by `emu_soak.sh` on the **shipping configuration** (API 34, continuous input, sampled once
+a minute):
+
+| | |
+|---|---|
+| frames | **9001** — half again the previous record, with 0 stalled samples |
+| `h_fatal` | **0**, across 22 420 shim log lines |
+| resident memory | **611 608 kB → 616 164 kB**, +0.7% over ten minutes |
+| process | alive at the end |
+
+The RSS figure is consistent with the 512 MB Unicorn arena plus the app's own allocations, and it is
+the shape that matters: essentially flat under active play rather than climbing. The assertion is
+deliberately loose (fail above 2× the first steady sample) because no baseline existed before this
+run — a threshold invented ahead of the data would either fire on correct behaviour or never fire.
+Now that the trend is known, it can be tightened against evidence.
+
+Still bounded: ten minutes is not an evening, and this is SwiftShader on x86_64. What it removes is
+the possibility that the port only survives the first few minutes.
+
 ### R14. The project's foundational numbers, re-derived from the binaries
 
 Every other finding quotes these, and none had been re-checked since it was first written. Audited
