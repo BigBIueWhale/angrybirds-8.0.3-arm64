@@ -56,6 +56,25 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R19. Regression check: the install-library changes did not break the phone's actual OS
+
+`lib_install.sh` was changed twice while chasing R18 — installer exceptions reclassified as transient,
+and the APK push moved inside the retry loop with verification. **Every emulator script in this rig
+uses that library**, so a mistake there would silently degrade all of them.
+
+Re-ran the full playthrough on **API 36 — the A56's OS** — with the modified library:
+
+```
+install:           ok
+win check:  WIN CONFIRMED from pixels
+            [ WIN ] regr36_3_end.png  gold=0.0572 dark=0.5241 lum=57.9
+h_fatal:           0  (7925 shim log lines, so this was measured)
+```
+
+The capture was looked at, not only scored: it is the **LEVEL CLEARED** screen, three stars, score
+**44910**. So the library changes are clean on the platform that matters, and the port still plays and
+wins there.
+
 ### R18. 16 KB pages are FINE. Android **36.1** is where this app stops being launchable — and it is not our doing
 
 Two things were tested here. One closes an open gap; the other opens a new one that matters more.
