@@ -56,6 +56,62 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R36. The win verdict was computed correctly, then thrown away — in the three scripts that produce the headline evidence
+
+`lib_wincheck.sh` is careful work. It returns **three** outcomes, never two, because a missing
+interpreter once reported `NOT a win screen` for a run that had won, and the whole file exists to
+keep "cannot check" from being confused with "did not win".
+
+All three of its callers discarded the answer:
+
+| script | what it did with the verdict |
+|---|---|
+| `emu_modern_playthrough.sh` | called `win_check`, ignored the return, printed `final pid: [3782] (alive => played through)`, `DONE`, exit 0 |
+| `emu_audio_modern.sh` | same |
+| `emu_modern_progress.sh` | never called it — printed `win/advance check: SCREENSHOTS ONLY -> …` and left both images unexamined |
+
+So a run that photographed a level still in progress produced the same exit status, and nearly the
+same log, as a run that won. These three produce **PROOF_8, PROOF_11 and PROOF_14** — the evidence
+for the project's headline claim.
+
+`selfhash_verify` was discarded identically. A script edited while a container was executing it
+printed `*** SCRIPT CHANGED WHILE RUNNING — DISCARD THESE RESULTS ***` and then exited 0.
+
+**Fixed** in `lib_playassert.sh`, as functions of plain arguments so they can be exercised without a
+device:
+
+- `assert_playthrough` — constructors, a frame floor, `h_fatal`, a live pid, and the win itself.
+- `assert_progression` — the same, plus advancement as a **two-sided** claim: the cleared shot must
+  be a win *and* the next shot must **not** be one. That second half has an obvious hole — a crashed
+  app renders black, which is also "not a win" — so `png_sane.py` runs first and the next-level shot
+  must be a real, non-blank frame before its win score means anything.
+
+**"Could not check" is not a pass.** A playthrough test that reached no verdict has not demonstrated
+a playthrough, so it fails — while still distinguishing a broken harness from a losing run, because
+those call for opposite responses. And a failing win check is *not* automatically a port bug: these
+runs are timing-sensitive, so the message points at the screenshot rather than accusing the shim.
+
+`test_playassert.sh` (14 cases) feeds the verdict synthetic logs and **real screenshots** — a genuine
+win frame and a genuine mid-flight frame — including the case the old code scored as success: a
+mechanically healthy run whose end screen simply is not a win.
+
+Re-run on API 34, asserting rather than narrating:
+
+```
+  [ OK ] all 125 constructors ran
+  [ OK ] rendered to frame[1801] (>= 601)
+  [ OK ] no h_fatal during the playthrough
+  [ OK ] the process was still alive at the end (pid 2359)
+  win check:  WIN CONFIRMED from pixels
+              [ WIN ] modplay_3_end.png  gold=0.0580 dark=0.5294 lum=57.1
+  script identity: unchanged during the run — results are from this file
+DONE (FAIL=0)
+```
+
+`validate_all.sh`'s first stage now **discovers** self-test suites by glob rather than listing them:
+the hand-written list was edited twice in one session and its describing comment went stale both
+times. Zero matches is a failure, not a quiet pass.
+
 ### R35. Three lines of prose were executing as shell commands on every run — and `bash -n` says the file is fine
 
 `emu_layer4_fcm_test.sh` carries the runtime proof for de-phone-home layer 4. Four lines of it

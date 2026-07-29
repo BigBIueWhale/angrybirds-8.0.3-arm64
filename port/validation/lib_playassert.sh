@@ -39,13 +39,32 @@
 # (prose_as_code.py flagged the call for exactly this: it could not see where win_check came from.)
 source "$(dirname "${BASH_SOURCE[0]}")/lib_wincheck.sh"
 
-sa_pa_say(){ if type say >/dev/null 2>&1; then say "$@"; else echo "$@"; fi; }
+# Same three-branch fallback as lib_wincheck.sh's _wc_say, and for the same reason: two scripts
+# (emu_playthrough.sh, emu_playthrough_release.sh) log with inline `echo ... | tee -a "$LOG"` and
+# define no say() at all. With only a say/echo fallback, every assertion line here would print to
+# the terminal and never reach the run's log — so the saved evidence would omit the verdict while
+# the live output looked complete.
+sa_pa_say(){
+    if declare -F say >/dev/null 2>&1; then say "$@"
+    elif [ -n "$LOG" ]; then echo "$@" | tee -a "$LOG"
+    else echo "$@"; fi
+}
 
 # assert_playthrough <abshim log> <end screenshot> <final pid> [min frame, default 601]
 # Prints one [ OK ] / [FAIL] line per check; returns the number of failures (0 = pass).
 assert_playthrough() {
     local ablog="$1" shot="$2" pid="$3" minfr="${4:-601}" fail=0
     local ctor fr hf wc
+
+    # If the caller's run-log IS the log under analysis, every verdict line this function prints
+    # gets appended to its own input — and a line reading "[FAIL] h_fatal during the playthrough"
+    # then counts as an h_fatal. That is measuring your own output. It happened, in this lib's own
+    # self-test, within minutes of the tee fallback being added.
+    if [ -n "$LOG" ] && [ -e "$LOG" ] && [ -e "$ablog" ] && [ "$LOG" -ef "$ablog" ]; then
+        sa_pa_say "  [FAIL] harness error: the run log and the abshim log are the same file"
+        sa_pa_say "         ($ablog) — the assertions would be reading their own output. Fix the caller."
+        return 1
+    fi
 
     ctor=$(grep -acE 'init_array 125/125' "$ablog" 2>/dev/null); ctor=${ctor:-0}
     fr=$(grep -aoE 'frame\[[0-9]+\]' "$ablog" 2>/dev/null | tail -1 | grep -oE '[0-9]+')

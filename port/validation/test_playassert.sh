@@ -25,7 +25,11 @@ good_log(){
         echo "07-29 18:00:20.000  1 1 I abshim  : frame[1501]"
     } > "$1"
 }
-LOG="$TMP/ab.txt"; good_log "$LOG"
+# NOT named LOG: lib_playassert.sh tees its verdict into $LOG when the caller defines no
+# say(), so calling this LOG made the assertions write "[FAIL] h_fatal ..." INTO the very
+# log they were analysing, and the next check counted their own output. This is an
+# abshim log; the name now says so.
+ABL="$TMP/ab.txt"; good_log "$ABL"
 
 run_case(){ # <name> <want pass|fail> <expected text> -- <ablog> <shot> <pid> [minframe]
     local name="$1" want="$2" text="$3"; shift 3
@@ -43,8 +47,8 @@ run_case(){ # <name> <want pass|fail> <expected text> -- <ablog> <shot> <pid> [m
 }
 
 echo "== control: a healthy winning run =="
-run_case "a winning playthrough passes" pass "" -- "$LOG" "$WIN" 3782
-NOK=$(assert_playthrough "$LOG" "$WIN" 3782 2>&1 | grep -c '^  \[ OK \]')
+run_case "a winning playthrough passes" pass "" -- "$ABL" "$WIN" 3782
+NOK=$(assert_playthrough "$ABL" "$WIN" 3782 2>&1 | grep -c '^  \[ OK \]')
 if [ "$NOK" -eq 5 ]; then
     echo "  [ OK ] the control ran all 5 checks (not vacuously silent)"; PASS=$((PASS+1))
 else
@@ -54,29 +58,40 @@ fi
 echo
 echo "== each failure must be caught, and named correctly =="
 
-M="$TMP/noctor.txt"; grep -v init_array "$LOG" > "$M"
+M="$TMP/noctor.txt"; grep -v init_array "$ABL" > "$M"
 run_case "constructors never finished"  fail "init_array 125/125" -- "$M" "$WIN" 3782
 
-M="$TMP/lowfr.txt"; sed 's/frame\[1501\]/frame[42]/' "$LOG" > "$M"
+M="$TMP/lowfr.txt"; sed 's/frame\[1501\]/frame[42]/' "$ABL" > "$M"
 run_case "renderer stalled early"       fail "below the 601"      -- "$M" "$WIN" 3782
 
-M="$TMP/fatal.txt"; cp "$LOG" "$M"; echo "I abshim : [h_fatal] boom" >> "$M"
+M="$TMP/fatal.txt"; cp "$ABL" "$M"; echo "I abshim : [h_fatal] boom" >> "$M"
 run_case "h_fatal during the run"       fail "h_fatal during"     -- "$M" "$WIN" 3782
 
-run_case "process died before the end"  fail "process was gone"   -- "$LOG" "$WIN" ""
+run_case "process died before the end"  fail "process was gone"   -- "$ABL" "$WIN" ""
 
 # The important one: everything mechanical is healthy, and the game simply did not win. This is the
 # case the old code reported as success.
-run_case "healthy run that did NOT win" fail "is NOT a win"       -- "$LOG" "$NOTWIN" 3782
+run_case "healthy run that did NOT win" fail "is NOT a win"       -- "$ABL" "$NOTWIN" 3782
 
-run_case "missing screenshot"           fail "could not run"      -- "$LOG" "$TMP/nope.png" 3782
+run_case "missing screenshot"           fail "could not run"      -- "$ABL" "$TMP/nope.png" 3782
 
 M="$TMP/empty.txt"; : > "$M"
 run_case "an empty log"                 fail ""                   -- "$M" "$WIN" 3782
 
 echo
 echo "== a stricter frame floor must be honoured =="
-run_case "frame floor above what ran"   fail "below the 5000"     -- "$LOG" "$WIN" 3782 5000
+run_case "frame floor above what ran"   fail "below the 5000"     -- "$ABL" "$WIN" 3782 5000
+
+echo
+echo "== the harness must not measure its own output =="
+# Set LOG to the very file under analysis, in a SUBSHELL so it cannot leak into the other cases.
+CONTAM=$( LOG="$ABL"; assert_playthrough "$ABL" "$WIN" 3782 2>&1 )
+if printf '%s\n' "$CONTAM" | grep -qF "harness error"; then
+    echo "  [ OK ] run-log == abshim-log is refused, not silently self-contaminated"; PASS=$((PASS+1))
+else
+    echo "  [FAIL] the self-contamination guard did not fire"; FAIL=$((FAIL+1))
+    printf '%s\n' "$CONTAM" | sed 's/^/          | /'
+fi
 
 echo
 echo "== progression: advancing is a two-sided claim =="
@@ -91,9 +106,9 @@ prog_case(){ # <name> <want> <text> -- <log> <cleared> <next> <pid>
     if [ "$ok" = 1 ]; then echo "  [ OK ] $name"; PASS=$((PASS+1))
     else echo "  [FAIL] $name (rc=$rc, wanted $want)"; printf '%s\n' "$out" | sed 's/^/          | /'; FAIL=$((FAIL+1)); fi
 }
-prog_case "cleared=win + next=fresh level" pass ""                    -- "$LOG" "$WIN" "$L2" 3782
-prog_case "never left the results screen"  fail "STILL a win screen"  -- "$LOG" "$WIN" "$WIN" 3782
-prog_case "the level was never cleared"    fail "is NOT a win"        -- "$LOG" "$L2"  "$L2" 3782
+prog_case "cleared=win + next=fresh level" pass ""                    -- "$ABL" "$WIN" "$L2" 3782
+prog_case "never left the results screen"  fail "STILL a win screen"  -- "$ABL" "$WIN" "$WIN" 3782
+prog_case "the level was never cleared"    fail "is NOT a win"        -- "$ABL" "$L2"  "$L2" 3782
 BLANK=$(mktemp -u)/blank.png; mkdir -p "$(dirname "$BLANK")"
 python3 - "$BLANK" <<'PYGEN'
 import sys, zlib, struct
@@ -105,7 +120,7 @@ def ch(t,d):
 open(sys.argv[1],'wb').write(b'\x89PNG\r\n\x1a\n'+ch(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))
                              +ch(b'IDAT',zlib.compress(bytes(rows)))+ch(b'IEND',b''))
 PYGEN
-prog_case "crashed to a black frame"       fail "not a picture of anything" -- "$LOG" "$WIN" "$BLANK" 3782
+prog_case "crashed to a black frame"       fail "not a picture of anything" -- "$ABL" "$WIN" "$BLANK" 3782
 rm -rf "$(dirname "$BLANK")"
 
 echo
