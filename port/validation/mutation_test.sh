@@ -129,6 +129,24 @@ PYEOF
 }
 mut_align() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_align4k; }
 
+# Re-introduce a superseded measurement into a doc, unframed. This is the exact defect the staleness
+# claim exists for: RELEASE_NOTES.md really did keep telling readers the guest heap "differs by about
+# 64 KB" long after both architectures measured 605096. The filler lines matter — the checker looks
+# at a +/-6 line window for framing words, so the mutation has to land somewhere genuinely unframed
+# or it would be (correctly) tolerated as history and the case would prove nothing.
+mut_stale() {
+    local f="$1/port/ONDEVICE.md"
+    [ -f "$f" ] || return 1
+    { printf '\n## Guest heap size\n\n'
+      printf 'Filler line one, deliberately free of any qualifying language.\n\n'
+      printf 'Filler line two, likewise.\n\n'
+      printf 'After the 125 constructors the guest heap holds 539536 bytes on arm64.\n\n'
+      printf 'Filler line three.\n'
+      printf 'Filler line four.\n'
+    } >> "$f"
+    grep -q 539536 "$f" || return 1
+}
+
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
 mut_perf()        { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_perf; }
 mut_payload()     { repack_member "$1" lib/arm64-v8a/libengine32.so          m_flip_byte;  }
@@ -336,6 +354,7 @@ case_run doc_hash      "documented SHA-256 does not match the artifact"  mut_doc
 case_run signer        "signed by an UNEXPECTED key"                     mut_signer
 case_run camera        "without resetting the camera"                  mut_camera
 case_run align16k      "NOT 16 KB-aligned"                             mut_align
+case_run stale_doc     "quotes a superseded measurement"               mut_stale
 
 echo
 echo "== control: the real tree must still PASS =="

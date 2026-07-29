@@ -59,6 +59,10 @@ unmodified, inside an ARM32→ARM64 emulation shim (Unicorn). targetSdk 26, self
   arm64 container, the new ones from a cross toolchain — and re-running that path costs hours of
   emulated compilation. So: treat the guest heap as **measured identical across architectures
   today**, while noting the figure has moved before and is worth re-measuring rather than cited.
+  The allocation *sequence* comparison above has moved on as well: "identical for at least the first
+  4913 requests" was the figure at the time, and `alloc_trace_compare.sh` now reports **all 7793 ctor
+  records and all 8290 `nativeInit` records identical** between the two hosts (sha256
+  `a4407f9f28cae7f1…` and `3f7c7bcc30409d06…`).
 
 **On first launch the A56 will show you TWO system dialogs, stacked.** Both are normal and neither
 means anything is wrong:

@@ -789,6 +789,48 @@ else
   skip "16 KB alignment (no arm64 APK present to check)"
 fi
 
+echo "== CLAIM: no doc quotes a superseded measurement as if it were current =="
+# THE DEFECT CLASS THIS CATCHES. Twice in one session a user-facing document was found still quoting
+# a number that a later measurement had replaced: RELEASE_NOTES.md said the guest heap "differs by
+# about 64 KB after startup" long after both architectures were measured at 605096, and said
+# allocations match "at least the first 4913 requests" after the full traces were compared. Each was
+# corrected by hand. Correcting by hand does not scale, and a reader who finds one stale number stops
+# trusting the rest of the record — which is the real cost.
+#
+# The rule is not "never mention the old value" — the history is worth keeping, and this file's own
+# corrections depend on being able to say what the number used to be. The rule is that a superseded
+# value must appear WITH framing that marks it as history. So each occurrence is checked for a
+# nearby marker word; an unframed occurrence is a stale claim.
+STALE=$(python3 - <<'PYEOF'
+import re, glob
+SUPERSEDED = {
+    "539536": "605096 (both architectures, re-measured 2026-07-28)",
+    "4913":   "all 7793 ctor / 8290 nativeInit records identical",
+}
+FRAMING = re.compile(r"correction|update|earlier|previously|used to|no longer|cannot be obtained"
+                     r"|superseded|at the time|has moved|old(er)? (figure|number|wording)|history",
+                     re.I)
+bad = []
+for f in glob.glob("**/*.md", recursive=True):
+    if "/shots_backup" in f:
+        continue
+    lines = open(f, encoding="utf-8", errors="replace").read().splitlines()
+    for i, ln in enumerate(lines):
+        for val, now in SUPERSEDED.items():
+            if re.search(r"(?<![0-9])" + val + r"(?![0-9])", ln):
+                ctx = " ".join(lines[max(0, i - 6):i + 7])
+                if not FRAMING.search(ctx):
+                    bad.append(f"{f}:{i+1} quotes {val} unframed (current: {now})")
+print("\n".join(bad))
+PYEOF
+)
+if [ -z "$STALE" ]; then
+  ok "every superseded measurement quoted in the docs is framed as history"
+else
+  bad "a doc quotes a superseded measurement as current:"
+  printf '%s\n' "$STALE" | sed 's/^/         /'
+fi
+
 echo "== CLAIM: the screenshot index describes exactly the proofs that exist =="
 # PROOF_2/3/4 silently went stale for a day: they showed a binary that no longer existed, and
 # nothing noticed because nothing recorded what they were supposed to show. reports/shots/README.md

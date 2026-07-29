@@ -56,6 +56,36 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R21. Stale measurements in docs are now caught mechanically, not one at a time
+
+Two rounds running, a user-facing document was found quoting a number that a later measurement had
+replaced. `RELEASE_NOTES.md` still said the guest heap "differs by about 64 KB after startup" long
+after both architectures measured `605096`, and that allocations match "at least the first 4913
+requests" after the full traces were compared. `ONDEVICE.md` carried the `4913` figure too. Each was
+fixed by hand.
+
+Fixing by hand does not scale, and the cost is not the individual number — it is that a reader who
+finds one stale figure stops trusting the rest of the record.
+
+`verify_claims.sh` now checks it. The rule is deliberately **not** "never mention the old value":
+the history is worth keeping, and this project's own corrections depend on being able to say what a
+number used to be. The rule is that a superseded value must appear **with framing that marks it as
+history** — `correction`, `update`, `earlier`, `previously`, `no longer`, `cannot be obtained`,
+`superseded`, `at the time`, `has moved`, `old figure`, `history` — within a ±6-line window. An
+unframed occurrence is a stale claim and fails the gate.
+
+Tracked so far:
+
+| superseded | current |
+|---|---|
+| `539536` (arm64 heap after ctors) | `605096`, both architectures, re-measured 2026-07-28 |
+| `4913` ("at least the first N allocations match") | all **7793** ctor and **8290** `nativeInit` records identical |
+
+Proven able to fail: `mutation_test.sh`'s `stale_doc` case appends an unframed *"the guest heap holds
+539536 bytes on arm64"* to `ONDEVICE.md`, padded with neutral filler so it lands outside any framing
+window, and the gate catches it — **18/18 mutations detected, 0 skipped**, unmutated control still
+passing.
+
 ### R20. The reproducible build, re-verified end to end today
 
 Clause 2 of the brief is that the conversion be a reproducible automated process inside Docker. That
