@@ -177,6 +177,30 @@ say "== RESULTS =="
 NL=$(levels_seen)
 say "  distinct level files opened: $NL"
 grep -aoE 'data/levels/[A-Za-z0-9_]+/[A-Za-z0-9_]+' "$ABLOG" 2>/dev/null | sort -u | sed 's/^/    /' | tee -a "$LOG"
+# Report the DENOMINATOR, always, straight from the APK. "N distinct levels" invites the reader to
+# supply a ceiling, and three times running the ceiling supplied was wrong: 4 read as a limit, 5 was
+# written up as "the whole 0_Tutorial episode", and the next run opened a sixth. 0_Tutorial actually
+# holds 15 .lua files and the APK carries 20-plus further episodes. A number with no denominator is
+# an invitation to guess one.
+python3 - "$APK" "$ABLOG" <<'PYEOF' | tee -a "$LOG"
+import sys, zipfile, re, collections
+apk, ablog = sys.argv[1], sys.argv[2]
+seen = collections.defaultdict(set)
+for m in re.finditer(rb'data/levels/([A-Za-z0-9_]+)/([A-Za-z0-9_]+)', open(ablog,'rb').read()):
+    seen[m.group(1).decode()].add(m.group(2).decode())
+try:
+    names = zipfile.ZipFile(apk).namelist()
+except Exception as e:
+    print(f"  (could not read the APK to count levels: {e})"); raise SystemExit
+total = collections.defaultdict(set)
+for n in names:
+    m = re.match(r'assets/data/levels/([A-Za-z0-9_]+)/([A-Za-z0-9_]+)\.lua$', n)
+    if m: total[m.group(1)].add(m.group(2))
+for ep in sorted(seen):
+    print(f"  episode {ep}: {len(seen[ep])} of {len(total.get(ep, ()))} level files opened")
+never = sorted(set(total) - set(seen))
+print(f"  episodes never entered: {len(never)}" + (f" ({', '.join(never[:4])}…)" if never else ""))
+PYEOF
 say "  wins confirmed from pixels: $WINS of $WANT cycles"
 say "  h_fatal: $(h_fatal_report "$ABLOG")"
 PID=$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')

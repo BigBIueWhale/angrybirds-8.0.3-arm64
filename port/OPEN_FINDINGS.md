@@ -176,6 +176,17 @@ Nine of those 15 tutorial files (`birdquake`, `bubbles`, `kingsling`, `powerpoti
 obviously part of the opening sequence, so 6-of-15 is not the same as 40% of a linear episode. What
 is certain is the direction: six sequential levels, and a seventh never reached.
 
+`emu_progression.sh` now prints the denominator itself, computed from the APK, so the number can no
+longer be read without its scale:
+
+```
+  episode 0_Tutorial: 6 of 15 level files opened
+  episodes never entered: 27
+```
+
+A count with no denominator is an invitation to guess one, and the guess was wrong every time it was
+made here.
+
 Cycles 12-18 produced no wins and no new levels — the run stalled on `Tutorial_6_niko`, which the
 fixed pull vector does not solve. That is a limit of the harness's aim, not evidence about the port.
 
