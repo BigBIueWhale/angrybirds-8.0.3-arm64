@@ -272,6 +272,25 @@ mut_strayabi() {
 }
 
 echo "== mutation test: break each guarantee, confirm the gate says so =="
+# Remove the camera reset from a script that shoots across rounds. This is the harness bug that cost
+# two full 15-minute runs and nearly entered the record as a fact about the GAME ("fixed coordinates
+# cannot aim, so arbitrary levels cannot be cleared"). Deleting the pan restores exactly the drifting
+# harness that produced one win in five cycles while the process looked perfectly healthy — frames
+# advancing, h_fatal 0, level file open — because a camera pointed at empty sky is invisible from
+# everything except a screenshot.
+mut_camera() {
+    local f="$1/port/validation/emu_progression.sh"
+    [ -f "$f" ] || return 1
+    # Cut the pan call itself, leaving the drag loop intact — the precise regression.
+    rm -f "$f.tmp"; grep -v 'pan_and_capture "\$OUT/prog_' "$f" > "$f.tmp" || return 1
+    # The drag must SURVIVE the mutation, or this case would prove nothing — it would be testing a
+    # script that no longer shoots. Checked against `input swipe` generally: the literal coordinates
+    # this once matched are gone, the anchor is computed now, and the guard correctly refused to
+    # apply rather than silently mutating something else.
+    grep -q 'adb shell input swipe' "$f.tmp" || return 1
+    rm -f "$f"; mv "$f.tmp" "$f"
+}
+
 case_run diagnostics   "diagnostic string(s) leaked into release"       mut_diagnostics
 case_run perf          "contains perf instrumentation"                  mut_perf
 case_run payload       "libAngryBirdsClassic.so != libengine32.so"      mut_payload
@@ -291,6 +310,7 @@ case_run stray_abi     "stray ABI directories survived the strip"      mut_stray
 case_run identity      "identity CHANGED by the conversion"           mut_identity
 case_run doc_hash      "documented SHA-256 does not match the artifact"  mut_dochash
 case_run signer        "signed by an UNEXPECTED key"                     mut_signer
+case_run camera        "without resetting the camera"                  mut_camera
 
 echo
 echo "== control: the real tree must still PASS =="

@@ -178,12 +178,24 @@ driven by hand from outside:
 
 ```bash
 docker exec ab-emu-run adb shell input tap 540 960
-docker exec ab-emu-run adb shell input swipe 300 700 200 760 400   # slingshot drag
+docker exec ab-emu-run adb shell input swipe 300 700 200 760 400   # drag — see the warning below
 docker exec ab-emu-run adb exec-out screencap -p > /tmp/shot.png
 ```
 
 That is how PROOF_2/3/4 were produced. It requires launching the container detached with
 `--name ab-emu-run` instead of `--rm`.
+
+**That swipe is not a "slingshot drag", and calling it one has already cost a run.** It is a drag at
+a screen position. It launches a bird only when it *starts on the bird*, which is true at level start
+and false afterwards — and a drag that misses the bird **pans the camera** instead. Repeat it and the
+view walks off the level: `emu_progression.sh` drove five cycles, won once, and its own screenshot
+(`prog_5.png`) showed empty sky with `SCORE 0`. The logs looked perfect throughout — frames
+advancing, `h_fatal` 0, level file open, process healthy — because nothing about a mispointed camera
+is visible from the process.
+
+So, for anything that shoots more than once: call `pan_to_slingshot` from `lib_camera.sh` first, and
+capture a frame *before* the drag. Without that image, "the shot missed" and "the harness was aiming
+at scenery" are indistinguishable.
 
 ---
 
@@ -236,7 +248,8 @@ PROOF mapping verified by md5 against the source screenshots, not by filename.
 | `emu_a56_screen.sh` | abtest34 / 34, **forced to 1080x2340 @ 420dpi** | x86shim-shaders | the A56's real display configuration — `smallestWidth 411dp`, the **phone** resource bucket (at the AVD's default 160 the same panel is an *xlarge tablet*, and this APK ships `drawable-large-*`/`drawable-xlarge-*`). Produces **PROOF_21**: win at the phone's geometry, no letterboxing, texture max unchanged. Asserts the density and fails if it is not the A56's |
 | `emu_doc_verify.sh` | **ab36 / 36** | x86shim-release | the commands ONDEVICE.md tells a user to run to CHECK the port, executed as written: the no-phone-home `dumpsys` grep (with a positive control on a package that does have INTERNET), `run-as` (fails — the manifest is `debuggable="false"`), `/proc/net/tcp` by uid (0 rows, 0 ESTABLISHED), and the ABI check |
 | `emu_update_install.sh` | abtest34 / 34 | x86shim-release **and** x86shim-audio | the claim that appears in RELEASE_NOTES, ONDEVICE (x2) and OPEN_FINDINGS — *saves survive an update-install* — tested rather than asserted: play → hash saves → `pm install -r` the OTHER variant over it → saves byte-identical → relaunch runs → install the first back over it. Needs `adb root` to read `/data/data` |
-| `emu_soak.sh` | abtest34 / 34 | x86shim-release | **sustained play** — the class of evidence this rig had none of. Every other run is 5-10 min and stops at level 2; the longest ever reached frame[6301]. Samples frame/VmRSS/h_fatal once a minute under continuous input. First result: **frame[9001], h_fatal=0 over 22420 log lines, RSS 611.6 MB → 616.2 MB (+0.7%) in 10 min, 0 stalls**. `SOAK_MINUTES=20` for longer |
+| `emu_soak.sh` | abtest34 / 34 | x86shim-release | **sustained operation** (not "play" — see R15; the input is blind and the run does not progress) — the class of evidence this rig had none of. Every other run is 5-10 min and stops at level 2; the longest ever reached frame[6301]. Samples frame/VmRSS/h_fatal once a minute under continuous input. First result: **frame[9001], h_fatal=0 over 22420 log lines, RSS 611.6 MB → 616.2 MB (+0.7%) in 10 min, 0 stalls**. `SOAK_MINUTES=20` for longer |
+| `emu_progression.sh` | abtest34 / 34 | x86shim-release | drives the win → NEXT cycle deliberately and counts DISTINCT `data/levels/<episode>/<name>` files, because frames advancing is not levels advancing. Each shot pans the view back to the slingshot (`port/validation/lib_camera.sh`) and locates the bird before dragging (`port/validation/find_bird.py`) — with a fixed anchor it won once in five cycles while the game was healthy, and the screenshots showed the harness aiming at empty sky. `LEVELS=8` for more cycles |
 | `emu_premise.sh` | abtest34 / 34 | **Rovio's original** + x86shim-release | the problem AND the fix on ONE device: original refused `NO_MATCHING_ABIS`, same game re-hosted installs and renders → **PROOF_20** (`OPEN_FINDINGS` R12) |
 | `emu_intent_probe.sh` | abtest34 / 34 | x86shim-release | **the only script that watches outbound INTENTS.** Unfiltered logcat, because activity starts are a system tag that `-s abshim` cannot see. Zero `VIEW`/`market://`/`http` intents across a full playthrough, with a positive control so the zero is a measurement (R13) |
 | `emu_signature_clash.sh` | abtest / 25 | **Rovio's original** + x86shim-release | proves `ONDEVICE.md`'s `INSTALL_FAILED_UPDATE_INCOMPATIBLE` row by *causing* it: different signers → original installs → ours refused with the documented message → documented remedy works |
@@ -254,6 +267,17 @@ PROOF mapping verified by md5 against the source screenshots, not by filename.
 | `alloc_trace_compare.sh` | — (x86 + cross/qemu) | — | diffs the guest's ALLOCATION SEQUENCE between x86 and AArch64 at TWO depths — 7793 records through the constructors, 8290 through `nativeInit` (past boot, into the JNI lifecycle). Identical, same sha256 both times. The strongest host-independence evidence available without the device. Fails if either trace is empty, so an empty-vs-empty comparison cannot pass |
 | `arm64_cross_test.sh` | — (cross + qemu-user) | — | **the arm64 validation**: the WHOLE suite on AArch64 — 7 device tests (boot, ctors, longjmp, sched, libc, file, native_init) + all 10 mode-agnostic module tests, 19 checks. CROSS-compiled on x86 in the `ab-arm64x` image so it runs in minutes, fully offline, instead of hours of emulated compilation. Asserts the binaries really are AArch64 |
 | `arm64_unicorn_test.sh` | — (qemu-user) | — | the original arm64 validation, built *inside* an emulated arm64 container. Superseded by `arm64_cross_test.sh` for routine use; kept because it is the one path that does **not** depend on a cross toolchain |
+
+**Two helpers exist because the "slingshot drag" in every script is not one.**
+`port/validation/lib_camera.sh` (`pan_to_slingshot`, `pan_and_capture`) puts the view back on the
+launch point: a drag that does not start on the bird pans the camera, so repeating one fixed gesture
+walks the view off the level, and nothing in a log shows it — frames advance, `h_fatal` stays 0, the
+level file is open, the process is healthy.
+`port/validation/find_bird.py` then locates the loaded bird in a screenshot (pure `zlib`/`struct`,
+since the emulator images have no PIL) so the drag starts *on* it. It answers "where is the reddest
+thing", which is the bird only on a settled pre-shot frame — on a tutorial instruction card it
+happily returns the *illustrated* bird, and on a win screen it returns the banner. Ask it only after
+dialogs are dismissed, and check the result.
 
 ### Corrections made 2026-07-27 (read before trusting any older run output)
 

@@ -99,7 +99,7 @@ justified by measurement rather than chosen in advance.
 **What this does NOT show, checked rather than assumed.** The input is blind taps and swipes on a
 timer, so "frames advanced" means the renderer kept running, not that the game kept progressing.
 Reading the capture back: the 20-minute soak opened **two** distinct level files, both under
-`data/levels/0_Tutorial/`. It replayed the tutorial rather than advancing through the game. The
+`data/levels/0_Tutorial/` — it did not advance through the game. The
 `levelComplete` marker appears 10 times and means nothing here — it counts particle-script
 preloads and was removed as a win metric for exactly that reason (it stayed constant even in
 crashing runs).
@@ -107,6 +107,20 @@ crashing runs).
 So the claim is sustained **operation**: twenty minutes of continuous rendering and input
 handling, 17 401 frames, no fatal, flat memory. Multi-level *progression* is evidenced elsewhere
 (`PROOF_9`, `PROOF_21`), by scripts that check for a win screen rather than counting frames.
+
+**Correction — what the soak was actually looking at.** This section previously said the run
+"replayed the tutorial". That was never measured: `emu_soak.sh` captured no images, so nothing in
+the run could say what was on screen, and the sentence was an inference from the level-file count
+dressed as an observation. `emu_progression.sh` then repeated the same fixed drag and *photographed*
+the result — `prog_5.png` is empty sky with `SCORE 0` and a live pause button. In this game a drag
+on empty space **pans the camera**, so repeating one drag walks the view off the level and every
+later swipe lands on nothing. The soak was very likely doing the same, which is weaker than
+"replaying the tutorial" implies.
+
+The measured claims above are unaffected: frames, `VmRSS` and `h_fatal` are read from the process,
+not from the screen, so they hold whatever was being displayed. Only the explanation of what the
+input achieved was wrong. Both scripts now pan back to the slingshot before each drag, and both save
+frames so a later reader can look instead of infer.
 
 Still bounded: twenty minutes is not an evening, and this is SwiftShader on x86_64. What it removes
 is the possibility that the port only survives the first few minutes — and, now, that it leaks

@@ -16,8 +16,21 @@
 #
 # WHAT IT DOES NOT SHOW. The input is blind — taps and swipes on a timer — so this measures that
 # the renderer and input path keep working, NOT that the game progresses. A 20-minute run opened
-# two distinct level files, both in data/levels/0_Tutorial/: it replayed the tutorial. Progression
-# is proven by the playthrough scripts, which check for a win screen instead of counting frames.
+# two distinct level files, both in data/levels/0_Tutorial/. Progression is proven by the
+# playthrough scripts, which check for a win screen instead of counting frames.
+#
+# That used to read "it replayed the tutorial", which was a GUESS — this script captured no images,
+# so nothing here could say what was on screen. emu_progression.sh later shot the same repeated drag
+# and photographed the result: empty sky, SCORE 0, level still loaded. A drag on empty space PANS
+# THE CAMERA, so repeating one fixed drag walks the view off the level and every later swipe lands
+# on nothing. This soak was almost certainly doing that too, which makes its input weaker than
+# "replaying the tutorial" implied.
+#
+# Two changes follow. The loop now pans back to the slingshot before each drag, so the session is
+# actual play rather than swiping sky; and it saves a frame at the start and end, so a future reader
+# can SEE what was soaked instead of trusting a sentence. None of this affects what the script
+# asserts — frames advancing, RSS, h_fatal are measured from the process either way — but a
+# stability test is worth more when the app is being used than when it is idling on scenery.
 #
 # WHAT IT MEASURES, per sample
 #   frame[N]   — must keep advancing, or the game has stalled even if the process is alive
@@ -93,13 +106,16 @@ adb shell input tap 390 266; sleep 4; adb shell input tap 390 266; sleep 8
 PID=$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')
 [ -n "$PID" ] || { say "[FAIL] no pid — the app is not running, nothing to soak"; adb emu kill; exit 1; }
 say "  pid $PID"
+adb exec-out screencap -p > "$OUT/soak_start.png" 2>/dev/null   # what is actually being soaked
 
 say
 say "== soak: play and sample once a minute =="
 say "  min  frame      VmRSS(kB)  h_fatal"
 PREVF=0; FIRSTRSS=""; LASTRSS=""; STALLS=0
 for m in $(seq 1 "$MINUTES"); do
-    # keep it playing: a slingshot drag, then advance past whatever card appears
+    # keep it playing: pan back to the slingshot (see header — otherwise the view drifts off the
+    # level and the drags hit nothing), a slingshot drag, then advance past whatever card appears
+    for k in 1 2 3 4; do adb shell input swipe 80 150 600 150 400 >/dev/null 2>&1; sleep 1; done
     for k in 1 2 3; do adb shell input swipe 207 118 110 150 700 >/dev/null 2>&1; sleep 6; done
     adb shell input tap 390 266 >/dev/null 2>&1; sleep 4
     adb shell input tap 500 300 >/dev/null 2>&1; sleep 8
@@ -115,8 +131,11 @@ for m in $(seq 1 "$MINUTES"); do
     if [ "${HF:-0}" -ne 0 ]; then say "  [FAIL] h_fatal appeared at minute $m — the shim crashed mid-session"; FAIL=1; break; fi
 done
 
+adb exec-out screencap -p > "$OUT/soak_end.png" 2>/dev/null
+
 say
 say "== RESULTS =="
+say "  frames captured to soak_start.png / soak_end.png — LOOK at them before describing this run"
 say "  h_fatal over the whole session: $(h_fatal_report "$ABLOG")"
 ALIVE=$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')
 say "  still alive at the end: ${ALIVE:-<no>}"

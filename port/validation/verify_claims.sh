@@ -696,6 +696,61 @@ else
   fi
 fi
 
+echo "== CLAIM: a script that shoots across rounds resets the camera first =="
+# The regression this pins is a HARNESS bug that produced a clean-looking false negative, which is
+# the most expensive kind here. The fixed drag `input swipe 207 118 110 150 700` launches a bird
+# only when it starts ON the bird — true at level start, false once the level changes. A drag that
+# misses pans the camera, so repeating it walks the view off the level. emu_progression.sh drove
+# five win->NEXT cycles, won once, and reported "no progression"; the natural conclusion (written
+# into the script before anyone opened the images) was that fixed coordinates cannot aim. The
+# screenshot showed empty sky with SCORE 0. Frames, h_fatal, level files and pid all looked perfect
+# throughout, because a mispointed camera is invisible from the process.
+#
+# The rule is deliberately narrow, so it flags drift and nothing else: only a drag repeated ACROSS
+# ROUNDS needs a reset. A single burst fired right after a level load (the playthroughs, the shader
+# capture, the intent probe) starts with the bird under the finger and is correct as written —
+# demanding a pan there would churn scripts whose evidence is already pixel-verified.
+CAMFAIL=$(python3 - <<'PYEOF'
+import re, glob, os
+PAN = 'input swipe 80 150 600 150'
+bad = []
+for f in sorted(glob.glob('port/validation/*.sh')):
+    lines = open(f, encoding='utf-8', errors='replace').read().splitlines()
+    # Comments are stripped BEFORE both halves of this test, and the second half is why. Searching
+    # the raw source let a script that merely mentioned pan_to_slingshot in a comment satisfy the
+    # requirement while drifting exactly as before — the check would have passed on the intention
+    # instead of the behaviour. Found by a purpose-built failing case, not by review.
+    code_lines = [ln.split('#', 1)[0] for ln in lines]
+    src = "\n".join(code_lines)
+    depth, nested = 0, False
+    for code in code_lines:
+        # ANY drag counts, not the literal `input swipe 207 118`. Keying on those coordinates
+        # made the check vacuous the moment its own motivating script was fixed: emu_progression.sh
+        # now computes the anchor (`input swipe "$BX" "$BY" ...`), so the pattern matched nothing
+        # there and the guard silently protected only the scripts that had not been improved yet.
+        # The pan gesture itself is excluded, or lib_camera.sh would flag its own implementation.
+        if 'input swipe' in code and PAN not in code and depth >= 1:
+            nested = True
+        # `do` only counts as a loop opener in a CONTROL position — start of line or after `;`.
+        # Counting every \bdo\b was wrong in a way that produced a confident false alarm: the line
+        #     say "[FAIL] the two builds do not share a signer ..."
+        # in emu_update_install.sh matched, so the parser believed a loop opened there and never
+        # closed, and every later line looked nested. The gate then reported a correct script as
+        # drifting. A guard that invents work is as bad as one that misses it.
+        depth += (len(re.findall(r'(?:^|;)\s*do\b', code))
+                  - len(re.findall(r'(?:^|;)\s*done\b', code)))
+    if nested and not re.search(r'pan_to_slingshot|pan_and_capture|' + re.escape(PAN), src):
+        bad.append(os.path.basename(f))
+print(" ".join(bad))
+PYEOF
+)
+if [ -z "$CAMFAIL" ]; then
+  ok "every script that repeats the drag across rounds pans back to the slingshot first"
+else
+  bad "these repeat the slingshot drag across rounds without resetting the camera, so the view"
+  printf "         drifts off the level and the run silently measures nothing: %s\n" "$CAMFAIL"
+fi
+
 echo "== CLAIM: the screenshot index describes exactly the proofs that exist =="
 # PROOF_2/3/4 silently went stale for a day: they showed a binary that no longer existed, and
 # nothing noticed because nothing recorded what they were supposed to show. reports/shots/README.md
