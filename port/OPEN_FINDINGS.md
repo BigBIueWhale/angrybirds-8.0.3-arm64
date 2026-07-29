@@ -108,6 +108,20 @@ ASSERTION 3  FlurryAgent reports ACCESS_NETWORK_STATE is not declared         [ 
              Facebook SDK reports no INTERNET permission granted              [ OK ]
 ```
 
+**Layer 4 (the Firebase/FCM kill-switch) was re-run as well**, on the GMS image — the only tier where
+it can be exercised at all, since FCM registration is performed by Google Play Services on the app's
+behalf:
+
+```
+control token-registration attempts: 1
+shipped token-registration attempts: 0
+[ OK ] control attempted token registration 1x, shipped 0x — layer 4 demonstrably prevents it
+```
+
+That it is a **differential** is the whole point. "The shipped build attempted 0 registrations" is
+compatible with the kill-switch working and equally compatible with the code path never running at
+all; the control build, identical but with the kill-switch removed, is what distinguishes them.
+
 Assertion 2 repays a careful read: **twelve** `UnknownHostException`s do appear in that log, raised by
 system components resolving names for their own reasons, and **none of them belong to our pid**. A
 bare "0 network errors on the device" would have been both false and unfalsifiable — attributing by
