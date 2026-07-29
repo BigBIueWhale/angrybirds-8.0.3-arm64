@@ -30,7 +30,15 @@ echo "== 3/3 verify the artifact against every DOCUMENTED claim — OFFLINE =="
 # across host architectures") survived for days. verify_claims.sh checks all of them and exits
 # non-zero if any is false, so `reproduce.sh` fails loudly rather than producing an APK whose
 # description is wrong.
-bash port/validation/verify_claims.sh
+#
+# RUN INSIDE ab-port, not on the host. On the host one check SKIPS — "import resolvability (no NDK
+# sysroot stubs here)" — which is R22: every symbol the shim imports is proven resolvable against the
+# real bionic stubs. That is the generic form of the missing `-lm` bug, which would have crashed the
+# app on launch on the A56 with `cannot locate symbol "sin"`. So the single most safety-critical
+# check in the file was the one the user's own build path did not run. It said so honestly ("1 check
+# was NOT checked") rather than claiming a pass, but honest-and-absent is still absent. The build
+# above already runs in this image, so there is no reason not to.
+docker run --rm --network none -v "$PWD":/work -w /work ab-port bash port/validation/verify_claims.sh
 
 echo
 echo "DONE -> out/angrybirds-8.0.3-arm64.apk"

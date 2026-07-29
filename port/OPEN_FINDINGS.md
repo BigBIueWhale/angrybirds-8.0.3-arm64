@@ -1110,6 +1110,35 @@ would be exactly the over-reach this document keeps correcting. The honest statu
 incompatibility on one newer image, cause unknown, not attributable to the port** — worth knowing,
 not worth alarming the user with.
 
+### R45. `reproduce.sh` — the command the user runs — skipped the one check that catches the `-lm` class of bug
+
+Found by running the full reproducible build after this session's changes, which was itself the point:
+prove the deliverable still comes out byte-identical. It does — `27548721a456ea99…`, unchanged. But
+the run ended:
+
+```
+ALL CHECKED CLAIMS HOLD, but 1 check was NOT checked:
+    [skip] import resolvability (no NDK sysroot stubs here - run inside ab-port)
+```
+
+`reproduce.sh` built the APK **inside `ab-port`** and then ran `verify_claims.sh` **on the host**. The
+import-resolvability check needs the NDK sysroot stubs, which only exist in that image, so it skipped.
+
+That check is R22: every symbol the shim imports, proven resolvable against real bionic stubs. It is
+the generic form of the missing `-lm` bug — the one that would have crashed the app on launch on the
+A56 with `cannot locate symbol "sin"`, and which API 25 masked. **So the single most safety-critical
+check in the gate was the one the user's own build path did not run.**
+
+It was not a false pass. The gate counted the skip and said so, because "a skip is not a pass" was
+already built into it. But honest-and-absent is still absent, and a reader who sees
+`ALL CHECKED CLAIMS HOLD` on the last line is not guaranteed to read the qualifier above it.
+
+One-line fix: run step 3 in the same container step 2 already uses. Now **49 checks, 0 skipped,
+0 failed**, and nothing about the artifact changed — the rebuild reproduces the same hash either way.
+
+The general shape is worth keeping in mind: this defect could not be found by any check, because it
+*was* the check not running. Only executing the user's actual path end to end surfaces that class.
+
 ### R44. All three write-after-free sites identified in the engine — the dominant one is COW `std::string` refcount teardown
 
 R42 established that write-after-free fires ~41 times per run from three engine addresses. Those were
