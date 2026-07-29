@@ -84,13 +84,27 @@ and **fails loudly if git errors**, rather than treating an unanswerable questio
 
 Two details worth keeping:
 
+- Writing this very finding up flagged it again: the paragraph above originally spelled the literal
+  path while explaining the fix, and the scan caught `OPEN_FINDINGS.md`. Documenting a leak must not
+  leak; the placeholder form `/home/<user>/…` is safe because the pattern requires `[a-z_]` after
+  `/home/`.
 - With the scan working, it immediately flagged **`mutation_test.sh` itself** — the new fixture wrote
-  a literal `/home/somebuilduser/…` into a tracked file. The fixture now assembles the path at
+  a literal build-host path (`/home/<user>/…`) into a tracked file. The fixture now assembles the path at
   runtime from two halves so neither matches the pattern. A test for a leak must not be a leak.
 - The vacuity audit then flagged the new case, correctly: while the real tree was failing that claim,
   its expected text appeared in the "clean" output. Fixing the fixture cleared both.
 
-**22/22 mutations detected, 0 skipped**, vacuity audit clean, control passing.
+The artifact-side twin of that claim — *"the artifact names no build-host path"* — had no case
+either, and the function written for it was never registered (hand-rolled zip surgery instead of the
+`repack_member` helper every other artifact mutation uses). Rewritten and wired up: appending a
+build-host path to the shim inside the APK now yields
+*"libAngryBirdsClassic.so embeds 1 build-host path(s)"*.
+
+**23/23 mutations detected, 0 skipped**, vacuity audit clean, control passing.
+
+Still without automated mutations, recorded so the header's blanket sentence is not inherited as true
+again: JNI thunk completeness, native-lib extraction, audio-variant sameness, documented log markers,
+and capture-build currency.
 
 ### R25. Two of twenty-one mutation cases could not fail — now audited mechanically
 

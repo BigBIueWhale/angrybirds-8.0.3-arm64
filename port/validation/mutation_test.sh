@@ -250,18 +250,15 @@ mut_hostpath_tracked() {
     grep -q "${h}${m}" "$f" || return 1
 }
 
-# Same leak, but inside the shipped ARTIFACT rather than a tracked file — a path baked into the shim
-# by a careless compile would ship to every user. Also had no automated case.
-mut_hostpath_artifact() {
-    local tmp; tmp=$(mktemp -d)
-    ( cd "$tmp" && unzip -o -q "$1/out/angrybirds-8.0.3-arm64.apk" lib/arm64-v8a/libAngryBirdsClassic.so ) || return 1
+# Same leak, but inside the shipped ARTIFACT rather than a tracked file: a path baked into the shim
+# by a careless compile ships to every user. Uses repack_member like every other artifact mutation —
+# the first version hand-rolled zip surgery and was never registered, which is its own small lesson
+# about writing a case and not wiring it up.
+m_hostpath() {
     local h='/ho' m='me/somebuilduser/angrybirds/port/shim/src'   # split: see mut_hostpath_tracked
-    printf '%s%s\x00' "$h" "$m" >> "$tmp/lib/arm64-v8a/libAngryBirdsClassic.so"
-    local apk="$1/out/angrybirds-8.0.3-arm64.apk" body
-    body=$(cat "$apk"); rm -f "$apk"; printf '%s' "$body" > "$apk" 2>/dev/null || cp "$apk" "$apk" 2>/dev/null
-    ( cd "$tmp" && zip -q "$1/out/angrybirds-8.0.3-arm64.apk" lib/arm64-v8a/libAngryBirdsClassic.so ) || return 1
-    rm -rf "$tmp"
+    printf '%s%s\x00' "$h" "$m" >> "$1"
 }
+mut_hostpath_apk() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_hostpath; }
 
 mut_diagnostics() { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_diag; }
 mut_perf()        { repack_member "$1" lib/arm64-v8a/libAngryBirdsClassic.so m_append_perf; }
@@ -478,6 +475,7 @@ case_run libm_gone     "libm.so MISSING"                               mut_libm
 case_run prov_env      "not the environment it ran on"                 mut_prov_env
 case_run proof_bytes   "does not match the bytes the index recorded"   mut_proof_bytes
 case_run hostpath_src  "tracked files name a build-host path"          mut_hostpath_tracked
+case_run hostpath_apk  "build-host path(s)"                            mut_hostpath_apk
 
 echo
 echo "== control: the real tree must still PASS =="
