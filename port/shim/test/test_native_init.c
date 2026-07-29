@@ -59,11 +59,21 @@ int main(void){
     printf("  JNI env slots exercised: %d  (dispatch unimpl: %d, last='%s'; nested pthread_once: %d)\n",
            used, D.unimpl_count, D.last_unimpl, D.nested_ran);
     printf("  slot calls:"); for(int i=0;i<260;i++) if(J.call_count[i]) printf(" [%d]x%u",i,J.call_count[i]); printf("\n");
-    printf("  heap %s after nativeInit; in-use=%u\n", galloc_check(cpu.heap)==0?"valid":"CORRUPT", galloc_inuse_bytes(cpu.heap));
+    int heap_ok = (galloc_check(cpu.heap) == 0);
+    printf("  heap %s after nativeInit; in-use=%u\n", heap_ok?"valid":"CORRUPT", galloc_inuse_bytes(cpu.heap));
 
     jni_free(&J); loader_free(&L); cpu_destroy(&cpu); free(elf);
-    /* This is a progression probe, not pass/fail: reaching the JVM boundary with
-     * a valid heap and no shim crash is the success signal. */
-    printf("\n=== nativeInit drive complete ===\n");
-    return 0;
+
+    /* This used to `return 0` unconditionally, with a comment calling it "a progression probe, not
+     * pass/fail". But run_tests.sh runs under `set -e`, so the exit code IS the verdict, and this
+     * test therefore counted toward "ALL MODULE TESTS PASSED" while being incapable of failing —
+     * which is also why no mutation case could target it.
+     * The comment already named the success signal: reaching the JVM boundary with a valid heap and
+     * no shim crash. So assert exactly that, and nothing more. `fatal` is NOT asserted: halting at
+     * the fake-env boundary is the expected outcome on a host with no JVM. */
+    int rc = 0;
+    if (!heap_ok)  { printf("  FAIL: guest heap CORRUPT after nativeInit\n"); rc = 1; }
+    if (used == 0) { printf("  FAIL: the engine exercised ZERO JNI env slots — the passthrough never ran\n"); rc = 1; }
+    printf("\n=== nativeInit drive %s ===\n", rc ? "FAILED" : "complete");
+    return rc;
 }
