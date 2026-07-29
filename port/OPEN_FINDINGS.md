@@ -22,7 +22,8 @@ Not defects — limits of the environment. Stated so they are never implied to b
   125 C++ constructors on AArch64, and `verify_claims.sh` checks the shipped ELF is AArch64,
   16 KB-page aligned and links libm. None of that is the game running; the shipped APK has been
   built, signed, aligned and statically audited, not executed.
-- **The physical Galaxy A56 run.** Everything is validated on emulators (API 25 and API 34, x86 with
+- ~~**The physical Galaxy A56 run.**~~ **DONE 2026-07-30 — see R50.** It installed, played, won 3 stars / 45500 and advanced to level 2 on the real device. The rest of this bullet is the pre-run text:
+   Everything is validated on emulators (API 25 and API 34, x86 with
   the shim in real ART). The A56's Exynos 1580 specifically is untested. See `ONDEVICE.md`.
 - **Frame pacing under a real GPU.** All rendering evidence is SwiftShader software rendering.
   Narrowed rather than merely restated: R4 measured the rasteriser at 5–7% of frame time, and R4b
@@ -1867,7 +1868,7 @@ more flag behind it; the path is broken in several places at once. Further tiers
 `-cpu` values) would be guessing against an abandoned code path, and the phone settles the same
 question in ten minutes with a real Mali GPU and a real runtime.
 
-**Status: the deliverable still has never been executed.** `arm64_real_run.sh` is committed and would
+**Status when written: the deliverable had never been executed. SUPERSEDED by R50 — it now runs on the physical A56.** `arm64_real_run.sh` is committed and would
 carry it through install-and-launch the moment a composer exists; it refuses to report an arm64
 result unless the APK really contains `lib/arm64-v8a/` **and** the guest's `ro.product.cpu.abi` really
 is arm64, so it cannot be mistaken for one of the x86-proxy runs. The remaining route is the physical
@@ -1875,7 +1876,7 @@ A56 — see `ONDEVICE.md`.
 
 ### R17. "arm64 cannot be emulated on this host" is a claim about the LAUNCHER — the engine gets to a running machine and dies on an audio device
 
-The deliverable has never been executed anywhere. The reason on record is that the Android emulator
+The deliverable had never been executed anywhere when this was written (SUPERSEDED by R50 — it now runs on the physical A56). The reason on record is that the Android emulator
 refuses an arm64 AVD on an x86_64 host:
 
 ```

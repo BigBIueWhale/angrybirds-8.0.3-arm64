@@ -82,6 +82,13 @@ Two rules follow, both learned by getting them wrong:
 All of these run offline (`--network none`) against the emulator images built from
 `port/docker/`. See `port/validation/README.md` for the full rig. Example — the interactive three:
 
+- `PROOF_22_PHONE_splash.png` — **ON THE PHONE (SM-A566B, Android 16).** The Angry Birds splash rendering on real AArch64 silicon through the ARM32->ARM64 Unicorn shim. First execution of the shipped arm64 artifact on hardware. R50.
+- `PROOF_23_PHONE_tutorial_card.png` — **ON THE PHONE.** Tutorial card for level 1 — slingshot with Red, a pig, the orange checkmark. The game reached its start card on the device. R50.
+- `PROOF_24_PHONE_level_interactive.png` — **ON THE PHONE.** Level live and interactive: tutorial hand with drag arrows, three birds in reserve, SCORE 0. R50.
+- `PROOF_25_PHONE_score15380.png` — **ON THE PHONE.** Slingshot drag launched the bird, destroyed the structure and the pig — **SCORE 15380**. Real Mali/Xclipse GPU, real ART. R50.
+- `PROOF_26_PHONE_levelcleared_3stars_45500.png` — **ON THE PHONE — the deepest bug's crash site, survived.** **LEVEL CLEARED! 3 stars, 45500.** The level-end results transition is where the session-long std::string UAF crashed; it held with h_fatal=0 while s-construct-null-guard fired 15x and empty-json-guard 29x. R50.
+- `PROOF_27_PHONE_level2_fresh.png` — **ON THE PHONE.** Tapping NEXT loaded level 2 as a genuinely fresh puzzle — score reset to 0, two pigs on stone/wood towers. Play -> win -> advance, all on the device. R50.
+
 ```bash
 docker run --rm --network none --device /dev/kvm --group-add "$(getent group kvm | cut -d: -f3)" \
     -v "$PWD":/work ab-emu bash /work/port/validation/emu_interactive_capture.sh
@@ -168,4 +175,10 @@ d395a4f18eb1e9a1923ec97212347769b5173d1ec08cf38309dc9041287d8f62  PROOF_9_modern
 c5e065c7c32f713c01e0ed17efc1e8f73fb624bac7f13971743533853c25f248  PROOF_release_bird_launched.png
 34508d5d82ee7aac524609ddbe7cb00fd1121b3aaeaef934381705bbdffa3786  PROOF_release_render.png
 6860fa1e7065dec5d7138a100b43188f7fbc03e693178998f8fe9e9b0fbad2fc  PROOF_tutorial_render.png
+e7d121982f2146f5d05153a87a1633c9b9e31b1b790dad9899e251c02dd2f5c0  PROOF_22_PHONE_splash.png
+2fd4c9b7c7df48921b171404205456011cb7c4dbfb954d7c11b995f45509dbc2  PROOF_23_PHONE_tutorial_card.png
+b47ae5d0ac0203e38d310dc7039ab5d53ea623b79dddb9948819d06f37d1a6db  PROOF_24_PHONE_level_interactive.png
+5b53cb7e0f77b67ce119920b77a68bea8fcd55bd7a848e30a5df900a4a66a11f  PROOF_25_PHONE_score15380.png
+1de88b1d4adb25a6d98403a7b19d19be47b3ab22045dd88b75e84e17e44ed7a9  PROOF_26_PHONE_levelcleared_3stars_45500.png
+08a1c08478f49c70ad1b84d8fea33efbedb621aaa06b87fe07f1e2a6e77bb5c2  PROOF_27_PHONE_level2_fresh.png
 ```

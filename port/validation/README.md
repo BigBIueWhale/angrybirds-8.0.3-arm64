@@ -75,7 +75,7 @@ earlier), so naming what it holds needs disassembly rather than symbol lookup.
 
 So: both architectures execute the engine correctly, but they do not reach identical guest state,
 and "x86 passed therefore arm64 behaves identically" does not follow. It is not the same as
-having run it. **`out/angrybirds-8.0.3-arm64.apk` has never been executed anywhere** —
+having run it. **`out/angrybirds-8.0.3-arm64.apk` had never been executed anywhere when this was written (SUPERSEDED — see R50: it now runs on the physical A56, plays, wins 3 stars and advances)** —
 it has been built, signed, aligned and statically audited only.
 
 arm64 execution is `arm64_cross_test.sh` (and the older, slower `arm64_unicorn_test.sh`), and it

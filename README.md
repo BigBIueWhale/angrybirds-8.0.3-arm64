@@ -95,6 +95,9 @@ Everything reachable without the physical phone has been verified against the **
 > This is still *"both hosts run the guest identically"*, **not** *"the arm64 APK runs"* — the
 > latter needs the device. See `port/validation/README.md`.
 
+> **SUPERSEDED 2026-07-30 by R50 in `port/OPEN_FINDINGS.md`: the deliverable HAS now been executed on the physical Galaxy A56 (SM-A566B, Android 16, `abilist=arm64-v8a` only). It installed from the published bytes, played, scored 15380, cleared the level with 3 stars / 45500, and advanced to level 2 — `h_fatal 0`, `uaf-survive 0`, `init_array 125/125`, `frame[2101]`. See `PROOF_22`–`PROOF_27`. The text above is kept as the honest record of what was true before that run.**
+
+
 | | Status |
 |---|---|
 | **Plays & wins** *(x86 proxy)* | boots → auto‑loads the tutorial → slingshot drag launches the bird on a correct Box2D arc → collapses the pig structure → scores → **"LEVEL CLEARED"** → advances into the next level. Screenshot‑proven (`reports/shots/PROOF_*.png`). |
