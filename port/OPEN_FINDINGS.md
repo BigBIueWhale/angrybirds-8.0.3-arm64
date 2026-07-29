@@ -56,6 +56,42 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R30. Rotating the phone rebuilds the Activity under a live process — and the port survives it
+
+Read out of the shipped manifest rather than assumed:
+
+```
+activity com.rovio.fusion.App
+  screenOrientation = 0      (unspecified — the app is NOT orientation-locked)
+  configChanges     = 0x4f0  (uiMode | orientation | navigation | keyboardHidden | keyboard)
+```
+
+`orientation` is handled by the activity, so an orientation flip alone would not recreate it — but
+**`screenSize` (0x800) is absent**, and for a target above API 13 a rotation that changes the screen
+dimensions recreates the activity anyway. So turning the phone destroys and rebuilds the Activity
+*underneath a process that keeps running*: the engine stays alive while its window, surface and GL
+context are torn down and replaced.
+
+That is strictly harder than R29 (activity merely paused) and harder than R28 (everything restarted
+clean), and it had never been tested. `emu_rotate.sh` on **API 36, the A56's OS**:
+
+```
+before        pid 3009   frames 1201 -> 1501 over 12s     [ OK ] advancing
+rotate 90°    user_rotation now: 1                        [ OK ] really rotated
+after         pid 3009   frames 2401 -> 2701 over 15s     [ OK ] +300 frames
+rotate back   pid 3009   frames 3601 -> 3901 over 12s     [ OK ] survived the return too
+h_fatal: 0  (11 675 shim log lines, so this was measured)
+```
+
+Same pid throughout — the activity really was rebuilt under a live process, which is the case worth
+testing. `rotate_screen.png` shows the tutorial level drawn normally, so the new surface is being
+rendered into and not merely counted.
+
+One measurement detail worth keeping: `wm size` reports **320x640 before and after**, because it
+returns the physical panel and does not swap on rotation. Treating that as the rotation check would
+have made the test conclude nothing had happened; the applied `user_rotation` setting is read back
+instead, and the run refuses to claim survival if it did not stick.
+
 ### R29. Home-then-return works — and the first run of the test nearly filed a phantom EGL bug
 
 Backgrounding and resuming is the most common thing a user does to a running app, and no test here
