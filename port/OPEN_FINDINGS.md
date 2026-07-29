@@ -81,6 +81,13 @@ Tracked so far:
 | `539536` (arm64 heap after ctors) | `605096`, both architectures, re-measured 2026-07-28 |
 | `4913` ("at least the first N allocations match") | all **7793** ctor and **8290** `nativeInit` records identical |
 
+The check found a real instance on its **first** run — and it was in this file. Two mentions of
+`4913` in the paragraph above were flagged: prose that is unambiguously historical ("a number that a
+later measurement had **replaced**", "one **stale** figure") but that happened to use none of the
+original framing keywords. That is a false positive of an over-narrow vocabulary rather than a stale
+claim, so `replaced` and `stale` were added to the list. The alternative — rewording documentation
+until a regex is satisfied — would have been the checker dictating prose, which is backwards.
+
 Proven able to fail: `mutation_test.sh`'s `stale_doc` case appends an unframed *"the guest heap holds
 539536 bytes on arm64"* to `ONDEVICE.md`, padded with neutral filler so it lands outside any framing
 window, and the gate catches it — **18/18 mutations detected, 0 skipped**, unmutated control still

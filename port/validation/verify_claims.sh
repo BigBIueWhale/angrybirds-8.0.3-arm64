@@ -807,8 +807,14 @@ SUPERSEDED = {
     "539536": "605096 (both architectures, re-measured 2026-07-28)",
     "4913":   "all 7793 ctor / 8290 nativeInit records identical",
 }
+# "replaced" and "stale" were added after the check's FIRST real run flagged this very file's R21
+# section — prose that is unambiguously historical ("a number that a later measurement had replaced",
+# "one stale figure") but happened to use none of the original keywords. That was a false positive of
+# an over-narrow vocabulary, not a stale claim, and the right fix is to widen the vocabulary rather
+# than to reword documentation until a regex is satisfied.
 FRAMING = re.compile(r"correction|update|earlier|previously|used to|no longer|cannot be obtained"
-                     r"|superseded|at the time|has moved|old(er)? (figure|number|wording)|history",
+                     r"|superseded|at the time|has moved|old(er)? (figure|number|wording)|history"
+                     r"|replaced|stale",
                      re.I)
 bad = []
 for f in glob.glob("**/*.md", recursive=True):
