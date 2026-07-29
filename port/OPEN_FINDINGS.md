@@ -88,6 +88,25 @@ and a non-zero return. **21/21 mutations detected, 0 skipped**, control passing,
 The general rule, now enforced rather than remembered: **a mutation must expect the `[FAIL]` text, never
 a string the claim also prints when it passes.**
 
+**The other suite was checked too, and is structurally immune.** `port/shim/test/mutation_modules.sh`
+decides detection by **exit code** — *"test still exits 0 with the invariant broken"* — not by
+matching text, so the trap above cannot occur there, and a mutation that fails to apply leaves the
+test passing and is reported NOT DETECTED, which is the safe direction. Run to confirm rather than
+assumed: **19/19 module mutations detected, 0 skipped, 0 documented gaps.**
+
+**And the gate skips nothing.** A claim that quietly skips is the neighbour of one that passes
+vacuously, so the clean run was checked for `[skip]` lines: there are none, and the summary is a
+bare `ALL CHECKED CLAIMS HOLD` with no "but N were not checked" qualifier.
+
+Consolidated state after this session's changes to the validation machinery itself:
+
+| suite | result |
+|---|---|
+| `validate_all.sh` | **ALL OFFLINE VALIDATION PASSED** (4/4; ctors 7793 and `nativeInit` 8290 allocation records identical across hosts) |
+| `verify_claims.sh` | ALL CHECKED CLAIMS HOLD, **0 skipped** |
+| `mutation_test.sh` | **21/21**, 0 skipped, vacuity audit clean, control passes |
+| `mutation_modules.sh` | **19/19**, 0 skipped, 0 documented gaps |
+
 ### R24. The provenance ledger recorded which build a capture came from, but not which Android it ran on
 
 Committing one audio row exposed it: the AVD column was empty. `record_build()` read it from
