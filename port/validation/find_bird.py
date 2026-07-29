@@ -42,7 +42,8 @@ LIMITS, measured: it also answers confidently on a tutorial instruction card (th
 on a win screen. Geometry cannot tell those from a real slingshot. The caller must dismiss dialogs,
 let the scene settle, and verify the shot afterwards.
 
-HOW FAR IT IS ACTUALLY VALIDATED: one frame. prog_2_pre.png returns (152,183), which matches the
+HOW FAR IT IS ACTUALLY VALIDATED: two frames. prog_2_pre.png returns (154,187) and prog_4_s2.png
+returns (261,194), both matching the
 slingshot position read off the image by eye. That is the whole of the evidence. It is NOT validated
 against a tutorial pre-shot frame, because no such capture exists in reports/shots -- the tutorial
 images on disk are dialogs, impacts and win screens. Treat a single confirmed case as a single
@@ -81,8 +82,10 @@ def find_bird(path):
     # A bird is a SOLID BLOB, so group the matching pixels into connected components and ignore the
     # small ones. "Topmost red mass" was the first rule here and it failed on real frames: level 4's
     # capture (prog_4_s2.png) has an animated tutorial hint-hand drawn over the scene, and a handful
-    # of reddish pixels along its outline sit higher than the bird. The finder duly answered (288,62)
-    # — up in the sky — while the loaded bird sat at about (270,200), and the shot was wasted.
+    # of reddish pixels along its outline sit higher than the bird. On that capture the old rule
+    # answered (288,62) — up in the sky — while the bird sat at about (270,200). That exact file has
+    # since been overwritten by a later run; on the current one the two rules still split the same
+    # way, topmost-pixel (212,172) versus largest-blob (261,194), and only the latter is the bird.
     #
     # Size first, THEN height: among blobs big enough to be a bird, the loaded one is the highest,
     # because the spares wait on the ground below it.
@@ -126,16 +129,20 @@ def find_bird(path):
     # This finder answers "where is the reddest thing", which is the bird only when a bird is
     # actually sitting there. It is not a bird detector. Three real captures, measured not imagined:
     #
-    #   prog_2_pre.png            (152,183)  correct — a loaded slingshot
-    #   interactive_3.png         (317,46)   wrong  — mid-impact debris and damage numerals
-    #   modplay_2_afterdialog.png (235,126)  wrong  — a bird ILLUSTRATED inside a tutorial card
-    #   prog_1.png                (242,145)  wrong  — a win screen
+    #   prog_2_pre.png            (154,187)  correct — a loaded slingshot
+    #   prog_4_s2.png             (261,194)  correct — the bird, with a hint-hand drawn over the scene
+    #   interactive_3.png         REFUSED (band)  — mid-impact debris and damage numerals
+    #   prog_1.png                REFUSED (blob)  — a win screen: its red is speckle, not a bird
+    #   modplay_2_afterdialog.png (237,144)  WRONG   — a bird ILLUSTRATED inside a tutorial card
     #
-    # The band below rejects the FIRST of those three wrong answers and NOT the other two: a dialog
-    # illustration and a win screen both put red pixels exactly where a slingshot legitimately sits,
-    # so no geometric test can separate them. An earlier version of this comment claimed the band
-    # "excludes both false positives"; it was written before the cases were run, and the run showed
-    # two of them sailing through. Geometry screens out gross nonsense, nothing more.
+    # Two of the three wrong answers are now refused — one by the band, one by the 60px blob floor —
+    # and the illustrated bird is not, because a printed bird IS a solid bird-coloured blob sitting
+    # where a slingshot legitimately sits. No geometric or size test separates that from the real
+    # thing; the caller dismisses cards instead.
+    #
+    # These figures are RE-MEASURED against the current code, not carried over. An earlier version of
+    # this list quoted values from the previous selector and from captures that a later run has since
+    # overwritten (reports/shots is not archival — see the README's note on PROOF_8's lost source).
     #
     # What actually makes this safe is the CALLER: ask only after dialogs are dismissed and the
     # scene has settled, and confirm afterwards that a shot really happened rather than assuming the

@@ -132,8 +132,9 @@ for n in $(seq 1 "$WANT"); do
             # 3. LATCH the first good anchor of the cycle. The slingshot does not move within a
             # level and every bird loads onto the same spot, so re-finding per shot buys nothing and
             # can lose: cycle 2 shot 3 reported (236,213) while the slingshot was at (151,185) — it
-            # had locked onto a spare bird walking up, or one still in flight, because the finder
-            # returns the topmost red mass and says nothing about what that mass IS.
+            # had locked onto a spare bird walking up, or one still in flight. The finder returns the
+            # highest bird-sized red blob and says nothing about what that blob IS, so a spare bird
+            # is exactly as convincing to it as the loaded one.
             if [ -z "$SLING" ]; then
                 SLING="$BX $BY"
             else

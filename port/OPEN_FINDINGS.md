@@ -110,6 +110,12 @@ having locked onto a spare bird walking up). Picking the largest red **blob** ra
 red *pixel* fixed a shot aimed at (288,62) — speckle on an animated hint-hand overlay — when the bird
 was at (270,203).
 
+Those two numbers came from a `prog_4_s2.png` that a later run has since **overwritten**;
+`reports/shots/` is working output, not an archive, and this is the same way PROOF_8's source was
+lost. Re-measured on the current capture the two rules still split the same way — topmost-pixel
+(212,172) against largest-blob (261,194), and only the second is the bird — so the finding stands,
+but the original frame is gone and the figures above cannot be reproduced from disk.
+
 A yellow mask for Chuck was tried and **rejected on measurement**: it finds the bird (98 px) and also
 sunlit foliage (2525, 3314 and 5307 px), which outranks it on the very frames red already handles.
 
