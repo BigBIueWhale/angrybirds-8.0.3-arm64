@@ -76,13 +76,32 @@ wait_for_pm() {                       # $1 = max seconds (default 120)
 # "a real rejection — signature, ABI or manifest — not a flake". That is exactly the failure this
 # library's own header warns about: a transient error reading as "the build is broken", sending a
 # reader after a bug that is not there. Observed 2026-07-28, killing a 15-minute capture run.
+#
+# Observed AGAIN 2026-07-29, killing another one, in a form no readiness check catches:
+#
+#     Exception occurred while executing 'install':
+#     java.lang.NullPointerException: Attempt to invoke virtual method
+#       'void android.content.pm.PackageManagerInternal.freeStorage(...)' on a null object reference
+#         at com.android.server.StorageManagerService.allocateBytes(StorageManagerService.java:4047)
+#
+# The package manager was up — wait_for_pm had already got a real answer out of `pm path android` —
+# but StorageManagerService's reference to PackageManagerInternal was still null, so a DIFFERENT
+# system service was mid-initialisation. Waiting for one service cannot prove the others are ready,
+# and the same APK installed fine on the runs either side of it.
+#
+# Java exceptions from the installer are therefore transient. This does not blur the dangerous
+# boundary: a genuine rejection is reported as `Failure [INSTALL_...]`, never as a stack trace, so
+# every real-rejection case below still classifies as 2. And a fault that truly persists still ends
+# as a failure — just after the retries, with "still failing after N attempts" rather than a
+# confident and false verdict about the APK.
 install_classify() {                  # $1 = the pm install output
     case "$1" in
         *Success*)                                       return 0 ;;
         *"Broken pipe"*|*"DeadObjectException"*|\
         *"Failure calling service"*|\
         *"Can't find service"*|*"Can not find service"*|\
-        *"Service not registered"*)                      return 1 ;;
+        *"Service not registered"*|\
+        *"Exception occurred while executing"*|*NullPointerException*)  return 1 ;;
         *)                                               return 2 ;;
     esac
 }

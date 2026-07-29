@@ -49,6 +49,12 @@ ck 1 "system server dropped the call"       "cmd: Failure calling service packag
 ck 1 "American-spelling variant"            "cmd: Can not find service: package"
 ck 1 "binder death"                         "java.lang.IllegalStateException: DeadObjectException"
 ck 1 "service dereg mid-call"               "Error: Service not registered: package"
+# Verbatim from the run it killed on 2026-07-29 (abtest34). Truncated only in the middle of the
+# trace; the two lines that classification depends on are exact.
+ck 1 "StorageManagerService not yet wired up" "Exception occurred while executing 'install':
+java.lang.NullPointerException: Attempt to invoke virtual method 'void android.content.pm.PackageManagerInternal.freeStorage(java.lang.String, long, int)' on a null object reference
+	at com.android.server.StorageManagerService.allocateBytes(StorageManagerService.java:4047)
+	at com.android.server.pm.PackageInstallerSession.doWriteInternal(PackageInstallerSession.java:1743)"
 
 echo "== real rejection, must NOT be retried (2) =="
 # If any of these were classified transient, a genuine defect would be retried and then reported as
