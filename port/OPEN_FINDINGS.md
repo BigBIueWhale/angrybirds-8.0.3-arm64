@@ -56,6 +56,50 @@ Not defects — limits of the environment. Stated so they are never implied to b
 
 ## Resolved
 
+### R38. `frame[N]` is a heartbeat every 300 frames, not a frame counter — so two captures cannot be made frame-exact
+
+Re-running `emu_interactive_capture.sh` after wiring assertions into it produced a pass, three real
+640x320 frames, a live app and `h_fatal 0` — and the images were **the wrong moments**. The capture
+named *bird_launched* shows the bird already impacting (score popup 5000, debris flying, score 8420);
+the one named *mid-flight* shows settled wreckage and the tutorial hand (9710). Real gameplay, wrong
+instants. The mechanical check passed and the human check did not, which is exactly the division that
+script's output asks for.
+
+The cause looked obvious: those two captures still use `sleep 2` and `sleep 3` after the slingshot
+release, wall-clock against a frame rate measured at ~2–16 fps — the same defect already fixed twice
+in this tree (`sleep 14` → `settle_frames`). The obvious fix was to wait on **frames** instead.
+
+**The obvious fix does not work, and measuring is what showed it.** `emu_launch_timing.sh` captured a
+burst at +2/4/6/9/13/18/25 frames after release in one run:
+
+```
+  frame at release: 901
+  +2 frames -> frame[1201]      +9  frames -> frame[1201]
+  +4 frames -> frame[1201]      +13 frames -> frame[1201]
+  +6 frames -> frame[1201]      +18 frames -> frame[1201]   +25 frames -> frame[1201]
+```
+
+Every offset landed on the same frame, and six of the seven files were byte-identical in size. The
+shim explains it:
+
+```c
+jni_entry.c:664   if((++rf % 300u)==1u){ LOG("frame[%u] GL draws=%lu ...
+```
+
+`frame[N]` is a **heartbeat emitted every 300th frame**. The only values logged all run were
+1, 301, 601, 901, 1201 — every gap exactly 300. A frame-based wait therefore cannot resolve anything
+shorter than 300 frames, and a bird's flight is far shorter than that: `+2 frames` and `+25 frames`
+are the same instruction, *wait for the next heartbeat*.
+
+**Left as-is, deliberately.** Making these captures frame-exact would mean logging every frame in the
+shim — a change to shipping code and roughly 300× the log volume, to improve a diagnostic capture.
+Not worth it. So the two captures stay wall-clock, stay timing-sensitive, and the script says so in
+its own output and requires a human to look before anything is promoted to a `PROOF_` name. Nothing
+from this run was promoted; **PROOF_2/3/4 remain the hand-driven originals**, which are separate files.
+
+This does not affect `settle_frames`: it only ever needs "one more heartbeat", which is what a +120
+request gets.
+
 ### R37. The one verdict that invalidates a whole run was the one verdict that could not fail it
 
 `lib_selfhash.sh` exists because a script edited *while a container is executing it* is a real hazard
