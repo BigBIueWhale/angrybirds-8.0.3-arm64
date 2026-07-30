@@ -431,6 +431,65 @@ on the validated build with its save intact (`HIGHSCORE 45500` reloaded). The pa
 `resolver_throttle_attempt.patch` for a retry that (a) fixes the counter, (b) throttles only a genuine
 spin rather than any resolver read, (c) bounds the added delay, and (d) is measured on x86 first.
 
+### R59. The 1.56× is real and buys 2.75× — and it is reverted, because it is not yet correct
+
+R56 found that `run_loop` bounded every slice by passing `SCHED_QUANTUM` as `uc_emu_start`'s **count**,
+and measured that mechanism at **×1.56** on identical work. This is what happened when I actually
+changed it.
+
+**The speedup is real, larger than predicted, and reproduced three times.** Same script, same image,
+same fixed sleeps:
+
+| run | `h_fatal` | `St9bad_alloc` | frames reached | THROWs |
+|---|---|---|---|---|
+| baseline (pre-change) | 0 | 0 | `frame[1201]` | 15, all `IOException` from `+0x6d8524` |
+| 1 — wall-clock slice | **1** | **1** | **`frame[3301]`** | 2 |
+| 2 — identical build | **1** | **1** | **`frame[3301]`** | identical → **deterministic, not the known flakiness** |
+| 3 — preempt *before* bridge | **1** | 0 | **`frame[3301]`** | 2, now `GraphicsException` |
+
+`frame[3301]` against `frame[1201]` in the same wall time is **~2.75× more frames**, well above the
+1.56× the isolated mechanism measurement predicted. That is the largest performance result in this
+project and it should not be lost.
+
+**Two Unicorn behaviours, established by standalone test rather than by reasoning.** Both are reusable
+facts about the emulator, and one was the bug:
+
+1. **`uc_emu_start` DOES clear a pending stop request.** So an async stop that lands after a slice has
+   already ended cannot truncate the next one (`r0=4, pc=0x1010` after a deliberate pending stop). My
+   design depended on this and I had assumed it; it holds.
+2. **`uc_emu_stop` does NOT return from a hook callback, and the hook RE-FIRES at the same address on
+   resume.** Measured: fire #2 at `0x1004`, stop, resume, fire #3 at `0x1004` — while each instruction
+   still retires exactly once. Harmless for an ordinary hook. **Fatal here**, because the shim's stub
+   callback *is* the bridge implementation: `slice_check` raised the stop and then fell through into the
+   bridge, which ran, and ran **again** on resume. `malloc`/`free` are not idempotent, so every
+   preempted call leaked one allocation — ending in `THROW St9bad_alloc` and a changed exception pattern
+   (1 `IOException` from a *different* site instead of the baseline's 15).
+
+Preempting **before** any bridge side effect is the correct point, and run 3 confirms it: `bad_alloc`
+went 1 → 0. Two further defects of mine in that same fix:
+
+* `g_in_stub = 1` at the top of a body with ~100 early-return fast paths would **never be cleared**,
+  permanently disabling the timer after the first bridge call. The guard has to live in a wrapper that
+  covers every exit, and the release variant had no wrapper at all, so one had to be added.
+* The first version relied on bridge boundaries alone, and I wrote the gap off as "a longer slice, not a
+  hang". `run_tests.sh`'s **`[T3] preemption of a non-yielding spin-loop` hung outright** — guest code
+  that calls no bridge has no boundary to check at. The hard instruction count had been bounding exactly
+  that case. A 2 ms timer thread is the second, independent bound.
+
+**Why it is reverted.** Run 3 still leaves one `h_fatal` — `gr::GraphicsException` at `+0x5c4b54` during
+`nativeInit` — and the end screen is not a win. Changing preemption points changes thread interleaving,
+so a GL-path race is plausible, and that needs a **contemporaneous** baseline control rather than a
+comparison against a log recorded hours earlier on a machine whose container set I had since disturbed.
+
+Worse, committing it broke the repo's central invariant: the tree was building `bfe4ea0a` while the docs,
+the screenshot index and `verify_claims` all name `27548721a456ea99295469c3`. Restoring the three files
+to their state at `54214f0` rebuilds `27548721…` exactly, and `ALL CHECKED CLAIMS HOLD` again.
+
+**Preserved for the next attempt** so it starts from the measurements instead of repeating them:
+`port/validation/slice_preempt_attempt.patch`, plus the three run logs. What that attempt needs:
+a contemporaneous baseline control, the `GraphicsException` root-caused (not assumed to be a race), and
+the arm64 cross suite re-run against the fixed code — the run I started covered the *pre*-fix tree.
+
 ### R52. Detecting the appended-capture defect structurally, not statistically
 
 R50's numbers were wrong because a log was seven `adb logcat` captures appended together. The obvious
