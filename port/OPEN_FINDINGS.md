@@ -688,6 +688,41 @@ it, rather than the frame-rate proxy.
 startup, and is worth shipping — but on this diagnosis it should be expected to leave the spikes largely
 intact. Any claim that it "fixes the lag" must be tested with R62's 8-sample protocol, not assumed.
 
+### R64. First launch is ~89% BLOCKED, not CPU-bound — the slow part is outside the shim
+
+Measured on the A56 with the `ABSHIM_SLOWCALL` diagnostic build during the ~10-minute cold first launch:
+
+| measurement | value |
+|---|---|
+| `nativeUpdate` invocation spacing | **2.131 / 2.126 / 2.141 s** — strikingly regular |
+| `[slowcall]` lines at a 120 ms threshold | **zero**, in 10+ minutes |
+| process CPU | **112 jiffies / 10.05 s = 11.1% of one core** |
+| `GraphicsThread` lifetime CPU | 394 s over ~11 min wall (~60% avg, ~0 during this phase) |
+
+Those four together say something the frame-rate work never could: **each `nativeUpdate` returns quickly,
+the gaps between them are ~89% idle wait, and the wait is outside the shim.** `GLSurfaceView` calls
+`eglSwapBuffers` *after* `onDrawFrame`/`nativeUpdate` returns, so a render thread blocked there is blocked
+on the Java/driver side, not in emulation. That is consistent with R51's attribution of the first interval
+to first-run shader compilation — the GPU driver compiling this engine's shaders lazily on first use.
+
+**Consequence: the ~10-minute cold first launch is not an emulator problem and no scheduler change will
+fix it.** It is a one-time GPU/driver cost. Plausible avenues are pre-warming or caching shader binaries,
+not faster guest execution.
+
+**It also separates the two symptoms.** First-launch slowness (this entry: blocked, outside the shim) and
+interaction spikes (R63: inside the shim, behind the BEL) have *different* causes. Treating them as one
+"it's slow" problem — which I did until this measurement — would have meant optimising the wrong thing
+for one of them.
+
+**Two measurement mistakes caught while getting here, both the same shape:**
+
+* The instrumentation's silence was nearly read as "no slow calls happen". It reports at call **exit**, so
+  a call still running prints nothing — and for a while I assumed one monolithic boot call was in flight.
+  The `call[N]` lines disproved that; `nativeUpdate` was returning repeatedly all along.
+* A per-thread CPU comparison printed `TOTAL 0% of one core` with **no rows at all** — a `join` broken by
+  thread names containing spaces, not a real zero. Reported as a broken measurement rather than a
+  finding, and redone at process level where names cannot confound it.
+
 ### R59. The count fix is worth **11–14×**, not 2.75× — and it is reverted, because it is not yet correct
 
 > ⚠️ **THE HEADLINE NUMBER IN THIS ENTRY WAS WRONG AND TOO SMALL.** I first reported 2.75× by comparing
