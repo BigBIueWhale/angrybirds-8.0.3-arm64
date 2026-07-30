@@ -608,6 +608,27 @@ itself:
 
 Android was never the delay. The guest had **nothing runnable** and the shim's watchdog said so.
 
+> ⚠️ **PARTIALLY UNDERCUT BY ITS OWN EVIDENCE — read this before acting on the mechanism below.**
+> Decoding the dump properly (`WK_NONE=0, WK_MUTEX=1, WK_COND=2, WK_JOIN=3, WK_RWLOCK_RD=4,
+> WK_RWLOCK_WR=5, WK_ONCE=6, WK_SLEEP=7`) gives **12 threads in `WK_SLEEP` and 3 in `WK_COND`**.
+> `sched_sleep` — the only source of `WK_SLEEP` — is called from exactly one place, `l_poll`, which
+> **caps its nap at 200 ms**. So the earliest deadline should have been ≤200 ms away and
+> `idle_wait_pick` should NOT have slept for seconds. The "sleeps until a far-off guest timer" story
+> does not fit its own data.
+>
+> An equally good reading of the same window: **one `nativeUpdate` simply took ~5 s** (asset/level work,
+> a decode, a long guest operation), held the BEL for its duration, and the `[sched-dump]` is a
+> *symptom* of the scheduler idling inside that long call rather than its cause. Input still waits
+> behind the BEL either way — that part holds — but WHY the render call is long is unresolved.
+>
+> What is solid: Android delivers the touch in 1 ms; the delay is entirely inside the shim; input
+> blocks on the BEL held by the render call. What is NOT established: that a long idle sleep is the
+> reason the render call is long. Measuring per-`shim_call` duration during a spike would separate
+> these, and no such instrumentation exists yet.
+>
+> (I decoded `wk=7` against a stale legend in `sched_dump_state` that listed only values 0–3 — four
+> short. Legend now corrected in the source.)
+
 **The mechanism, from the code rather than inference:**
 
 * `idle_wait_pick()` (`sched.c:215`) — when the run-queue is empty it finds the **earliest deadline**

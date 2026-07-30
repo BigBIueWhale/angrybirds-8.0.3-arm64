@@ -476,7 +476,13 @@ gthread *sched_current(sched *S){ return S->cur; }
  * primitive it blocked in, so (resume-4/-2) is the call site; printed RG_ENGINE-relative
  * (matches eng.dis offsets). wk names the primitive, obj is its guest addr. A stall shows
  * as a thread stuck BLOCKED with a STABLE resume across successive dumps — e.g. parked on
- * a cond/join that no one will signal (a network worker we cut). */
+ * a cond/join that no one will signal (a network worker we cut).
+ *
+ * wk VALUES (keep in sync with the enum in sched.h — the old list here said only
+ * "0 none,1 mutex,2 cond,3 join" and was four values out of date, which is exactly how a
+ * real device dump showing wk=7 got misread):
+ *     0 WK_NONE   1 WK_MUTEX   2 WK_COND   3 WK_JOIN
+ *     4 WK_RWLOCK_RD   5 WK_RWLOCK_WR   6 WK_ONCE   7 WK_SLEEP  */
 void sched_dump_state(sched *S){
     SLOG("[sched-dump] nthreads=%d cur=%u runq=%s", S->nthreads, S->cur?S->cur->id:0u, S->runq_head?"Y":"n");
     for(int i=0;i<S->nthreads;i++){ gthread*g=&S->all[i];
