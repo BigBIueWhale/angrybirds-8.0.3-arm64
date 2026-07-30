@@ -604,9 +604,20 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
     uint32_t gaddr = resolve_guest(name);
     /* log the FIRST time each distinct native is called -> the on-device logcat shows the
      * boot/call sequence (nativeInit, nativeResize, nativeUpdate, ...) without flooding */
-    { static char seen[128][48]; static int nseen; static int capped=0; int sv=0;
+    /* BUFFER MUST HOLD THE WHOLE NAME. It was char[48] with strncpy(...,47), and every JNI name here
+     * is longer than that: "Java_com_rovio_fusion_NativeApplication_nativeUpdate" is 52 chars. The
+     * stored copy was truncated to 47 and NUL-terminated, so strcmp() against the full name could
+     * NEVER match -- the "log only the first call" logic re-logged EVERY invocation, filled all 128
+     * slots with duplicates of the same native, and then printed the ">128 distinct natives"
+     * suppression notice, which was false. Observed on the A56 as call[52]..call[58] all being
+     * nativeUpdate.
+     *
+     * Comparing only the first 47 chars would be the wrong fix: nativeSurfaceCreated and
+     * nativeSurfaceChanged share that prefix and would be conflated. 96 bytes covers every name in
+     * this engine with room to spare. */
+    { static char seen[128][96]; static int nseen; static int capped=0; int sv=0;
       for(int i=0;i<nseen;i++) if(!strcmp(seen[i],name)){ sv=1; break; }
-      if(!sv){ if(nseen<128){ strncpy(seen[nseen],name,47); seen[nseen][47]=0; nseen++;
+      if(!sv){ if(nseen<128){ strncpy(seen[nseen],name,95); seen[nseen][95]=0; nseen++;
                  LOG("call[%d] %s (%s) @0x%x", nseen, name, shorty, gaddr); }   /* log ONLY on store */
                else if(!capped){ capped=1; LOG("call-log: >128 distinct natives; further first-call logs suppressed"); } } }  /* INFO, not LOGE: this is a diagnostic notice, and ONDEVICE.md tells people to triage by looking for errors */
     uint32_t thiz_tok = tok(thiz, HK_LOCAL);
