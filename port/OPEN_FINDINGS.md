@@ -592,6 +592,54 @@ than a steady throughput limit.
 **Protocol for any future latency claim on this device:** at least 8 samples, report median and max,
 state whether the resolver loop was active, and never quote a single draw.
 
+### R63. The latency spikes are the BEL held across an unbounded idle sleep — not emulation speed
+
+Caught a spike in the act on the A56 (4.98 s, first tap, full logcat running) and the window explains
+itself:
+
+```
+06:51:50.979  InputDispatcher: Delivering touch to (25776)      <- Android delivers in 1 ms
+06:51:50.980  VRI[App]: ViewPostIme pointer 0                   <- app UI thread has it
+06:51:51.604  abshim [sched-dump] nthreads=15 cur=19 runq=n     <- shim's own freeze detector
+              all 15 green threads st=4 BLOCKED: 12x wk=7 (timed), 3x wk=2 (mutex)
+              gt[6] deadline ~6.4 s beyond the others
+06:51:53.988  VRI[App]: boost timeout                           <- Android's touch boost expires
+```
+
+Android was never the delay. The guest had **nothing runnable** and the shim's watchdog said so.
+
+**The mechanism, from the code rather than inference:**
+
+* `idle_wait_pick()` (`sched.c:215`) — when the run-queue is empty it finds the **earliest deadline**
+  among timed waiters and `pthread_cond_timedwait`s until then. It releases the **GEL**.
+* `shim_call()` (`jni_entry.c:563`) locks the **BEL** on entry and does not unlock until `:679`.
+* So: render thread → `nativeUpdate` → `shim_call` → **locks BEL** → `sched_enter` → `run_loop` →
+  nothing runnable → `idle_wait_pick` → **sleeps until the earliest guest timer, still holding the BEL**.
+* Your tap arrives, Android hands it over in 1 ms, and the app's UI thread calls `shim_call` — which
+  **blocks on the BEL**. Input cannot enter the shim at all until the render call returns.
+
+That predicts exactly the distribution R62 measured: latency ≈ time to the nearest guest timer. Mostly
+~1.8 s, occasionally ~7 s when the nearest deadline is far out (the dump showed one 6.4 s away). It also
+explains why frame rate and latency are only loosely coupled — **a lock held across a sleep is not a
+throughput problem**, so doubling emulation speed would barely move it.
+
+**The fix has precedent in this very file.** The S2 blocking-JNI path already releases the BEL around a
+blocking ART call and re-acquires after, with the rationale recorded at `jni_entry.c:195-213`
+(*"breaks the audio-mixer cross-thread deadlock"*, cont.118), including restoring `G.jni.real_env`
+because the render thread may have changed it while parked. `idle_wait_pick`'s sleep is the same shape:
+a long blocking wait under the BEL. Releasing it there — or bounding the idle wait so the entry call
+returns promptly — is the candidate.
+
+**Not yet implemented, and it is not a one-liner:** `run_loop` must still deliver its entry gthread to
+`RG_RET`, so simply returning early from the idle wait would break that contract; and releasing the BEL
+mid-scheduler needs the same `real_env` care the S2 path documents. This is recorded as the highest-value
+next change because it targets the symptom the user actually reported, with a measured mechanism behind
+it, rather than the frame-rate proxy.
+
+**Why this outranks the scheduler-slice work:** that change is verified at 2.2x frame rate and 2.1x
+startup, and is worth shipping — but on this diagnosis it should be expected to leave the spikes largely
+intact. Any claim that it "fixes the lag" must be tested with R62's 8-sample protocol, not assumed.
+
 ### R59. The count fix is worth **11–14×**, not 2.75× — and it is reverted, because it is not yet correct
 
 > ⚠️ **THE HEADLINE NUMBER IN THIS ENTRY WAS WRONG AND TOO SMALL.** I first reported 2.75× by comparing
