@@ -102,7 +102,7 @@ sha256sum out/angrybirds-8.0.3-arm64.apk
 which must print exactly
 
 ```
-27548721a456ea99295469c30c247e3f9519878a3d40abb817a148801af04851  angrybirds-8.0.3-arm64.apk
+46c607f5f9e41560b6a260d7153670e8cf42014f0eca1f5d4c813b90594b87aa  angrybirds-8.0.3-arm64.apk
 ```
 
 and

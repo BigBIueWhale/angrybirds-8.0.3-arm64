@@ -59,7 +59,7 @@ keystore rather than from this document.
 
 **SHA‑256**
 ```
-27548721a456ea99295469c30c247e3f9519878a3d40abb817a148801af04851  angrybirds-8.0.3-arm64.apk
+46c607f5f9e41560b6a260d7153670e8cf42014f0eca1f5d4c813b90594b87aa  angrybirds-8.0.3-arm64.apk
 196053244e92ac8c902f1b956ad8b56211266012ec48c6b4a3a3595b8c2a9ad9  angrybirds-8.0.3-arm64-audio.apk
 ```
 

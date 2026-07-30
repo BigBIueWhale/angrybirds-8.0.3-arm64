@@ -59,7 +59,7 @@ The result is loaded by ART like any native library; from Android's point of vie
 bash port/reproduce.sh          # -> out/angrybirds-8.0.3-arm64.apk
 ```
 
-The build is deterministic: it reproduces `27548721a456ea99295469c30c247e3f9519878a3d40abb817a148801af04851`
+The build is deterministic: it reproduces `46c607f5f9e41560b6a260d7153670e8cf42014f0eca1f5d4c813b90594b87aa`
 byte-for-byte from a fresh clone, so you can check you got the same artifact this README describes.
 Then sideload it:
 
