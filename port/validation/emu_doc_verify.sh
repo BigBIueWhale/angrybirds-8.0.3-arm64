@@ -18,6 +18,10 @@
 #       -v "$PWD":/work ab-emu-36 bash /work/port/validation/emu_doc_verify.sh
 set +e
 source "$(dirname "$0")/lib_install.sh"
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 source "$(dirname "$0")/lib_selfhash.sh"
 
 APK=/work/out/angrybirds-8.0.3-x86shim-release.apk   # deliverable manifest/signer, runnable ABI here

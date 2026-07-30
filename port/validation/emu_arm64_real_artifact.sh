@@ -41,6 +41,10 @@
 #       bash /work/port/validation/emu_arm64_real_artifact.sh
 set +e
 source "$(dirname "$0")/lib_metrics.sh"
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 BUDGET="${ABSHIM_ARM64_BUDGET:-5400}"          # overall wall-clock budget, default 90 min
 ( sleep "$BUDGET"; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &
 APK=/work/out/angrybirds-8.0.3-arm64.apk       # THE REAL DELIVERABLE, not a proxy

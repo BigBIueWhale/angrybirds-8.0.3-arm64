@@ -9,6 +9,10 @@
 # PULSE_SERVER. Everything is a Unix socket -> safe under --network none (no network port bound).
 set +e
 source "$(dirname "$0")/lib_metrics.sh"
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 source "$(dirname "$0")/lib_install.sh"
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/audiocap.txt"; : >"$LOG"
 ABLOG="$OUT/audiocap_abshim.txt"; : >"$ABLOG"

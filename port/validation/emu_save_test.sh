@@ -4,6 +4,10 @@
 # The shim's FILE bridge (bridge_file.c) is host-suite-validated; this confirms it end-to-end on-device.
 set +e
 source "$(dirname "$0")/lib_metrics.sh"
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 source "$(dirname "$0")/lib_settle.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_install.sh"
 source "$(dirname "$0")/lib_saveassert.sh"   # the verdict, kept separately so it can be tested offline

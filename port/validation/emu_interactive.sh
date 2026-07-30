@@ -3,6 +3,10 @@
 # outer session can drive input via `docker exec ab-emu-run adb shell input ...` + screencap, to
 # confirm INTERACTIVE play (tap the level-start card -> drag the slingshot -> launch the bird).
 set +e
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 ( sleep 1500; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &   # hard watchdog 25min
 APK=/work/out/angrybirds-8.0.3-x86shim.apk
 OUT=/work/reports/shots; mkdir -p "$OUT"; ST="$OUT/emu_interactive.status"; echo BOOTING >"$ST"

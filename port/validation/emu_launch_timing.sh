@@ -39,6 +39,10 @@
 #       -v "$PWD":/work ab-emu bash /work/port/validation/emu_launch_timing.sh
 set +e
 source "$(dirname "$0")/lib_settle.sh"
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 source "$(dirname "$0")/lib_metrics.sh"
 source "$(dirname "$0")/lib_selfhash.sh"
 ( sleep 2100; adb emu kill 2>/dev/null; pkill -9 -f qemu 2>/dev/null ) &

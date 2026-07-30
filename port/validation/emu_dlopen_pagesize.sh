@@ -23,6 +23,10 @@
 # Run it on ab-emu-36 (AVD=ab36) too: there C must SUCCEED, which is what proves C's failure on the
 # 16 KB image is the page size and not a broken binary.
 set +e
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 OUT=/work/reports/shots; mkdir -p "$OUT"; LOG="$OUT/dlopen_pagesize.txt"; : >"$LOG"
 say(){ echo "$@" | tee -a "$LOG"; }
 FAIL=0

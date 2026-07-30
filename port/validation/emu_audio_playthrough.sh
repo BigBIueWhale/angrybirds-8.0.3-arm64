@@ -6,6 +6,10 @@
 # just slower under the audio overhead)? Give it a long settle + play + a multi-minute frame-watch.
 set +e
 source "$(dirname "$0")/lib_settle.sh"
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 source "$(dirname "$0")/lib_provenance.sh"
 source "$(dirname "$0")/lib_metrics.sh"   # frame-based settle (replaces flaky fixed sleeps)
 source "$(dirname "$0")/lib_install.sh"

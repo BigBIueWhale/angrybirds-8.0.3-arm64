@@ -28,6 +28,10 @@
 #       -v "$PWD":/work ab-emu-361 bash /work/port/validation/emu_361_why.sh
 set +e
 source "$(dirname "$0")/lib_install.sh"
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 PKG=com.rovio.angrybirds
 APK=${ABSHIM_APK:-/work/out/angrybirds-8.0.3-x86shim-release.apk}
 OUT=/work/reports/shots; mkdir -p "$OUT"

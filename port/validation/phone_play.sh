@@ -40,6 +40,10 @@
 # SECURITY: adb must be listening on 127.0.0.1 only (this box has a public IPv4 on all interfaces).
 # Asserted below; the script refuses to run otherwise.
 set +e
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 cd "$(dirname "$0")/../.." || exit 1
 source port/validation/lib_metrics.sh
 # lib_camera.sh owns the camera reset. This script first reimplemented it with its own hardcoded

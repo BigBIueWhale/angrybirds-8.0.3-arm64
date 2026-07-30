@@ -60,6 +60,10 @@ export ANDROID_AVD_HOME=/root/.android/avd
 # below. prose_as_code.py caught the omission before any arm64 run did: an unsourced helper is a
 # word in command position that resolves to nothing, which is the same class of defect as prose.
 source "$(dirname "$0")/lib_metrics.sh"   # h_fatal_report / assert_no_absorbed_faults
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 QEMU="$E/qemu/linux-x86_64/qemu-system-aarch64"
 APK=${ABSHIM_APK:-/work/out/angrybirds-8.0.3-arm64.apk}
 OUT=/work/reports/shots; mkdir -p "$OUT"

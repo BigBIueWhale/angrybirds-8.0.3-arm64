@@ -44,6 +44,10 @@
 #   - "no soundhw in the argv" also happens when the run dies BEFORE generating the argv, so this
 #     script counts the argv line itself rather than treating an absent symptom as a fixed problem
 set +e
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 E=/opt/android-sdk/emulator
 export LD_LIBRARY_PATH="$E/lib64:$E/lib64/qt/lib:$E/lib64/gles_swiftshader:$E/lib64/vulkan"
 export ANDROID_AVD_HOME=/root/.android/avd

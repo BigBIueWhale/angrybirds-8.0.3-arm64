@@ -495,6 +495,24 @@ capture must show `black-left=0px`.
 
 ### R61. The faults track preemption FREQUENCY, not sync-vs-async — R59's attribution was wrong
 
+> ⚠️⚠️ **THIS ENTRY'S KEY ROW IS NOW UNVERIFIED — I RECORDED IT FROM POSSIBLY-BLENDED EVIDENCE.**
+> While reading the `MASK=0x1F` result, **two emulator containers were running at once** (`ab-emu-sh`
+> and `ab-emu-fin`, both `Up` in `docker ps`) and **both write the same
+> `reports/shots/playthrough_abshim.txt`**. So the "no async stop, `MASK=0x1F` → 60 fps + `bad_alloc`"
+> row — the one that refutes R59 — may be a blend of two different builds.
+>
+> A blended log is the worst kind of bad evidence: correct format, plausible values, frames that look
+> monotonic, and no way to detect it after the fact. The cause was systemic, not a slip: **50 scripts
+> write into the shared `reports/shots` namespace and not one held a lock.** Fixed by
+> `lib_runlock.sh` (refuses rather than queues; a queued second run would still be a surprise), wired
+> into 40 evidence-producing scripts and mutation-tested in both directions.
+>
+> **Status of the whole table below: the baseline (9.57 fps, clean) and the moderate-preemption row
+> (21.57 fps, clean) were measured before any overlap and stand. The two "heavy" rows and the
+> frequency-vs-mechanism conclusion must be re-measured one run at a time under the lock before they
+> are believed. Until then R59's attribution is not restored either — both are open.**
+
+
 R59 concluded "the asynchronous `uc_emu_stop` was the cause of all three faults", on the strength of one
 experiment: disabling my timer thread made the playthrough clean. That conclusion does not survive the
 next two data points, and I am correcting it rather than leaving it standing.

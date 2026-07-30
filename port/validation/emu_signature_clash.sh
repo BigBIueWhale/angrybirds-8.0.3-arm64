@@ -27,6 +27,10 @@
 # Rovio's original at all, which is the very problem this project solves.
 set +e
 source "$(dirname "$0")/lib_install.sh"
+# Refuse to run while another evidence run is in flight: 50 scripts share reports/shots and
+# two concurrent runs BLEND their logs into numbers that look normal and mean nothing.
+source "$(dirname "$0")/lib_runlock.sh"
+acquire_run_lock "$(basename "$0")" || exit 1
 source "$(dirname "$0")/lib_selfhash.sh"
 
 ORIG=/work/apks/com.rovio.angrybirds@8.0.3.apk
