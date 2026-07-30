@@ -53,3 +53,6 @@ __pycache__/
 .claude/
 .DS_Store
 *.swp
+
+# run lock for evidence-producing validation scripts (see port/validation/lib_runlock.sh)
+.abshim-evidence-run.lock
