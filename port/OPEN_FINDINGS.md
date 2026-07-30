@@ -745,6 +745,55 @@ R65. Median 1.72 s, max 7.45 s, Android delivering the tap in ~1 ms, no `shim_ca
 of my own proposed mechanisms falsified by probe-plus-control. Throughput and latency are different
 bottlenecks here and only the first has been improved.
 
+### R67. A tap makes the engine go IDLE, then it wakes in ~2.2 s bursts — that IS the latency
+
+Profiled `/proc/<pid>/stat` (utime+stime) on-device across an injected tap, on the shipped build, app
+foreground on `Tutorial_red_niko`. Intervals **measured**, not assumed (mean 192 ms):
+
+```
+samples 0-11   ~100% of one core, rock steady        <- engine CPU-SATURATED
+sample  12     drops to 6%                            <- TAP INJECTED HERE
+samples 13-20  ~5%                                    <- idle, NOT computing
+sample  21     60%   |  sample 22  21%                <- a burst
+samples 23-31  ~5%                                    <- idle again
+sample  32     55%                                    <- next burst
+overall        249 jiffies / 7.48 s = 33% of one core
+```
+
+**Two things fall out, and the second is the mechanism.**
+
+1. **The tap makes the engine STOP, not start.** Before it the process pins one core; immediately after it
+   drops to ~5% and stays there. Whatever the tap triggers puts the engine into a wait.
+2. **It then wakes in bursts ~11 samples apart ≈ 2.2 s**, and 2.2 s is the measured interaction latency
+   (R62: median 1.72 s, max 7.45 s). So the visible response lands on the next burst of a slow work
+   cycle, and the ~5% between bursts is proof it is **waiting, not computing**.
+
+That is consistent with everything else and finally ties it together: no single `shim_call` exceeds 120 ms
+(R63) because the time is not inside a call; CPU looked low in some samples and saturated in others
+(R56 97%, R64 11%) because those windows landed in different phases of this cycle; and `frame[N]` does not
+advance while idle (R58) because the engine genuinely is not rendering.
+
+**It also rehabilitates the shape of R63/R65 while keeping them refuted as stated.** They proposed a long
+wait holding the BEL; the `[idlenap]` probe found no nap over 100 ms — but that probe only ever ran during
+**boot**. This burst cycle is the idle-on-a-level state that was never measured. A ~2.2 s periodic wake is
+exactly what a guest `sched_cond_wait` with an uncapped guest deadline would produce, and the earlier
+device dump did show 3 `WK_COND` waiters, one 6.4 s out.
+
+**Next step, now precise:** re-run the `[idlenap]` probe *in this state* (app idle on a level, post-tap)
+rather than during boot, with `[sched-dump]` alongside as the control. If it reports ~2.2 s naps owned by a
+`WK_COND` waiter, the fix is to cap that deadline the way `l_poll` already caps its nap — a one-value
+change with a directly measurable effect on your input lag.
+
+**Three measurement-mechanics bugs hit while producing this trace, all mine, none in the port:**
+
+* the first version labelled samples "≈100 ms" when each iteration also forks `awk` and `sleep` — the real
+  interval was ~148 ms, which turned a flat ~95% trace into an impossible "141% of one core";
+* the second version used shell `$14 + $15` on `/proc/<pid>/stat`, and in POSIX `sh` **`$14` parses as
+  `$1` followed by `4`** — with `$1` being the pid it computed `85984 + 85985 = 171969`, a large constant
+  that read convincingly as "zero CPU for 5.76 s";
+* both were caught only because the numbers were impossible against an earlier measurement. A plausible
+  wrong number would have survived.
+
 ### R65. The interaction lag is IDLE-LOOP WAKE-UP latency, not throughput — with confounds ruled out
 
 Measured on the A56 with the `ABSHIM_SLOWCALL` build, app foreground and idle on a static level:
