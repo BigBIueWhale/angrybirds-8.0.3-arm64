@@ -777,6 +777,46 @@ engine saturates one core. A fixed ~1.8 s cost that is none of those things is w
 calls per JNI entry — ~50 ns against a 1.8 s latency, so it cannot account for the result. Both arms used
 the identical screenshot-diff protocol, and the pre-change arm is R62's.
 
+### R70. The Java side uses CONTINUOUS rendering — "renders on demand" (R58/R65) was wrong
+
+I had spent this entire investigation inside the native shim and never looked at Rovio's Java half, which
+I have as `classes.dex` (8.3 MB). Symbol counts in it:
+
+```
+setRenderMode              0        RENDERMODE_WHEN_DIRTY      0
+requestRender              0        RENDERMODE_CONTINUOUSLY    0
+GLSurfaceView              1        onDrawFrame                1
+Choreographer              0        postFrameCallback          0
+com/rovio/fusion/MyInputHandler, InputDelegator$InputHandler, onTouchEvent
+```
+
+**The app never calls `setRenderMode`, so it gets `GLSurfaceView`'s default: `RENDERMODE_CONTINUOUSLY`.**
+The `GLThread` therefore loops calling `onDrawFrame` as fast as it can — it does **not** render on demand,
+and there is no `Choreographer` pacing either.
+
+**So R58's and R65's "the game renders on demand" is refuted.** That reading was inferred from `frame[N]`
+not advancing on a static scene; the actual cause of a frozen heartbeat must be something else, because the
+Java loop is unconditionally continuous.
+
+**Which sharpens the remaining puzzle rather than solving it.** With a continuous render loop:
+
+* `nativeUpdate` is called in a tight loop, yet no `[slowcall]` line ever fired at a 120 ms threshold — so
+  the *call* is not where the time goes;
+* R64 measured ~89% of wall time blocked **outside** the shim during boot;
+* GL volume is not pathological — the frame heartbeat's own counters give ~8–23 draws per frame
+  (`frame[2101] GL draws=64656 (+7020 since last)`).
+
+That points at the `GLThread` blocking between `onDrawFrame` returns — `eglSwapBuffers` being the only
+substantial thing there — which is consistent with R64's "blocked outside the shim" and with a fixed cost
+that R69 proved does not scale with emulation speed. **Not established**, and I am not going to assert it
+on this much: the next measurement is to time `eglSwapBuffers` on the Java side, which needs either a
+decompile-and-instrument of the DEX or an `eglSwapBuffers` interposer.
+
+**Method note worth keeping:** these were plain symbol counts on the DEX with no decompiler at all. Four
+zeros and two ones were enough to overturn a mechanism I had asserted twice. The Java half of this port has
+been unexamined for the entire session — every "the engine does X" claim in this file was inferred from the
+native side only.
+
 ### R68. Consolidation: R67's idle-burst state is a TRANSIENT; the steady state is one core saturated
 
 Two follow-up measurements on the same build and level force R67 back to a narrower claim.
