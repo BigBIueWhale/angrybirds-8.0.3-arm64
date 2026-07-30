@@ -862,6 +862,56 @@ cure; R70 refuted "renders on demand" from four zeros in a DEX symbol count; and
 `shim_call`s, and scheduler idling are all eliminated with controls. The search space is now small and the
 next move is specific — that is worth more than a wrong mechanism confidently asserted.
 
+### R72. FOUND the gate: `nativeUpdate` early-returns unless a virtual call at vtable+0x94 says yes
+
+R71 concluded that shim telemetry was exhausted and the next step was the guest's own update path. A
+132 MB disassembly already existed at `reports/eng.dis` from earlier work, so no new tooling was needed.
+`nativeUpdate` sits at engine+`0x1dd36c` (logged on device as guest `0x401dd36c`, `RG_ENGINE=0x40000000`):
+
+```
+1dd39c:  ldr  r2, [r3, #0x80]        ; a pointer/flag
+1dd3a0:  ldrd r10, r11, [r3, #136]   ; previous 64-bit timestamp
+1dd3a4:  cmp  r2, #0
+1dd3b0:  strd r4, r5, [r3, #136]     ; store the incoming timestamp (r0:r1 = jlong arg)
+1dd3b4:  beq  0x1dd3d0               ; flag NULL      -> EARLY RETURN
+1dd3b8:  ldr  r0, [r3, #0x7c]        ; else load object
+1dd3bc:  ldr  r3, [r0]               ;   vtable
+1dd3c0:  ldr  r3, [r3, #0x94]        ;   slot +0x94
+1dd3c4:  blx  r3                     ;   VIRTUAL CALL
+1dd3c8:  cmp  r0, #0
+1dd3cc:  bne  0x1dd3f0               ; non-zero       -> render the frame
+1dd3d0:  mov  r0, #1                 ; EARLY RETURN: return true, having done nothing
+1dd3e4:  add  sp, sp, #228
+1dd3ec:  pop  {r4-r11, pc}
+```
+
+**The engine renders only if that virtual call returns non-zero.** Otherwise `nativeUpdate` returns
+immediately — and returns *true*, so the Java side sees success and keeps looping. That single branch
+explains every otherwise-contradictory measurement:
+
+| observation | explained by |
+|---|---|
+| `frame[N]` frozen while the app is alive (R58/R65) | the frame body is skipped, so `rf` never increments |
+| no `[slowcall]` over 120 ms (R63) | the early-return path is a few dozen instructions |
+| `[jgap]`=0 with a frozen heartbeat (R71) | calls do arrive back-to-back; they just do nothing |
+| 12% of one core (R71) | almost no work per call |
+| latency unaffected by 2.2× throughput (R69) | the gate is not throughput-dependent |
+| `RENDERMODE_CONTINUOUSLY` yet nothing draws (R70) | Java loops fine; the engine declines |
+
+Also visible: the frame path at `1dd3f0` computes `r4:r5 - r10:r11` (new minus previous timestamp) through
+`__floatdisf` and `vmul.f32`, so the signature is effectively `nativeUpdate(jlong nowNs) -> jboolean` with
+an internal delta-time computation. That matches the `(Z)` return shorty logged on device.
+
+**What is now established vs still unknown.** Established, from the instruction stream itself: the gate
+exists, its two conditions, and that a false answer produces a do-nothing frame. Unknown: what the virtual
+method at vtable+`0x94` *is*, and what makes it flip to true ~1.8 s later.
+
+**And that is cheaply answerable with the existing hook machinery.** The shim already installs ~27
+`UC_HOOK_CODE` probes at fixed engine offsets (`neut_*`, `guard_*`, `diag_*`). A hook at `0x1dd3c8` can log
+the gate's answer, and one at `0x1dd3d0` can count refusals — giving the yes/no ratio and the interval
+between yeses without touching the shipping build. That is the next concrete step, and unlike the previous
+four probes it targets a branch I can see rather than a mechanism I hypothesised.
+
 ### R68. Consolidation: R67's idle-burst state is a TRANSIENT; the steady state is one core saturated
 
 Two follow-up measurements on the same build and level force R67 back to a narrower claim.
