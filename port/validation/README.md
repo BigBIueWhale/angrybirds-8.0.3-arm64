@@ -814,6 +814,20 @@ findings was not "the system is subtly wrong" but **"the rig already knew and I 
     Every negative assertion here is now two-sided: prove the tool sees the input, THEN prove how it
     classifies it.
 
+**On committing**
+
+4e. **`git add <explicit paths>` does NOT protect you from files that are already STAGED.** It stops new
+    changes being added; it does nothing about a prior `git checkout <rev> -- <dir>`, which *stages*
+    what it restores. A commit written to carry only validation files therefore also carried a staged
+    revert of four shim sources, and its own message said the opposite. To commit a subset safely:
+    `git reset` first, or `git commit -- <paths>`, and always read `git show --stat HEAD` afterwards.
+    `git status` was already telling me: `MM` means staged *and* unstaged, and I read only the second M.
+
+4f. **`git add -A` while carrying unproven work commits the unproven work.** It happened twice in one
+    session with a modified scheduler, and no check caught it because `verify_claims.sh` validated the
+    artifact in `out/`, not that the source still produces it. Hence the source-drift tripwire
+    (`shim_sources.sha256`). Commit work-in-progress deliberately or not at all.
+
 **On reading evidence**
 
 5. **Absence from a log is evidence only if the log would have recorded presence.** `bridge_gl.c` has
