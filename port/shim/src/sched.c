@@ -264,7 +264,56 @@ static uc_err run_loop(sched *S, gthread *gt){
         /* The GEL stays HELD across uc_emu_start -> exactly one host thread ever drives
          * the shared engine. It is released only inside idle_wait_pick (cond_wait), when
          * this thread is blocked with nothing runnable and yields to another host thread. */
-        e=uc_emu_start(S->cpu->uc, begin, RG_RET, 0, SCHED_QUANTUM);
+        /* count=0, NOT SCHED_QUANTUM: a non-zero count makes Unicorn instrument every instruction
+         * and lose TCG block chaining, measured at x1.56 on identical work. The slice is bounded by
+         * wall clock at a bridge boundary instead -- see dispatch_arm_slice(). Armed immediately
+         * before and disarmed immediately after, on this same host thread, so a stale deadline can
+         * never truncate the following slice. */
+        /* ADAPTIVE SLICE. count=0 is ~1.56x faster (measured) but can only be ended by the
+         * bridge-boundary check, so it is used ONLY for a thread that demonstrably reached a bridge in
+         * its previous slice. A thread that reached none keeps the bounded count, so it can always be
+         * preempted. Safe by default: slice_fast is zero-initialised.
+         *
+         * There is deliberately NO asynchronous stopper. An earlier version had a timer thread calling
+         * uc_emu_stop, and it produced a different fault in a different subsystem on every attempt
+         * (St9bad_alloc, then gr::GraphicsException, then St12length_error) because uc_emu_stop makes a
+         * hook callback re-fire and the shim's callbacks are the bridge/JNI implementations. Disabling
+         * it made the same playthrough clean and winning. Guarding callback families was a whitelist
+         * against a hazard that is the default; this removes the hazard instead. */
+        unsigned long _b0 = abshim_bridge_calls;
+        uint64_t _cnt = r->slice_fast ? 0ull : (uint64_t)SCHED_QUANTUM;
+        /* Use uc_emu_start's OWN `timeout` (microseconds) rather than a hand-rolled timer thread.
+         * The header documents it as "duration to emulate the code (in microseconds)", so Unicorn
+         * bounds the slice itself. Whether its internal stopper is safer than mine is an empirical
+         * question -- my timer produced a fault in a different subsystem on every attempt -- and this
+         * isolates it: same count=0 fast path, same 16 ms bound, Unicorn's mechanism instead of mine.
+         * The synchronous bridge-boundary check stays armed as a second, provably-safe bound. */
+        dispatch_arm_slice(S->cpu->uc, _cnt ? 0ull : SCHED_SLICE_NS);
+        /* TIMEOUT MUST BE 0. Unicorn's own `timeout` parameter bounds the slice asynchronously, and
+         * MEASURED it hits full speed (59.99 fps play-phase, card at ~45 s) while reproducing exactly
+         * the fault my own timer thread produced: THROW St9bad_alloc, h_fatal=1.
+         *
+         * That is the decisive result: the hazard is INHERENT to asynchronous stopping in this shim,
+         * not a defect in my stopper. Unicorn's supported mechanism triggers it too, because this shim
+         * puts NON-IDEMPOTENT work inside UC_HOOK_CODE callbacks -- malloc/free, real JNI calls into
+         * ART, guest syscalls -- and any async stop can make a callback re-fire (proven separately).
+         *
+         * So async preemption is off the table until every bridge callback is made re-entrant-safe.
+         * That is a real, well-scoped piece of future work with a proven 6.3x payoff; it is not a
+         * tweak. Until then the slice is bounded synchronously only: count for a thread that has never
+         * reached a bridge, bridge-boundary check for one that has. */
+        e=uc_emu_start(S->cpu->uc, begin, RG_RET, 0, _cnt);
+        dispatch_arm_slice(S->cpu->uc, 0);
+        /* STICKY. Do NOT reset to 0: measured, resetting made the adaptive build SLOWER than plain
+         * count=0 (13.84 fps vs 21.57 fps play-phase) because a slice that happens to end without
+         * touching a bridge -- a thread that blocks immediately, a short callback-driven slice --
+         * demoted the thread back to the 1.56x-slower counted path, so threads flip-flopped.
+         *
+         * The invariant that actually matters is weaker than "used a bridge last slice": a thread that
+         * has EVER reached a bridge will reach one again, so the bridge-boundary check can always end
+         * its slice. A thread that has never reached one keeps the bounded count forever -- which is
+         * precisely the [T3] non-yielding spin-loop, and is why slice_fast is zero-initialised. */
+        if(abshim_bridge_calls != _b0) r->slice_fast = 1;
         if(e!=UC_ERR_OK){ S->fatal=1; snprintf(S->fatal_msg,sizeof S->fatal_msg,"uc_err %d",e);
             { uint32_t pc=rd(S,UC_ARM_REG_PC),sp=rd(S,UC_ARM_REG_SP),lr=rd(S,UC_ARM_REG_LR);
                 SLOG("[FAULT] e=%d(%s) pc=engine+0x%x sp=0x%x lr=+0x%x gt=%u begin=0x%x",

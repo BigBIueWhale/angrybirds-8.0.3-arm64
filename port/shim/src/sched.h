@@ -35,6 +35,15 @@
 
 #define SCHED_MAX_THREADS 64
 #define SCHED_MAX_KEYS    128
+/* SCHED_SLICE_NS replaces SCHED_QUANTUM as the actual preemption bound (see dispatch_arm_slice()).
+ * 16 ms is chosen to match what the old 200000-instruction count worked out to in practice: at the
+ * measured on-device rate of ~11 Minsn/s, 200000 insns is ~18 ms. So responsiveness is unchanged
+ * while the x1.56 instruction-counting penalty is dropped. SCHED_QUANTUM is kept because
+ * sched_once()/nested starts still use a bounded count, where the cost is irrelevant. */
+#define SCHED_SLICE_NS    16000000ull      /* 16 ms wall-clock slice, bridge-boundary preemption */
+#define SCHED_SLICE_US    16000ull         /* same 16 ms, for uc_emu_start's own `timeout` parameter */
+void dispatch_arm_slice(uc_engine *uc, uint64_t ns_from_now);   /* dispatch.c */
+extern volatile unsigned long abshim_bridge_calls;              /* dispatch.c */
 #define SCHED_QUANTUM     200000u          /* guest insns per time-slice (preemption). Kept at 200000: a 20M test
                                             * showed the gameplay fatal is DETERMINISTIC (same THEME_23 level-load
                                             * spot, pc=0x10000050, regardless of quantum) — NOT a preemption race, so
@@ -74,6 +83,13 @@ typedef struct gthread {
     uint32_t   tls[SCHED_MAX_KEYS];/* pthread_getspecific store                        */
 
     uint32_t   start_fn, start_arg;/* engine-thread entry                              */
+    /* 0 = this thread's next slice must use the bounded instruction COUNT (safe but ~1.56x slower);
+     * 1 = it may use count=0 and be preempted at a bridge boundary instead (fast).
+     * ZERO-INITIALISED ON PURPOSE: a brand-new thread has made no bridge call yet, so the safe,
+     * counted path is the default and a thread that never touches a bridge stays counted forever --
+     * which is exactly the [T3] non-yielding spin-loop case. Only a thread that demonstrably reached
+     * a bridge last slice is promoted to the fast path. */
+    int slice_fast;
     int        is_engine;          /* pthread_create'd (green) vs Java-entry           */
 
     int        started;            /* engine thread has had its entry regs initialised */
