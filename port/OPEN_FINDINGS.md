@@ -493,6 +493,51 @@ claim's *scope* (it covers the payload `.so`s, not the manifest, which is alread
 Verification stays objective either way: `mAppBounds` must become `Rect(0, 0 - 2340, 1080)` and a
 capture must show `black-left=0px`.
 
+### R61. The faults track preemption FREQUENCY, not sync-vs-async — R59's attribution was wrong
+
+R59 concluded "the asynchronous `uc_emu_stop` was the cause of all three faults", on the strength of one
+experiment: disabling my timer thread made the playthrough clean. That conclusion does not survive the
+next two data points, and I am correcting it rather than leaving it standing.
+
+| configuration | preemption pressure | play fps | startup | faults |
+|---|---|---|---|---|
+| baseline (200k instruction count) | lowest | 9.57 | 300 s | clean, wins |
+| no async stop, `SLICE_CHECK_MASK=0xFF` | moderate | 21.57 | 140 s | clean, wins |
+| my timer thread | heavy | 60.00 | 39–49 s | `bad_alloc` / `GraphicsException` / `length_error` |
+| **Unicorn's own `timeout` parameter** | heavy | 59.99 | 45 s | `bad_alloc`, `h_fatal` |
+| **NO async stop at all, `SLICE_CHECK_MASK=0x1F`** | heavy | **60.00** | **39 s** | **`bad_alloc`, `h_fatal`** |
+
+The last row is the one that refutes R59. It has **no asynchronous stopper whatsoever** — verified in the
+source: zero references to the timer thread, and the only `uc_emu_stop` calls left are the abort handler
+and the synchronous bridge-boundary check. Its only difference from the clean 21.57 fps row is that the
+clock is sampled every **32** bridge calls instead of every **256**. Same mechanism, 8× the preemption,
+and the fault returns.
+
+**So the variable that separates clean from faulty is how OFTEN a slice ends, not what ends it.** Both
+"heavy" rows land at exactly the 60 fps vsync cap, which is the giveaway: they are equivalent in
+preemption pressure, and they fail the same way.
+
+The `uc_emu_stop`-re-fire mechanism proven in R59 is real — a `UC_HOOK_CODE` callback genuinely does
+re-fire at the same address on resume, demonstrated with a standalone Unicorn test — and preempting
+before any bridge side effect is genuinely the right thing to do. But it was **not** what produced these
+faults, and I presented it as the root cause on a single supporting experiment.
+
+**The better model:** heavy preemption multiplies thread interleavings, and this engine has extensive,
+documented latent memory corruption — the COW `_Rep` UAF, the write-after-free sites, the corrupt string
+lengths that `guard_memcpy` and the quarantine exist to contain. `St9bad_alloc` and `St12length_error`
+are both corrupt-length symptoms in that same family. The change is not creating faults; it is exposing
+ones the slow baseline never reached.
+
+**What that implies, and it is not comfortable:** the 6.3× to full frame rate is available, and claiming
+it requires fixing the engine's latent corruption rather than tuning the scheduler. That is a much larger
+and more valuable piece of work than a preemption change — and it explains why every attempt moved the
+fault to a different subsystem instead of eliminating it.
+
+**The shippable middle:** `SLICE_CHECK_MASK=0xFF` with no async stop was clean and winning at 21.57 fps
+and 140 s startup — **2.25× the frame rate and 2.1× the startup** of the shipping baseline. That is worth
+having on its own, and it is being verified next with the sticky `slice_fast` fix (which the 13.84 fps
+non-sticky measurement showed was demoting threads to the slow counted path).
+
 ### R59. The count fix is worth **11–14×**, not 2.75× — and it is reverted, because it is not yet correct
 
 > ⚠️ **THE HEADLINE NUMBER IN THIS ENTRY WAS WRONG AND TOO SMALL.** I first reported 2.75× by comparing
@@ -583,6 +628,10 @@ comparison against a log recorded hours earlier on a machine whose container set
 Worse, committing it broke the repo's central invariant: the tree was building `bfe4ea0a` while the docs,
 the screenshot index and `verify_claims` all name `27548721a456ea99295469c3`. Restoring the three files
 to their state at `54214f0` rebuilds `27548721…` exactly, and `ALL CHECKED CLAIMS HOLD` again.
+
+> ⚠️ **THE ATTRIBUTION BELOW IS WRONG — see R61.** A later configuration with NO asynchronous stopper
+> at all reproduces the same fault; what actually correlates is preemption FREQUENCY. The re-fire
+> mechanism described here is real and independently proven, but it is not what caused these faults.
 
 **THE CONTEMPORANEOUS CONTROL SETTLED IT, AND THE ROOT CAUSE IS IDENTIFIED.** Re-running the reverted
 source on the same machine, same APK (`c5911a79`), while the arm64 suite ran alongside (load 3.69 on 24
