@@ -493,7 +493,30 @@ claim's *scope* (it covers the payload `.so`s, not the manifest, which is alread
 Verification stays objective either way: `mAppBounds` must become `Rect(0, 0 - 2340, 1080)` and a
 capture must show `black-left=0px`.
 
-### R59. The 1.56× is real and buys 2.75× — and it is reverted, because it is not yet correct
+### R59. The count fix is worth **11–14×**, not 2.75× — and it is reverted, because it is not yet correct
+
+> ⚠️ **THE HEADLINE NUMBER IN THIS ENTRY WAS WRONG AND TOO SMALL.** I first reported 2.75× by comparing
+> raw frame counts between runs of **different durations** — the baseline spends ~9 minutes booting and
+> renders few frames in that time, so counting total frames hid the effect. The comparable datum is the
+> script's own `card at ~Ns` line, which is the time to reach the tutorial card (`frame[601]`) under
+> identical fixed waits:
+>
+> | run | time to tutorial card |
+> |---|---|
+> | slice fix v1, run 1 | **40 s** |
+> | slice fix v1, run 2 | **40 s** |
+> | preempt-before-bridge, run 3 | **50 s** |
+> | **baseline, contemporaneous, reverted source** | **565 s** |
+>
+> **11–14× faster to first playable.** Cross-checked independently against frame rate: baseline 1201
+> frames over ~665 s ≈ **1.8 fps**; fix 3301 frames over ~140 s ≈ **23.6 fps** — ~13×, which agrees with
+> the boot figure derived a completely different way. It also explains R58's unexplained "fresh install
+> takes ~10 minutes to become playable": that *is* the 565 s, and this fix would cut it to under a minute.
+>
+> Everything below about the defects and the revert still stands. What changes is the stakes: this is
+> not a marginal 1.5× worth deferring, it is the difference between a 9-minute cold start and a 40-second
+> one, and between ~2 fps and ~20 fps. It should be finished.
+
 
 R56 found that `run_loop` bounded every slice by passing `SCHED_QUANTUM` as `uc_emu_start`'s **count**,
 and measured that mechanism at **×1.56** on identical work. This is what happened when I actually
