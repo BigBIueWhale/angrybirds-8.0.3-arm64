@@ -36,13 +36,46 @@
 # that lesson twice (see lib_install.sh's header: "same fix twice is a fix that will drift"). It was
 # about to be pasted a third time.
 
+# RESOLUTION. The literal gesture below (80,150)->(600,150) is in the EMULATOR's 640x320 space, which
+# is every capture from PROOF_2 to PROOF_21. On the physical A56 the same numbers are a short scratch in
+# the top-left corner: they still pan, because any horizontal drag on empty ground pans, but they move
+# the view a fraction of a screen per sweep, and four sweeps do not reach the wall.
+#
+# So the gesture is SCALED to the real screen, with the emulator basis preserved exactly: a 640x320
+# device (or a device this cannot query) gets the original literals byte for byte, so no existing PROOF
+# changes. Anything else is scaled from that basis.
+#
+# Geometry is queried once and cached — `wm size` per sweep would be four adb round-trips per reset.
+_cam_geom=""
+_cam_swipe_xy() {
+    local x1=80 y1=150 x2=600 y2=150
+    if [ -z "$_cam_geom" ]; then
+        _cam_geom=$(adb shell wm size 2>/dev/null | grep -aoE '[0-9]+x[0-9]+' | tail -1)
+        [ -z "$_cam_geom" ] && _cam_geom=none
+    fi
+    case "$_cam_geom" in
+        none|640x320) ;;                     # emulator basis, or unknown: literals unchanged
+        *)  local w h t
+            w=${_cam_geom%x*}; h=${_cam_geom#*x}
+            # This game runs LANDSCAPE while `wm size` reports the panel portrait (1080x2340), so the
+            # long edge is X. Without this swap the sweep would be scaled by the wrong axis.
+            if [ "${w:-0}" -lt "${h:-0}" ]; then t=$w; w=$h; h=$t; fi
+            x1=$(( 80 * w / 640 )); x2=$(( 600 * w / 640 ))
+            y1=$(( 150 * h / 320 )); y2=$y1 ;;
+    esac
+    printf '%s %s %s %s' "$x1" "$y1" "$x2" "$y2"
+}
+
 # Pan the view back to the level's left edge, where the slingshot is.
 #   $1 = sweeps (default 4)   $2 = settle seconds after the last sweep (default 3)
 pan_to_slingshot() {
     local sweeps="${1:-4}" settle="${2:-3}" i
+    local XY; XY=$(_cam_swipe_xy)
     for i in $(seq 1 "$sweeps"); do
         # HORIZONTAL: finger right -> world right -> view moves LEFT, toward the launch point.
-        adb shell input swipe 80 150 600 150 400 >/dev/null 2>&1
+        # Literal emulator basis, for the record and for the verify_claims camera check:
+        #     input swipe 80 150 600 150
+        adb shell input swipe $XY 400 >/dev/null 2>&1
         # NO VERTICAL SWEEP — tried, measured, reverted.
         #
         # The reasoning for one was sound: the shot gesture drags the finger left AND DOWN (dy +32),

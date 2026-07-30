@@ -143,6 +143,56 @@ heartbeats — neither of which duplication can manufacture. `uaf-survive 0` als
 worth noting against R41/R42: on real hardware, across a full play-win-advance cycle, **zero** wild
 memory accesses needed absorbing.
 
+### R55. A third level cleared on the phone — a harder one, with the star counter as proof
+
+R54 had to caveat its 9-star reading: the app's data predates the session, so the stars might not have
+been earned there. This closes that, and pushes device play past the first tutorial levels.
+
+**What was played.** `Tutorial_bomb_niko` — four pigs across three stone towers with a central A-frame,
+fought with Bomb birds. Not the one-pig opener behind PROOF_22–27.
+
+| | |
+|---|---|
+| score | **0 → 21810 → 71750 → 72290** across four bomb launches |
+| result | **LEVEL CLEARED! 3 stars, 72290** (PROOF_29) |
+| episode stars | **9 before → 12 after** — +3, earned in this session, unambiguously |
+| process | pid **11197** throughout, age 1:26 — the same process as PROOF_22–30 |
+| faults | `h_fatal 0`, `uaf-survive 0`, `St11logic_error 0`, `FATAL 0`, `signal 11` 0 |
+| log | single `adb logcat -d` dump, verified monotonic, **no counter at its cap** — real totals |
+
+PROOF_30 catches the first bomb mid-detonation: left tower rubble, the A-frame collapsing with blocks
+still airborne, a pig killed, score 21810. That is the engine's rigid-body simulation running under the
+ARM32→ARM64 shim on real hardware, not a static screen.
+
+**The level-end guards did NOT fire this time — and that is informative, not worrying.** R54 measured
+`s-construct-null-guard` 4 and `empty-json-guard` 2 at one level-end. At this one both are **0**. So the
+guards are not a per-transition necessity: they fire only when the null-string / empty-JSON condition
+actually arises (ad-config state, which with no INTERNET may already be cached). What is invariant across
+both transitions is `h_fatal 0`. Reporting the 0/0 rather than quietly omitting it, because "the fix
+fires every time" would have been the easier and false story.
+
+**Two wasted runs, and the lesson is a coordinate.** The vector recorded in cont.264
+(`swipe 860 365 506 473`) launches the bird on the *first* tutorial level and nowhere else:
+
+* a level **opens with the camera on the target area**, not the slingshot, so no bird sits under a fixed
+  slingshot coordinate at that moment;
+* that vector is a **right-to-left** swipe, which on empty ground is not a slingshot pull at all — it
+  **scrolls the camera further right**, away from the slingshot. Each cycle pushed the view further from
+  the bird *while the log stayed perfectly healthy*: `h_fatal 0`, heartbeats climbing, `SCORE 0`.
+
+Another instance of the dominant defect class — a healthy log beside a game that is not being played.
+`phone_play.sh` now carries the procedure that works: scroll left-to-right **twice** to bring the
+slingshot into view, pull back from the bird at **(948,667) → (700,790)**, re-scroll before every
+subsequent bird (the camera follows the last one downrange), and tap fast-forward at **(2241,971)** to
+settle rather than waiting out the animation.
+
+**Two of that script's own assertions were unsound and failed a healthy run.** Both are fixed and the
+reasoning is recorded in the file: a per-cycle "heartbeats must advance" check is invalid because
+`frame[N]` fires every 300 frames (R38) and the device runs at ~6 fps (R51/R54), so one heartbeat takes
+~50 s while a cycle takes ~38 s — a cycle containing zero heartbeats is normal. And "consecutive
+screenshots must differ" is invalid because a settled results card legitimately produces byte-identical
+PNGs. Both are now asserted across the whole run, where the window is long enough to mean something.
+
 ### R54. A 68-minute single-process soak on the A56 — a second win, honest counts, and R42's leak question answered
 
 While correcting R50 I checked whether the phone was still attached and found **the app still running as
