@@ -276,7 +276,9 @@ measure". Both are real. I had measured frame rate, called it "playable and hone
 measured latency at all — the symptom instead of the system.
 
 **Measured latency: 7.61 s** from `input tap` to the first changed pixel (polled screenshots, 0.6 s
-resolution). Not a frame-rate artifact — 60 fps → 6 fps turns 16 ms into 160 ms, not 7.6 seconds.
+resolution). ⚠️ **R62 corrects the SCOPE of this number: it is one draw from a distribution measured at
+median 1.77 s / min 0.79 s / max 7.45 s over eight samples. 7.61 s is the tail, not a characteristic
+value, and no single-sample latency figure should be quoted.** Not a frame-rate artifact — 60 fps → 6 fps turns 16 ms into 160 ms, not 7.6 seconds.
 
 **Where the time goes.**
 
@@ -555,6 +557,40 @@ fault to a different subsystem instead of eliminating it.
 and 140 s startup — **2.25× the frame rate and 2.1× the startup** of the shipping baseline. That is worth
 having on its own, and it is being verified next with the sticky `slice_fast` fix (which the 13.84 fps
 non-sticky measurement showed was demoting threads to the slow counted path).
+
+### R62. Device tap latency is a DISTRIBUTION, not a number — R56's 7.61 s was one draw
+
+Preparing an honest before/after for the scheduler change, I measured tap-to-visible-change on the
+shipping build eight times in a row on the A56, same session, same screen:
+
+```
+1.76  1.61  1.87  0.96  0.79  1.77  7.45  3.25   seconds
+median 1.77   min 0.79   max 7.45   mean 2.43
+```
+
+**So the single 7.61 s figure recorded in R56 — and quoted since — is the tail of this distribution, not
+a characteristic value.** Typical interaction latency on the shipping build is ~1.8 s, with occasional
+multi-second spikes. The user's report of "~10 second delay for every operation" is describing the
+spikes, which are real and are what makes it feel broken; but "every operation" and "7.6 s" are both
+overstatements of the median, and I should have measured a distribution before quoting either.
+
+Two consequences:
+
+1. **A single before/after pair would have been worthless.** I had planned exactly that for the
+   scheduler change. Two draws from a distribution with a 0.79–7.45 s range can show any result you
+   like. The comparison needs the same 8-sample protocol on each build, compared on median AND max.
+2. **It weakens the resolver-loop explanation for latency specifically.** During these eight samples
+   the loop was NOT running (0 `/etc/hosts` lines in the last 200 log lines) and a 7.45 s spike still
+   occurred. R56 offered the loop as the leading explanation for the 7.6 s; that stands only for the
+   run where the loop *was* hot at ~8 opens/second, and cannot explain this spike.
+
+What the spikes actually are is now open. Candidates worth separating: a level/asset load crossing the
+tap, a GC-like pause in the guest heap, and the scheduler handing the render thread a long slice. The
+distribution shape (mostly ~1.8 s, occasional ~7 s) looks more like an occasional blocking operation
+than a steady throughput limit.
+
+**Protocol for any future latency claim on this device:** at least 8 samples, report median and max,
+state whether the resolver loop was active, and never quote a single draw.
 
 ### R59. The count fix is worth **11–14×**, not 2.75× — and it is reverted, because it is not yet correct
 
