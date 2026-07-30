@@ -228,6 +228,27 @@ static gthread *idle_wait_pick(sched*S){
             /* a timed waiter is pending: sleep (releasing the GEL) until its deadline,
              * then loop to fire it. gel_cv is a MONOTONIC-clock cond (M1) so this absolute
              * time is in the right clock domain. */
+#ifdef ABSHIM_SLOWCALL
+            /* R65: is THIS the ~1.7 s the user feels as input lag? The BEL is held across this sleep
+             * (shim_call locks it and does not release until it returns), so however long we nap here
+             * is time an incoming tap cannot even enter the shim. Log the nap and WHOSE deadline set
+             * it: WK_SLEEP comes from l_poll and is capped at 200 ms, but sched_cond_wait takes the
+             * GUEST's own deadline and is UNCAPPED, so a game idle-loop cond-wait is the suspect.
+             * Rate-limited to 1/s and only for naps over 100 ms, so it cannot flood. */
+            {   uint64_t nap = earliest > now ? earliest - now : 0;
+                static uint64_t s_lastlog = 0;
+                if(nap > 100000000ull && (now - s_lastlog) > 1000000000ull){
+                    s_lastlog = now;
+                    int owner = -1, okind = -1;
+                    for(int i=0;i<S->nthreads;i++){
+                        gthread*g=&S->all[i];
+                        if(g->state==GT_BLOCKED && g->deadline_ns==earliest){ owner=(int)g->id; okind=g->wait_kind; break; }
+                    }
+                    SLOG("[idlenap] sleeping %llu ms holding the BEL; earliest deadline owned by gt id=%d wk=%d (7=SLEEP capped, 2=COND uncapped)",
+                         (unsigned long long)(nap/1000000ull), owner, okind);
+                }
+            }
+#endif
             struct timespec ts; ts.tv_sec=(time_t)(earliest/1000000000ull); ts.tv_nsec=(long)(earliest%1000000000ull);
             pthread_cond_timedwait(&S->gel_cv, &S->gel, &ts);
         } else {

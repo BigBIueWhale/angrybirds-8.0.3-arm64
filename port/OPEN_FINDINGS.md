@@ -754,6 +754,37 @@ via a `WK_COND` timed wait (`sched_cond_wait` takes the guest's own deadline, un
 sleeps with it and the BEL stays held — producing exactly this. The 3 `WK_COND` waiters in the dump, one
 with a deadline 6.4 s out, are the candidates.
 
+**FIRST RESULT FROM THAT PROBE — the mechanism is REFUTED during boot.** Added `[idlenap]` to
+`idle_wait_pick`: it logs any nap over 100 ms together with which gthread's deadline set it (rate-limited
+to 1/s). On the A56, across the whole warm boot:
+
+```
+[idlenap]     0 lines   -> no nap ever exceeded 100 ms
+[sched-dump]  6 lines   -> CONTROL: sched-dump fires from INSIDE idle_wait_pick, so the path ran
+[slowcall]    0 lines   -> no shim_call exceeded 120 ms either
+```
+
+The control is what makes the zero mean anything. Without `[sched-dump]` proving `idle_wait_pick` executed
+6 times, "0 idlenap lines" would have been indistinguishable from a probe that never ran — and this file
+already records three occasions where I read an absent symptom as a result.
+
+**So during boot the BEL is not held across a long sleep, and no individual call is slow.** That removes
+the R63/R65 mechanism for that phase. ⚠️ **It does NOT yet cover the idle-on-a-level state where the
+1.72 s latency was actually measured** — the app was still on the splash for this window. That measurement
+is outstanding, and the same probe plus the same control will answer it.
+
+**What remains true and what is now open:**
+
+| claim | status |
+|---|---|
+| Android delivers the tap in ~1 ms; the delay is inside the app | established |
+| tap → pixel is a distribution: median 1.72 s, max 7.45 s | established |
+| no single `shim_call` exceeds 120 ms | established |
+| renders on demand: <1 fps idle, 6–8 fps animating | established |
+| first launch ~89% blocked outside the shim | established |
+| BEL held across a long scheduler nap | **refuted (boot)**; unmeasured (idle-on-level) |
+| what the 1.72 s actually consists of | **OPEN** |
+
 **Testable next step, and now specific:** log the deadline `idle_wait_pick` actually sleeps on. If it is
 ~1.7 s during idle, the fix is to cap `sched_cond_wait`'s deadline the way `l_poll` already caps its nap,
 or to release the BEL across that sleep. Either way the target is now a single value in one function
