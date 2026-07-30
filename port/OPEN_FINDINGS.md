@@ -348,7 +348,23 @@ retries indefinitely. **The rig had already observed this and I had not connecte
   interaction latency is not playable, and calling it so was exactly the verdict-outrunning-evidence
   pattern this file exists to record.
 
-### R57. 9.7% of the phone's screen is unused — cutout letterbox plus navigation bar
+### R57. 3.9% of the phone's screen is unused — the display-cutout letterbox (corrected)
+
+> ⚠️ **This entry first claimed 9.7% and two causes. Measured from the actual pixels, it is 3.9% and
+> ONE cause.** `mAppBounds` reserves the navigation bar, but the app *draws under it*, so those 135 px
+> are not lost. Reading a window-manager inset as lost pixels was an inference; the screenshots are the
+> evidence. Measured across three independent device captures, at the vertical midpoint:
+>
+> ```
+> PHONE_soak_now.png   2340x1080  black-left=92px  black-right=0px  used=2248px (96.1%)
+> scroll_left.png      2340x1080  black-left=92px  black-right=0px  used=2248px (96.1%)
+> launch1.png          2340x1080  black-left=92px  black-right=0px  used=2248px (96.1%)
+> ```
+>
+> The 92 px is exactly the cutout inset, and it cross-checks against `dumpsys`'s own
+> `Requested w=2248` (= 2340 − 92). So the user's description — "the entire game is shifted right such
+> that the bezel area is completely black" — is precisely right: a 92 px black band on the left, nothing
+> on the right.
 
 The user pointed out the game is shifted right with a dead black band. Measured from `dumpsys window`:
 
@@ -359,15 +375,23 @@ cutout  insets     = Rect(0, 92 - 0, 0)          punch-hole camera; becomes the 
 right   2340-2205  = 135 px                      = 48dp navigation bar at density 2.8125
 ```
 
-Two independent causes, not one:
+**One cause: the 92 px cutout letterbox.** The app targets SDK 26 and never declares
+`android:layoutInDisplayCutoutMode`, so Android denies it the cutout region in landscape. Raising
+targetSdk does **not** fix this — the platform default is still "never into the cutout in landscape".
+The fix is to declare `shortEdges`.
 
-1. **92 px cutout letterbox.** The app targets SDK 26 and never declares
-   `android:layoutInDisplayCutoutMode`, so Android denies it the cutout region in landscape. Raising
-   targetSdk does **not** fix this — the platform default is still "never into the cutout in landscape".
-   The fix is to declare `shortEdges`, which is an AXML attribute **insertion** (resizes the element,
-   shifts every later offset, and needs a matching entry appended to the XML resource map) — a different
-   and riskier class of edit than this project's same-length value rewrites.
-2. **135 px navigation bar.** The window is not edge-to-edge, so the nav bar keeps its inset.
+**Why that is not a one-line patch here.** It is an AXML attribute **insertion**, not a value rewrite,
+and this project's three existing manifest tools (`depermission.py`, `manifest_firebase_off.py`,
+`patch_minsdk.py`) all change values at constant length. An insertion must: add the attribute record
+(20 bytes) to the `<activity>` element, bump its `attributeCount`, grow the chunk size and the file
+header — and, the hard part, add the name string `layoutInDisplayCutoutMode` to the string pool **at an
+index inside the XML resource map**, because Android resolves a framework attribute to its resource ID
+through `resourceMap[nameIndex]`. A string appended at the end of the pool lands beyond the map and the
+platform's `TypedArray`-based manifest parser would never see the attribute. Doing it correctly means
+inserting into the pool and renumbering every string reference in the file.
+
+**The verification is objective, which makes the work worth doing**: after installing, `dumpsys window`
+must report `mAppBounds=Rect(0, 0 - 2340, 1080)` and a capture must show `black-left=0px`.
 
 Both are window-level properties. A third route avoids AXML insertion entirely: the shim holds the
 `JavaVM` from `JNI_OnLoad`, so it could set both from native code via JNI on the UI thread
