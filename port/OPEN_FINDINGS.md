@@ -817,6 +817,51 @@ zeros and two ones were enough to overturn a mechanism I had asserted twice. The
 been unexamined for the entire session — every "the engine does X" claim in this file was inferred from the
 native side only.
 
+### R71. The shim-side probes are exhausted — further progress needs the guest's own update loop
+
+Added `[jgap]`, which times the interval between one `nativeUpdate` returning and the next entering, i.e.
+everything GLSurfaceView does outside the shim. On the device, level loaded:
+
+```
+jgap=0   slowcall=0   idlenap=0   sched-dump=10
+CONTROL: frame heartbeat frame[1] -> frame[1] over 30 s   (FROZEN)
+         2 levels loaded, CPU 49 jiffies / 4.1 s = 12% of one core
+```
+
+**`jgap=0` is INCONCLUSIVE, not a result.** The heartbeat is frozen, so `nativeUpdate` is either not being
+called or is returning before it increments the frame counter — and in either case there are no gaps to
+measure. Reporting "no Java-side gap" here would have been the absent-symptom error for the eighth time
+today; the frozen-heartbeat control is what catches it.
+
+**What the four probes together do establish, all with live controls:**
+
+| probe | result | with control |
+|---|---|---|
+| `[slowcall]` >120 ms per `shim_call` | 0 | app demonstrably running |
+| `[idlenap]` >100 ms scheduler nap | 0 | `sched-dump`=10, path reached |
+| `[jgap]` >100 ms Java-side gap | 0 | **control FAILED — heartbeat frozen** |
+| CPU | 12% of one core | measured on-device |
+
+So in this state the app burns 12% of a core, no shim call is slow, the scheduler does not nap, and the
+render counter does not advance. **The engine is doing almost nothing, internally, by its own choice** — and
+a tap still takes ~1.8 s to produce a visible change.
+
+**This is the limit of shim-side instrumentation.** Every remaining hypothesis is about the guest's own
+state machine: what `nativeUpdate` decides to do when it early-returns, what condition it waits on, and
+what a touch changes about that decision. None of that is visible from the boundary; the shim only sees
+calls arrive and return.
+
+**The honest next step is a different technique, not another probe:** disassemble the engine's update path
+in `libAngryBirdsClassic.so` (the ARM32 payload — Ghidra or the existing `eng.dis`) and find what gates the
+early return. That is a substantial reverse-engineering task, and it is the first thing in this
+investigation that shim telemetry cannot answer.
+
+**Value delivered by the negative results, restated because it is the actual return on this work:**
+R69 proved throughput does not move latency, which eliminates the entire remaining performance roadmap as a
+cure; R70 refuted "renders on demand" from four zeros in a DEX symbol count; and Android, individual
+`shim_call`s, and scheduler idling are all eliminated with controls. The search space is now small and the
+next move is specific — that is worth more than a wrong mechanism confidently asserted.
+
 ### R68. Consolidation: R67's idle-burst state is a TRANSIENT; the steady state is one core saturated
 
 Two follow-up measurements on the same build and level force R67 back to a narrower claim.

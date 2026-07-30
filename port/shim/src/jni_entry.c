@@ -593,6 +593,16 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
      * catching input spikes (those end) and the wrong shape for diagnosing a hang; a hang needs
      * entry-side logging plus a watchdog, which the sched-dump already provides. */
     uint64_t _sc_want = slowcall_now_ns();
+    /* JAVA-SIDE GAP. R70 established the Java half uses RENDERMODE_CONTINUOUSLY (it never calls
+     * setRenderMode), so GLSurfaceView's GLThread loops calling onDrawFrame -> nativeUpdate as fast as
+     * it can. Yet no shim_call ever exceeded 120 ms and R64 measured ~89% of wall time blocked OUTSIDE
+     * the shim. If that is true, the time is between one nativeUpdate RETURNING and the next one
+     * ENTERING - i.e. in GLSurfaceView's own loop, whose only substantial step is eglSwapBuffers.
+     *
+     * That interval is measurable from in here with no decompiler and no interposer: remember when
+     * nativeUpdate last returned, and on the next entry report the gap. A large gap localises the cost
+     * to the Java/driver side; a small gap sends the search back into the guest. */
+    static uint64_t s_upd_exit_ns = 0;   /* set on nativeUpdate exit; read on its next entry */
 #endif
     pthread_mutex_lock(&G.bel);                                  /* the BEL: serialise Java entries */
 #ifdef ABSHIM_SLOWCALL
@@ -615,6 +625,17 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
      * Comparing only the first 47 chars would be the wrong fix: nativeSurfaceCreated and
      * nativeSurfaceChanged share that prefix and would be conflated. 96 bytes covers every name in
      * this engine with room to spare. */
+#ifdef ABSHIM_SLOWCALL
+    if(s_upd_exit_ns && name && strstr(name,"nativeUpdate")){
+        uint64_t gap = _sc_want - s_upd_exit_ns;
+        static uint64_t s_gaplog = 0;
+        if(gap > 100000000ull && (_sc_want - s_gaplog) > 1000000000ull){
+            s_gaplog = _sc_want;
+            LOG("[jgap] %llu ms spent on the JAVA side between nativeUpdate calls (GLSurfaceView loop / eglSwapBuffers)",
+                (unsigned long long)(gap/1000000ull));
+        }
+    }
+#endif
     { static char seen[128][96]; static int nseen; static int capped=0; int sv=0;
       for(int i=0;i<nseen;i++) if(!strcmp(seen[i],name)){ sv=1; break; }
       if(!sv){ if(nseen<128){ strncpy(seen[nseen],name,95); seen[nseen][95]=0; nseen++;
@@ -726,6 +747,7 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
     ht_frame_pop(HT(), frame);                                  /* free this activation's local tokens */
 #ifdef ABSHIM_SLOWCALL
     {   uint64_t _sc_end = slowcall_now_ns();
+        if(name && strstr(name,"nativeUpdate")) s_upd_exit_ns = _sc_end;
         double bel_ms  = (double)(_sc_got  - _sc_want) / 1e6;
         double body_ms = (double)(_sc_end  - _sc_got ) / 1e6;
         /* 120 ms: well above a healthy frame at the measured ~20 fps, well below the spikes. */
