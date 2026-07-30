@@ -50,6 +50,14 @@ if [ "${ABSHIM_AUDIO:-0}" = 1 ]; then AUDIO_FLAG="-DABSHIM_AUDIO"; OUT_APK="angr
 # copy would have to re-derive and could silently drop — above all `-lm`, whose absence once shipped a
 # binary that would have died on the A56 with `cannot locate symbol "sin"` (API 25 masked it). A
 # variant that shares this code path cannot lose it.
+# ABSHIM_SLOWCALL=1 — the LATENCY-DIAGNOSTIC variant. Release configuration plus per-JNI-call timing
+# that prints any shim_call over 120 ms, split into BEL-wait vs call-body. That split is the one
+# measurement that separates R63's two candidate explanations for the multi-second input spikes on the
+# A56: "input waited for a lock someone else held" versus "this call was genuinely slow". Separately
+# named, so the shipped APK stays byte-identical.
+if [ "${ABSHIM_SLOWCALL:-0}" = 1 ]; then
+    AUDIO_FLAG="$AUDIO_FLAG -DABSHIM_SLOWCALL"; OUT_APK="angrybirds-8.0.3-arm64-slowcall.apk"
+fi
 if [ "${ABSHIM_GPUCAP:-0}" = 1 ]; then
     AUDIO_FLAG="$AUDIO_FLAG -DABSHIM_SHADERDUMP"; OUT_APK="angrybirds-8.0.3-arm64-gpucap.apk"
 fi

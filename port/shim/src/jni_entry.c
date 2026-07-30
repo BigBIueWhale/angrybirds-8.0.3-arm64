@@ -157,6 +157,17 @@ static struct jni_bcall {
     jobject   r_obj; uint64_t r_u; float r_f; double r_d;   /* raw ART result, by return kind */
 } g_bcall[SCHED_MAX_THREADS];
 
+#ifdef ABSHIM_SLOWCALL
+/* Own clock helper, OUTSIDE the profiling-only conditional below. ABSHIM_SLOWCALL is a RELEASE build
+ * plus a flag, so it cannot borrow jniblk_now_ns() from that block -- the third time in this session a
+ * addition landed inside `#if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)` and vanished from the
+ * shipping configuration. Check the enclosing conditional before adding anything to this file. */
+static uint64_t slowcall_now_ns(void){
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+    return (uint64_t)ts.tv_sec*1000000000ull + (uint64_t)ts.tv_nsec;
+}
+#endif
+
 #if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
 /* Time spent in the BLOCKING half of a JNI call. This is separate from jni_passthrough.c's timer
  * and the split is wrong without it: for a Call*Method, env_dispatch_real only STASHES the call and
@@ -560,7 +571,33 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
         { static int am=0; if(am++<8) LOG("[audio] nativeMixData ENABLED (WIP BEL-release; concurrency crash pending)"); }
 #endif
     }
+#ifdef ABSHIM_SLOWCALL
+    /* ---- SLOWCALL: separate "this call was long" from "this call waited for the lock" ----
+     * R63 established that Android delivers a touch in ~1 ms and the whole multi-second latency is
+     * inside the shim, with input blocking on the BEL held by the render call. What it could NOT
+     * establish is WHY the render call is long: a far-off idle sleep (my first story, which its own
+     * dump contradicted) or simply a genuinely long nativeUpdate doing asset/level work.
+     *
+     * Those two are trivially separable and nothing measured them: time the BEL WAIT and the call
+     * BODY independently, and print any call whose total crosses a threshold. A spike then reads as
+     * either belwait>>body (someone else held the lock: look at who) or body>>belwait (this call
+     * itself is slow: look at what it does).
+     *
+     * Diagnostic variant only (ABSHIM_SLOWCALL=1 bash port/build_apk.sh), so the shipping artifact
+     * stays byte-identical - same discipline as ABSHIM_GPUCAP. Verified: the default build's sha256 is
+     * unchanged with these blocks present.
+     *
+     * LIMITATION, worth knowing before reading a silent log: this reports at call EXIT, so a call that
+     * has not returned yet prints nothing. On the A56 the whole ~10-minute cold first launch produced
+     * ZERO lines for exactly that reason - the boot call was still running. It is the right shape for
+     * catching input spikes (those end) and the wrong shape for diagnosing a hang; a hang needs
+     * entry-side logging plus a watchdog, which the sched-dump already provides. */
+    uint64_t _sc_want = slowcall_now_ns();
+#endif
     pthread_mutex_lock(&G.bel);                                  /* the BEL: serialise Java entries */
+#ifdef ABSHIM_SLOWCALL
+    uint64_t _sc_got = slowcall_now_ns();
+#endif
     G.jni.real_env = env;
     gthread *gt = sched_host_gthread(&G.sch);                    /* per-Java-thread guest context */
     if(!gt){ pthread_mutex_unlock(&G.bel); return ret; }
@@ -676,6 +713,18 @@ jvalue shim_call(JNIEnv *env, jobject thiz, const char *name, const char *shorty
     case 'L': ret.l=real_of(r0); break;
     }
     ht_frame_pop(HT(), frame);                                  /* free this activation's local tokens */
+#ifdef ABSHIM_SLOWCALL
+    {   uint64_t _sc_end = slowcall_now_ns();
+        double bel_ms  = (double)(_sc_got  - _sc_want) / 1e6;
+        double body_ms = (double)(_sc_end  - _sc_got ) / 1e6;
+        /* 120 ms: well above a healthy frame at the measured ~20 fps, well below the spikes. */
+        if (bel_ms + body_ms > 120.0)
+            LOG("[slowcall] %s total=%.0fms belwait=%.0fms body=%.0fms  (%s)",
+                name, bel_ms + body_ms, bel_ms, body_ms,
+                bel_ms > body_ms ? "WAITED for the BEL - another call held it"
+                                 : "THIS call was slow - not lock contention");
+    }
+#endif
     pthread_mutex_unlock(&G.bel);
     return ret;
 }
