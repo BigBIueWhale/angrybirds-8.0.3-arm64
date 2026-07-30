@@ -1,0 +1,91 @@
+diff --git a/port/shim/src/bridge_file.c b/port/shim/src/bridge_file.c
+index b5989e7..2eeff13 100644
+--- a/port/shim/src/bridge_file.c
++++ b/port/shim/src/bridge_file.c
+@@ -52,10 +52,62 @@ static int f_trace(void){ static int on=-1; if(on<0) on=getenv("ABSHIM_FILE_TRAC
+ static void flog(const char*fmt,...){ static int(*rl)(int,const char*,const char*,...)=0; static int t=0; /* DIAG: file opens -> logcat */
+     if(!t){ t=1; rl=(int(*)(int,const char*,const char*,...))dlsym(RTLD_DEFAULT,"__android_log_print"); }
+     char b[700]; va_list ap; va_start(ap,fmt); vsnprintf(b,sizeof b,fmt,ap); va_end(ap); if(rl) rl(4,"abshim","%s",b); }
++/* ---- resolver retry-loop throttle ------------------------------------------------------------
++ * MEASURED, on the phone and in every emulator log ever recorded here: `/etc/hosts` is opened
++ * ~8x per SECOND, forever. 12,447 opens in one clean 36-minute device capture; 26,701 of
++ * progression_abshim.txt's 59,812 lines (45%). A private resolver inside the payload bypasses the
++ * bridged getaddrinfo (which already returns EAI_FAIL) and re-reads /etc/hosts itself, retrying for
++ * the life of the process because the de-phone-home cut the network. So the retry loop is a direct
++ * consequence of layer 2, and it had never been costed.
++ *
++ * Why it matters far more than it looks: the engine is confined to ONE host thread by the GEL, and
++ * that thread was measured at 97% of one core on an 8-core phone. Every instruction this loop burns
++ * is taken straight out of render and input, which is why interaction latency measured 7.6 s.
++ *
++ * This is the SAME failure mode l_poll already documents a few files over -- "returning 0 INSTANTLY
++ * made it busy-spin and starve the cooperative GEL ... while nativeInit+render crawled" -- and it
++ * gets that same proven fix: a capped, growing, SCHEDULER-YIELDING nap, so the loop cannot
++ * monopolise the carrier thread and the render/input threads get their turn.
++ *
++ * Deliberately not a behaviour change for a network that works: the first RES_FREE attempts are not
++ * delayed at all, so a successful lookup is never slowed. Only a loop that keeps coming back pays.
++ */
++#define RES_FREE   8u          /* genuine lookups: untouched */
++#define RES_NAP_MS 250u        /* first nap */
++#define RES_CAP_MS 2000u       /* ceiling, so a resolver that recovers still gets retried promptly */
++static int res_is_resolver_path(const char*path){
++    return !strcmp(path,"/etc/hosts") || !strcmp(path,"/etc/resolv.conf");
++}
++/* The nap is injected rather than called directly. bridge_file.c is linked by host unit tests that do
++ * NOT link sched.c (test_file), so referring to g_sched/sched_sleep here breaks their link outright --
++ * it did, immediately. A registration hook keeps the dependency one-way, leaves the throttle a
++ * deliberate no-op in those tests, and is checkable without linker attributes. */
++static void (*g_res_nap)(uint64_t ns) = 0;
++void bridge_file_set_nap(void (*fn)(uint64_t ns)){ g_res_nap = fn; }
++static void res_throttle(const char*path){
++    if(!res_is_resolver_path(path)) return;
++    static unsigned long n=0; static uint32_t nap=RES_NAP_MS;
++    if(++n<=RES_FREE) return;
++    if(g_res_nap){
++        g_res_nap((uint64_t)nap*1000000ull);
++        if(nap<RES_CAP_MS){ nap*=2u; if(nap>RES_CAP_MS) nap=RES_CAP_MS; }
++    }
++}
+ static uint64_t f_fopen(cpu_t*c,mcur*u){ uint32_t p=W(c,u),m=W(c,u); char path[1024],mode[16]; gstr(c,p,path,sizeof path); gstr(c,m,mode,sizeof mode);
+     if(getenv("ABSHIM_DET_URANDOM") && (!strcmp(path,"/dev/urandom")||!strcmp(path,"/dev/random"))) strcpy(path,"/dev/zero"); /* DIAG: deterministic randomness */
+     FILE*h=fopen(path,mode);
+-    flog("[fopen] '%s' (%s) -> %s",path,mode,h?"ok":"FAIL(->IOException)");
++    /* Log cap. This site was UNCAPPED and produced 95.5% of a release capture's lines (24,976 of
++     * 26,141), which both drowns every other signal in logcat and is per-call diagnostic work in a
++     * shipping build. The loop paths are capped hard; everything else keeps its first 200 lines,
++     * which is what the save/asset checks in lib_saveassert.sh actually read. */
++    { static unsigned long ln_res=0, ln_oth=0;
++      if(res_is_resolver_path(path)||!strcmp(path,"/dev/urandom")||!strcmp(path,"/dev/random")){
++          if(ln_res++<8u) flog("[fopen] '%s' (%s) -> %s%s",path,mode,h?"ok":"FAIL(->IOException)",
++                               " [resolver path; further opens not logged - see res_throttle]");
++      } else if(ln_oth++<200u){
++          flog("[fopen] '%s' (%s) -> %s",path,mode,h?"ok":"FAIL(->IOException)");
++      } }
++    res_throttle(path);
+     return h?mk_gfile(c,h):0; }
+ static uint64_t f_freopen(cpu_t*c,mcur*u){ uint32_t p=W(c,u),m=W(c,u),gf=W(c,u); char path[1024],mode[16]; gstr(c,p,path,sizeof path); gstr(c,m,mode,sizeof mode);
+     FILE*old=hf_of(gf); FILE*h=freopen(path,mode,old?old:stdin); if(!h) return 0;
+diff --git a/port/shim/src/sched.c b/port/shim/src/sched.c
+index ade28a8..1253a15 100644
+--- a/port/shim/src/sched.c
++++ b/port/shim/src/sched.c
+@@ -661,7 +661,18 @@ gthread *sched_host_gthread(sched *S){
+ }
+ 
+ sched *g_sched=NULL;   /* the live scheduler (for bridges that must set the CURRENT guest thread's errno) */
++/* bridge_file.c's resolver-retry throttle calls this. It MUST yield the GEL rather than busy-wait:
++ * the loop it throttles reopens /etc/hosts ~8x/second forever (the de-phone-home cut the network, and
++ * a private resolver in the payload retries regardless), and the engine has exactly ONE carrier
++ * thread, so that spin comes straight out of render and input. Same remedy l_poll already applies to
++ * the dead-socket poll spin. */
++static void res_nap_cb(uint64_t ns){
++    if(g_sched && sched_current(g_sched)) sched_sleep(g_sched, ns);
++}
++void bridge_file_set_nap(void (*fn)(uint64_t ns));   /* defined in bridge_file.c */
++
+ int sched_init(sched *S, cpu_t *cpu){
++    bridge_file_set_nap(res_nap_cb);
+     memset(S,0,sizeof *S);
+     S->cpu=cpu; S->next_id=1; S->key_next=1;   /* stacks/TCBs are per-slot (assign_stack_tcb) */
+     g_sched=S;

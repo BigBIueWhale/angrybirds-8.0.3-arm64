@@ -374,6 +374,63 @@ Both are window-level properties. A third route avoids AXML insertion entirely: 
 (`getWindow().getAttributes().layoutInDisplayCutoutMode = SHORT_EDGES`, plus immersive flags). Not yet
 implemented — recorded here with the mechanism identified and measured, not fixed.
 
+### R58. Three corrections to R51/R54/R56, and a first-launch cost nobody had measured
+
+Trying to *fix* the resolver loop produced better measurements than finding it did, and they invalidate
+several things I wrote earlier today.
+
+**1. `frame[N]` is not a general fps signal.** On the validated build, on an interactive level, the
+heartbeat sat at `frame[1]` across a **180-second** window while the game was demonstrably alive — a tap
+changed the screen 1.66 s later. `frame[N]` is `if((++rf % 300u)==1u)` and is *not* log-capped, so this
+is real: fewer than 300 render frames in three minutes on a static scene.
+
+So every fps number derived from heartbeat deltas — R51's "~7.10 fps post-warmup", R54's "5.75 fps" —
+describes **only the intervals in which the counter was advancing**, not the game's general frame rate.
+Those intervals were periods with animation (settling physics, the animated results screen). The
+measurements are not wrong about those windows; the *generalisation* to "the A56 runs this at ~7 fps" is
+not supported. R38 established that `frame[N]` is a heartbeat and not a counter; I then used it as a rate
+meter anyway.
+
+**2. Interaction latency is state-dependent, and 7.6 s was not a constant.** Measured twice, same device,
+same build family:
+
+| state | latency |
+|---|---|
+| 2-hour-old process, resolver loop active at ~8 opens/sec | **7.61 s** |
+| fresh process, `/etc/hosts` opens still 0 | **1.66 s** |
+
+That is consistent with the resolver loop being the cause, and it is **not proof** — process age, shader
+cache and scene differ too. R56 named the loop as the leading explanation; this adds a second data point
+in the same direction without closing it.
+
+**3. First launch after a fresh install costs ~10 minutes, and both builds pay it.** Not previously
+measured. After `adb install -r` + launch, **10:09 elapsed** before the game reached a playable level, and
+`frame[301]` was still not reached. R51 recorded the warm equivalent as 352 s at 0.85 fps and attributed
+it to first-run shader compilation; from a genuinely cold install it is roughly twice that. This is
+probably a large part of what "abysmal" means in practice, and it is invisible to every existing check.
+
+**The fix attempt, and why its verdict was void.** I added a scheduler-yielding backoff to the resolver
+path in `bridge_file.c` (the proven `l_poll` remedy for the same GEL-starvation shape), built it, and
+deployed. It showed `frame[1]` after 10:32 and I called it a regression. **That conclusion was invalid:**
+I compared a *fresh-install* run against R51's *warm-install* baseline. Re-running the **validated**
+build from an equally fresh install gave `frame[1]` at **10:09** — statistically the same. So the
+throttle was neither shown to help nor shown to hurt.
+
+Two further defects in that attempt, both mine:
+
+* **The diagnostic I added to observe the fix couldn't observe it.** My log cap counted `/etc/hosts` and
+  `/dev/urandom` against one shared counter, so eight early `/dev/urandom` opens exhausted it and every
+  subsequent `/etc/hosts` open went unlogged. `grep -c '/etc/hosts'` then returned 0 — which I nearly
+  read as "the loop is gone". A counter shared between the thing you are measuring and a much more
+  frequent neighbour measures the neighbour.
+* Deploying to the phone as the *first* test, when the loop reproduces in every x86 emulator log
+  (`progression_abshim.txt`: 26,701 of 59,812 lines) and would have iterated far faster there.
+
+**State:** reverted; the tree rebuilds byte-identical to `27548721a456ea99295469c3` and the phone is back
+on the validated build with its save intact (`HIGHSCORE 45500` reloaded). The patch is kept at
+`resolver_throttle_attempt.patch` for a retry that (a) fixes the counter, (b) throttles only a genuine
+spin rather than any resolver read, (c) bounds the added delay, and (d) is measured on x86 first.
+
 ### R52. Detecting the appended-capture defect structurally, not statistically
 
 R50's numbers were wrong because a log was seven `adb logcat` captures appended together. The obvious
@@ -438,6 +495,11 @@ proves the tool *sees* the marker, then proves it is not classified as a floor.
 `test_capped.sh`, 9 cases.
 
 ### R51. The A56 runs it at ~7 fps — which confirms R4/R4b and refutes the optimism in the record
+
+> ⚠️ **SCOPE CORRECTED BY R58.** These figures are valid for the windows measured, but `frame[N]` does
+> **not** advance on a static scene (measured: `frame[1]` unchanged across 180 s on a live, responsive
+> level). So this is the frame rate *while the render loop was being driven*, not a general
+> "the A56 runs this at ~7 fps". Do not generalise it.
 
 The last device-only unknown. R4/R4b measured the rasteriser at 5–7% of frame time and concluded
 **single-thread CPU sets the frame rate**, leaving the Exynos 1580 CPU term as the open question.
