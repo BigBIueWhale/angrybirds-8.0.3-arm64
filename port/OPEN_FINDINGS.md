@@ -723,6 +723,28 @@ for one of them.
   thread names containing spaces, not a real zero. Reported as a broken measurement rather than a
   finding, and redone at process level where names cannot confound it.
 
+### R66. Current deliverable is `46c607f5…` — this file deliberately still names the old hashes
+
+Shipped 2026-07-30: **`46c607f5f9e41560b6a260d7153670e8cf42014f0eca1f5d4c813b90594b87aa`**, retiring
+`27548721a456ea99…`. It carries the adaptive slice preemption (2.2× play-phase frame rate, 21.26 vs 9.57
+fps; 2.1× startup, 140 s vs 300 s) and the `shim_call` first-call logging fix.
+
+**Why this note exists:** every *current-state* reference lives in `RELEASE_NOTES.md`, `README.md`,
+`port/REPRODUCE.md` and `port/ONDEVICE.md` — those four now say `46c607f5…` and contain zero stale
+references. **This file still contains 9 mentions of `27548721…`, plus every earlier deliverable hash
+(`9da84326`, `4fdb3d7c`, `6fd9c57d`, `8ff45e25`, `68bf6f4a`, `f279169a`, `83be89e5`), and that is
+deliberate** — each sits inside the narrative of what was true when it was written. Rewriting them would
+turn a record of what happened into a claim that never was. `port/tools/bump_deliverable_hash.sh`
+therefore skips this file by design.
+
+So: if you want the hash the build produces *now*, read `RELEASE_NOTES.md`. If you want the hash a given
+finding was about, read the finding.
+
+**What shipping this did NOT fix, and it is the largest open item:** the interaction latency of R62/R63/
+R65. Median 1.72 s, max 7.45 s, Android delivering the tap in ~1 ms, no `shim_call` over 120 ms, and two
+of my own proposed mechanisms falsified by probe-plus-control. Throughput and latency are different
+bottlenecks here and only the first has been improved.
+
 ### R65. The interaction lag is IDLE-LOOP WAKE-UP latency, not throughput — with confounds ruled out
 
 Measured on the A56 with the `ABSHIM_SLOWCALL` build, app foreground and idle on a static level:
