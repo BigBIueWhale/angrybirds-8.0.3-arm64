@@ -186,6 +186,24 @@ slingshot into view, pull back from the bird at **(948,667) → (700,790)**, re-
 subsequent bird (the camera follows the last one downrange), and tap fast-forward at **(2241,971)** to
 settle rather than waiting out the animation.
 
+**Four distinct levels on the device now, and the LOSS path works too.** Running the fixed
+`phone_play.sh` loaded a fourth level file — `Tutorial_blues_niko` — and **lost** it: `LEVEL FAILED!`
+(PROOF_31), star counter correctly unchanged at 12, `h_fatal 0`. That is worth having rather than
+hiding: level-fail is a different code path from level-complete, and it survives too. The run also
+showed the camera fix working — **0 of 3 captures repeated a settled screen**, against 4 of 6 before it.
+
+Device totals: **4 distinct level files loaded, 3 cleared with 3 stars, 1 lost**, all in one process.
+With camera drift eliminated, the remaining limitation really is **aim** — a single fixed drag vector
+cannot aim at arbitrary geometry, which is a harness limit, not a port defect. (`lib_camera.sh`'s header
+records that this was once *assumed* to be the cause when the real cause was drift; now that drift is
+fixed, it is the honest residual.)
+
+**A stale-capture defect in the same script, found while reading its own output.** `png_sane.py
+"$OUT"/c*.png` globs every capture in the directory, so a 3-cycle run validated `c05`/`c06` images left
+behind by the previous 6-cycle run and reported on frames it never took. Old evidence presented as
+current is exactly the stale-PROOF defect this repo has been bitten by twice. The script now clears
+`$OUT/c*.png` before it starts.
+
 **Two of that script's own assertions were unsound and failed a healthy run.** Both are fixed and the
 reasoning is recorded in the file: a per-cycle "heartbeats must advance" check is invalid because
 `frame[N]` fires every 300 frames (R38) and the device runs at ~6 fps (R51/R54), so one heartbeat takes
@@ -225,10 +243,11 @@ distinct level files are named in the clean window: **`Tutorial_chuck_niko`** an
 2026-07-27), so the 9-star total may include earlier progress and I am not claiming all nine were earned
 here. What is unambiguous is the distinct score, the two named level files, and the clean traversal.
 
-**Frame rate, unattended.** 12,300 frames over 2,139 s = **5.75 fps** average; across 41 windows of 300
-frames, **min 2.71 / median 6.20 / max 6.66**. Lower than R51's ~7.1 during active play — the results
-screen animates stars over a parallax background, so it is not idle work. Reported as measured; I am not
-going to invent a mechanism for the difference.
+**Frame rate during this window.** 12,300 frames over 2,139 s = **5.75 fps** average; across 41 windows
+of 300 frames, **min 2.71 / median 6.20 / max 6.66**. ⚠️ **This was first written as "unattended, no
+input" — that is WRONG (see R56). The user was playing the game on the device during this window.** The
+numbers are valid as frame pacing; they are NOT an idle measurement, and the reasoning I attached to the
+difference from R51 was built on a false premise.
 
 **R42's leak question, answered by measurement.** R42 corrected "bounded ~64 tiny `_Rep`s" (a log cap) to
 a sustained 7–16 blocks/minute, leaving open whether that accumulates. Ten `dumpsys meminfo` samples at
@@ -248,6 +267,112 @@ It is a correctness footnote, not an operational risk. Nothing to fix.
 The `.txt` proofs are now covered by the sha256 manifest as well as the images (previously `*.png` only),
 mutation-tested in both directions: tampering with `PROOF_PHONE_soak_clean.txt` fails the suite, and
 restoring it returns 50/50.
+
+### R56. Performance, root-caused with measurement — and R54/R55's framing corrected
+
+The user played the game on the A56 during this session and reported what I had failed to look for:
+**~10 s of latency for every interaction**, and performance "an order of magnitude too slow in every
+measure". Both are real. I had measured frame rate, called it "playable and honestly so", and never
+measured latency at all — the symptom instead of the system.
+
+**Measured latency: 7.61 s** from `input tap` to the first changed pixel (polled screenshots, 0.6 s
+resolution). Not a frame-rate artifact — 60 fps → 6 fps turns 16 ms into 160 ms, not 7.6 seconds.
+
+**Where the time goes.**
+
+| measurement | result |
+|---|---|
+| `GraphicsThread` CPU | **97% of ONE core** (975 jiffies / 10.05 s, CLK_TCK=100), everything else ≤1% |
+| cores on the phone | **8** — so the app uses ~1 and leaves 7 idle |
+| TCG throughput, real engine code | **42 Minsn/s** on the x86 host (125 ctors = 2.27 Minsn in 0.0542 s) |
+| estimated A56 | ~17 Minsn/s chained, ~11 Minsn/s as actually configured |
+| predicted frame time | 1–2 Minsn/frame ÷ 11–17 Minsn/s → 60–180 ms → **6–17 fps** |
+| observed | **6–8 fps** — the prediction holds |
+
+So the frame rate is *fully explained*: one core, and Unicorn TCG at ~42 Minsn/s. This is architectural —
+the GEL means exactly one host thread ever drives the shared engine.
+
+**A concrete 1.56× left on the table, measured not guessed.** `run_loop` preempts green threads by
+passing `SCHED_QUANTUM` (200000) as `uc_emu_start`'s **count** argument. Unicorn implements a non-zero
+count with an internal per-instruction mechanism that defeats TB chaining. Identical work, only the
+count differing:
+
+```
+count=0    (chained)  : 0.0545 s   125/125 ctors
+count=1e9  (counting) : 0.0849 s   125/125 ctors     <- never exhausted, so same work
+=> the counting mechanism alone costs x1.56 (55.7%)
+```
+
+The ctors run with `budget=0`, which is why `test_perf2` reports the optimistic 42 Minsn/s — but the
+*game* pays the 1.56× on every slice. Preempting some other way (a timer thread calling `uc_emu_stop`,
+or ending a slice at a bridge boundary, which already happens thousands of times per second) recovers
+it. That is ~6–8 fps → ~9–12 fps and a proportional cut in latency. Not 60 fps; a real 1.5×.
+
+**Wasted work inside that one saturated core: a retry loop my own de-phone-home created.** The clean
+36-minute soak log is **95.5% `[fopen]` lines** — 24,976 of 26,141:
+
+```
+12449  [fopen] '/dev/urandom' (rb) -> ok
+12447  [fopen] '/etc/hosts'   (r)  -> ok
+```
+
+That is ~8 name-resolution attempts **per second, forever**, while the game sat on a results screen —
+and 61 of them ran during the measured 7.6 s input delay. `dispatch.c`'s own hot-stub comment already
+named the mechanism: *"a guest that spins calling a bridged import (observed: libcurl's connect/poll
+retry loop after we cut the network)"*. Layer 2 hard-fails the socket, so the bundled networking stack
+retries indefinitely. **The rig had already observed this and I had not connected it to performance.**
+
+**What is NOT the bottleneck** — ruled out by measurement, so nobody re-chases it:
+
+* **Bridge crossings.** ~770 ns per bridge call (already measured in this project) × ~7,500 malloc/free
+  crossings/s (from the shipping `[hot-stub]` counters: 10.0M `free`, 6.3M `malloc` in 36 min) = **0.6%
+  of one core.**
+* **The DIAG uc-hooks.** I suspected these and was wrong. The pure-log diagnostics are
+  `#ifndef ABSHIM_RELEASE`-gated (four blocks), and the all-block `UC_HOOK_BLOCK` — which would have
+  been catastrophic — is behind `ABSHIM_HEAVY_DIAG`. ~27 hooks ship and nearly all are functional
+  `neut_*`/`guard_*`; `diag_memcpy` is a guard that clamps a corrupt length, not a probe.
+* **Memory mapping.** `uc_mem_map` throughout (real host RAM), not `uc_mmio_map` (which would trap every
+  guest access). Correct already.
+* **Logging cost.** 12 lines/s of `__android_log_write` ≈ 0.04% of frame time. The uncapped `[fopen]`
+  logging is a *release-hygiene* defect, not a speed one.
+
+**No TCG tuning exists at all** — no `uc_ctl` call anywhere in the shim. Unicorn defaults throughout.
+
+**Corrections to R54/R55 forced by the user's disclosure.**
+
+* R54 called its 5.75 fps window "**unattended, no input**". That is **wrong** — the user was playing the
+  game during it. It is a frame-pacing measurement, not an idle one.
+* R54's second win (56010 at 02:34:35) is most likely **the user's play**, not a side effect of my drag
+  vectors. R54 attributed it to the session's automation by implication; withdrawn.
+* "Playable, and honestly so" (R51) is withdrawn. 3 stars can be won at this speed, but 7.6 s
+  interaction latency is not playable, and calling it so was exactly the verdict-outrunning-evidence
+  pattern this file exists to record.
+
+### R57. 9.7% of the phone's screen is unused — cutout letterbox plus navigation bar
+
+The user pointed out the game is shifted right with a dead black band. Measured from `dumpsys window`:
+
+```
+panel   mBounds    = Rect(0, 0 - 2340, 1080)     2340 px wide
+app     mAppBounds = Rect(92, 0 - 2205, 1080)    2113 px  -> 227 px (9.7%) unused
+cutout  insets     = Rect(0, 92 - 0, 0)          punch-hole camera; becomes the LEFT edge at ROTATION_90
+right   2340-2205  = 135 px                      = 48dp navigation bar at density 2.8125
+```
+
+Two independent causes, not one:
+
+1. **92 px cutout letterbox.** The app targets SDK 26 and never declares
+   `android:layoutInDisplayCutoutMode`, so Android denies it the cutout region in landscape. Raising
+   targetSdk does **not** fix this — the platform default is still "never into the cutout in landscape".
+   The fix is to declare `shortEdges`, which is an AXML attribute **insertion** (resizes the element,
+   shifts every later offset, and needs a matching entry appended to the XML resource map) — a different
+   and riskier class of edit than this project's same-length value rewrites.
+2. **135 px navigation bar.** The window is not edge-to-edge, so the nav bar keeps its inset.
+
+Both are window-level properties. A third route avoids AXML insertion entirely: the shim holds the
+`JavaVM` from `JNI_OnLoad`, so it could set both from native code via JNI on the UI thread
+(`getWindow().getAttributes().layoutInDisplayCutoutMode = SHORT_EDGES`, plus immersive flags). Not yet
+implemented — recorded here with the mechanism identified and measured, not fixed.
 
 ### R52. Detecting the appended-capture defect structurally, not statistically
 

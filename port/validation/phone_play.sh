@@ -63,7 +63,14 @@ bad(){ say "  [FAIL] $1"; FAIL=1; }
 # reason is that a verdict line saying "h_fatal" would then count as an h_fatal.
 [ "$RUN" != "$LOGF" ] || { echo "harness error: run log == abshim log"; exit 1; }
 
-command -v adb >/dev/null 2>&1 || export PATH="/home/user/Desktop/rustdesk_fork/online/android-sdk/platform-tools:$PATH"
+# ABSHIM_ADB, or whatever is on PATH. Deliberately NOT a hardcoded absolute path: verify_claims.sh
+# rejects a build-host path in a tracked file, and rightly - this repo is public and the path named
+# this box's home directory.
+if ! command -v adb >/dev/null 2>&1; then
+  for cand in "${ABSHIM_ADB:-}" "$HOME/Android/Sdk/platform-tools/adb" "$HOME/android-sdk/platform-tools/adb"; do
+    [ -n "$cand" ] && [ -x "$cand" ] && { PATH="$(dirname "$cand"):$PATH"; export PATH; break; }
+  done
+fi
 command -v adb >/dev/null 2>&1 || { say "FATAL: no adb on PATH"; exit 1; }
 
 say "== SECURITY PRECONDITION =="
@@ -133,6 +140,11 @@ NEXT_X=1419; NEXT_Y=863          # NEXT on the results screen
 BIRD_DRAG="948 667 700 790 700"  # pull back from the loaded bird -> launches up and right
 FF_X=2241; FF_Y=971              # fast-forward, on the settling/results screen
 
+# Clear PREVIOUS captures. Without this, `png_sane.py "$OUT"/c*.png` and any by-eye review at the end
+# mix this run's images with the last run's: a 3-cycle run was validating c05/c06 files left by a
+# 6-cycle run, so the report described frames the run never took. Old evidence presented as current is
+# the same defect as a stale PROOF, which this project has already been bitten by twice.
+rm -f "$OUT"/c*.png
 shot(){ adb exec-out screencap -p > "$OUT/$1.png" 2>/dev/null; }
 frame_now(){ grep -aoE 'frame\[[0-9]+\]' "$LOGF" 2>/dev/null | tail -1 | grep -oE '[0-9]+'; }
 
