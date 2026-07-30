@@ -630,9 +630,36 @@ because the render thread may have changed it while parked. `idle_wait_pick`'s s
 a long blocking wait under the BEL. Releasing it there — or bounding the idle wait so the entry call
 returns promptly — is the candidate.
 
-**Not yet implemented, and it is not a one-liner:** `run_loop` must still deliver its entry gthread to
-`RG_RET`, so simply returning early from the idle wait would break that contract; and releasing the BEL
-mid-scheduler needs the same `real_env` care the S2 path documents. This is recorded as the highest-value
+**Not yet implemented, and it is NOT a one-liner — releasing the BEL breaks a documented invariant.**
+The `else` branch of `idle_wait_pick` states it outright:
+
+> *"C1/M7: no runnable thread AND no timed waiter. **Under the coarse BEL exactly one host thread is
+> ever inside the scheduler, so nothing can ever make a thread runnable again** — a genuine guest
+> deadlock. Fail loudly instead of releasing the GEL to wait for a signal that can never come (the old
+> `pthread_cond_wait` here hung the process forever)."*
+
+So the deadlock detector's correctness *depends* on the BEL serialising scheduler entry. Release the BEL
+during the sleep and a second host thread can enter `run_loop`, at which point:
+
+* "nothing can ever make a thread runnable again" stops being true — the detector's premise is gone
+  (though only the `if(have)` branch would release, and the deadlock branch has no timed waiter and
+  therefore never sleeps, so that specific check may survive untouched — this needs proving, not
+  assuming);
+* two `run_loop`s manipulate `S->cur` and `drive_active` concurrently, serialised only by the GEL, and
+  each is contractually obliged to deliver *its own* entry gthread to `RG_RET`. That interleaving is the
+  real work, not the unlock call.
+* `G.jni.real_env` must be restored on re-acquire, exactly as the S2 path documents.
+
+**A second, less invasive candidate: cap guest timed waits.** The long deadlines come from guest sleep
+primitives, and `l_poll` already caps its nap at 200 ms for precisely this reason (*"cap the nap so an
+infinite/long timeout still wakes periodically"*). If every guest timed wait were capped at ~20 ms,
+`timeout_fire` would make a thread runnable that soon, `idle_wait_pick` would return, `run_loop` would
+finish the entry call, and the BEL would be released — without touching the scheduler's threading model
+at all. Costs: extra wakeups, and guest sleeps become short-but-repeated, which most sleep loops tolerate
+and some do not.
+
+Neither should be attempted as a quick edit on a working deliverable. Both need a build flag, the
+emulator playthrough, and R62's 8-sample latency protocol on the device before and after. This is recorded as the highest-value
 next change because it targets the symptom the user actually reported, with a measured mechanism behind
 it, rather than the frame-rate proxy.
 
