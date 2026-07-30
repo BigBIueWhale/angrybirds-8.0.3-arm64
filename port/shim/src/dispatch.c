@@ -4,6 +4,7 @@
  * class. This is the libc slice the init-time surface needs; the full per-symbol
  * descriptor table (Audit 01/09) generalises it for the whole libc/GL/JNI set. */
 #include "dispatch.h"
+#include <pthread.h>
 #include "regions.h"
 #include "marshal.h"
 #include "format.h"
@@ -561,6 +562,71 @@ static void br_ret(dispatch_t*d, const bent*b, uint64_t rv){
 /* hang-watchdog op marker: STRONG def in jni_entry.c (device); this WEAK no-op keeps the host
  * test builds (which link dispatch.c but not jni_entry.c) resolving — overridden on device. */
 __attribute__((weak)) void abshim_mark_op(const char *bridge, int slot){ (void)bridge; (void)slot; }
+/* ---- slice preemption WITHOUT uc_emu_start's instruction count ------------------------------
+ * MEASURED (identical work, only the count arg differing): uc_emu_start with a non-zero `count`
+ * costs x1.56 -- 0.0545 s chained vs 0.0849 s counted for the 125 engine ctors. Unicorn implements
+ * a non-zero count with an internal per-instruction mechanism that defeats TCG block chaining, and
+ * run_loop was paying that on EVERY green-thread slice for the life of the process. On a phone whose
+ * engine is confined to ONE core (measured 97% of it) that 56% is taken straight out of render and
+ * input.
+ *
+ * So the slice is now bounded by WALL CLOCK at a bridge boundary instead. Every bridged import call
+ * passes through the stub hook -- the engine makes tens of thousands per second (measured: 218M
+ * memcmp, 80M strlen, 52M free over one session) -- so a slice ends promptly, and uc_emu_stop() from
+ * inside a hook is Unicorn's documented way to end an emu_start early. The run loop's existing
+ * "quantum expired mid-execution" branch already handles exactly this exit shape (UC_ERR_OK with PC
+ * mid-code), so nothing downstream changes.
+ *
+ * The clock is sampled once per SLICE_CHECK_MASK+1 bridge calls, not every call: a clock_gettime is
+ * ~20-25 ns against a ~770 ns bridge call, and sampling keeps it under 0.02%.
+ *
+ * A BRIDGE BOUNDARY ALONE IS NOT ENOUGH, and the test suite said so immediately. I first shipped only
+ * the bridge check and wrote off the gap as "a longer slice, not a hang". run_tests.sh's
+ * "[T3] preemption of a non-yielding spin-loop" then HUNG outright: a guest loop that calls no bridge
+ * has no boundary to check at, so it never yields and the scheduler never round-robins. The hard
+ * instruction count used to bound exactly that case. So there is a second, independent bound: a timer
+ * thread that calls uc_emu_stop() once the deadline passes.
+ *
+ * uc_emu_stop() from another thread is Unicorn's interruption path (it raises the stop request and
+ * exits the cpu loop), and uc_emu_start() clears any pending request when it begins, so a stop that
+ * lands just after a slice ended cannot truncate the next one.
+ */
+#define SLICE_CHECK_MASK 0xFFu
+static volatile uint64_t g_slice_deadline_ns = 0;   /* 0 => no preemption armed */
+static uc_engine *volatile g_slice_uc = 0;
+static uint64_t slice_now_ns(void){
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+    return (uint64_t)ts.tv_sec*1000000000ull + (uint64_t)ts.tv_nsec;
+}
+/* Backstop for guest code that reaches no bridge. Polls rather than condvar-waits: one wakeup every
+ * 2 ms is free next to an emulator saturating a core, and polling has no missed-wakeup edge cases. */
+static void *slice_timer_thread(void *arg){
+    (void)arg;
+    for(;;){
+        struct timespec ns={0, 2*1000*1000};   /* 2 ms */
+        nanosleep(&ns,0);
+        uint64_t dl = g_slice_deadline_ns;
+        uc_engine *uc = g_slice_uc;
+        if(dl && uc && slice_now_ns() >= dl){ g_slice_deadline_ns = 0; uc_emu_stop(uc); }
+    }
+    return 0;
+}
+void dispatch_arm_slice(uc_engine *uc, uint64_t ns_from_now){
+    static int started = 0;
+    if(!ns_from_now){ g_slice_deadline_ns = 0; return; }
+    g_slice_uc = uc;
+    g_slice_deadline_ns = slice_now_ns() + ns_from_now;
+    if(!started){ started = 1; pthread_t t;
+        if(pthread_create(&t,0,slice_timer_thread,0)==0) pthread_detach(t); }
+}
+/* Called from the stub hook. Same host thread that called uc_emu_start, so no cross-thread race. */
+static inline void slice_check(uc_engine *uc){
+    if(!g_slice_deadline_ns) return;
+    static unsigned tick = 0;
+    if(((++tick) & SLICE_CHECK_MASK) != 0u) return;
+    if(slice_now_ns() >= g_slice_deadline_ns){ g_slice_deadline_ns = 0; uc_emu_stop(uc); }
+}
+
 #if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
 /* Time spent inside the NATIVE BRIDGES — every stub, i.e. GL + asset + libc + file + the bent
  * table. This is the second half of the frame-time split. The first measurement established that
@@ -604,7 +670,8 @@ static void stub_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *
 #else
 static void stub_cb(uc_engine *uc, uint64_t address, uint32_t size, void *user){
 #endif
-    (void)uc;(void)size;
+    (void)size;
+    slice_check(uc);            /* wall-clock slice end; see dispatch_arm_slice() above */
     dispatch_t *d=(dispatch_t*)user;
     uint32_t slot=((uint32_t)address - RG_STUB) >> 2;
     /* watchdog op-marker: mark bridge calls CHEAPLY (no per-call loader_stub_name lookup — that
