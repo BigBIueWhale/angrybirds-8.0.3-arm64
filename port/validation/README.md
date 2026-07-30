@@ -802,6 +802,18 @@ findings was not "the system is subtly wrong" but **"the rig already knew and I 
     evidence (R50). Use `-T <time>` or `-c` first, or de-duplicate before counting. `capped_counts.py`
     catches it for free: a count *above* its cap means the log is wrong, not the shim.
 
+4c. **A tool that reports floors can itself drop one.** `saturated_report` scraped `capped_counts.py`'s
+    human output with a regex for a single-quoted marker; the one marker whose text contains `'{}'` is
+    printed by `repr()` in double quotes, so it was silently omitted — and an omitted floor reads as
+    "this count is real". Scripts now consume `--tags`/`--markers`, and a parity check refuses to
+    report anything when the two interfaces disagree. Don't parse a human report; emit a machine one.
+
+4d. **Fixtures must come from the tool, not from its display output.** `test_capped.sh` first copied
+    marker strings out of `--list`, which truncates to 70 chars. They matched nothing, and its two
+    negative assertions passed vacuously — "not flagged as a floor" is true of an empty file too.
+    Every negative assertion here is now two-sided: prove the tool sees the input, THEN prove how it
+    classifies it.
+
 **On reading evidence**
 
 5. **Absence from a log is evidence only if the log would have recorded presence.** `bridge_gl.c` has

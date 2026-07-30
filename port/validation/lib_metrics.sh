@@ -127,20 +127,48 @@ waf_report() {                 # $1 = abshim log
 saturated_report() {           # $1 = abshim log
     local py; py="$(dirname "${BASH_SOURCE[0]}")/capped_counts.py"
     [ -f "$py" ] && command -v python3 >/dev/null 2>&1 || { echo "not checked (capped_counts.py or python3 unavailable)"; return 0; }
-    local out floors extra
-    out=$(python3 "$py" "$1" 2>/dev/null)
-    floors=$(printf '%s\n' "$out" | grep '\[FLOOR\]' | grep -oE "'\[[a-zA-Z0-9_ -]+\][^']*'" | tr -d "'" | sort -u)
-    # BASELINE. These five sites saturate in EVERY run ever recorded here — diagnostic and release,
+    # Reads capped_counts.py --tags (TAG<TAB>COUNT<TAB>CAP<TAB>SITE), NOT the human report.
+    #
+    # Scraping the human report with a shell regex for a single-quoted marker silently dropped
+    # [empty-json-guard], whose format string contains '{}' — repr() double-quotes such strings, so the
+    # regex never matched and a real floor vanished from the report. An omitted floor reads as "this
+    # count is a real total". The tool now emits tags extracted in Python, where the format string is
+    # known exactly, and the parity check below refuses to report anything if the two disagree.
+    local tags floors human
+    tags=$(python3 "$py" --tags "$1" 2>/dev/null)
+    floors=$(printf '%s\n' "$tags" | grep -c .)
+    human=$(python3 "$py" "$1" 2>/dev/null | grep -c '\[FLOOR\]')
+    if [ "${floors:-0}" -ne "${human:-0}" ]; then
+        echo "REPORT BROKEN: --tags found $floors floors but the report lists $human — do not trust either"
+        return 0
+    fi
+    [ "${floors:-0}" -eq 0 ] && { echo "no counter in this log has reached its cap, so every count in it is a real total"; return 0; }
+    # BASELINE, by TAG. These sites saturate in EVERY run ever recorded here — diagnostic and release,
     # API 25 through 36, a 2-minute capture and a 20-minute soak — because they are early-boot and
-    # scheduler tracing that fills up in the first moments regardless of what the run then does.
-    # Verified identical across playthrough_abshim.txt, modplay_abshim.txt and save_ab2.txt.
-    # Reporting them every time would be noise, and a report that is mostly noise gets ignored, which
-    # is how a real one gets missed. So only DEVIATIONS are called out.
-    extra=$(printf '%s\n' "$floors" | grep -vE '^\[audio-isolate\]|^\[S2\] do_call ENTER|^\[S2\] do_call RET|^\[S2\] stash|^\[u16conv\] src')
-    extra=$(printf '%s' "$extra" | grep -c .)
-    if [ "${extra:-0}" -eq 0 ]; then
-        echo "only the 5 always-saturated tracing sites (early-boot/scheduler); every other count in this log is a real total"
+    # scheduler tracing that fills in the first moments regardless of what the run then does. Verified
+    # across playthrough_abshim.txt, modplay_abshim.txt and save_ab2.txt. Reporting them every time
+    # would be noise, and a report that is mostly noise gets ignored, which is how a real one is missed.
+    #
+    # Matched on TAG rather than on line number, because line numbers move whenever jni_entry.c is
+    # edited and a baseline that breaks on every edit is worse than one that is slightly broad. The
+    # site COUNT is asserted instead: five baseline sites are expected, so a sixth appearing under a
+    # baseline tag is called out rather than absorbed.
+    local BASE_TAGS='^\[audio-isolate\]|^\[S2\]|^\[u16conv\]'
+    local BASE_EXPECT=5
+    local nbase extra n tagsout note=""
+    nbase=$(printf '%s\n' "$tags" | grep -cE "$BASE_TAGS")
+    extra=$(printf '%s\n' "$tags" | grep -vE "$BASE_TAGS" | grep -a .)
+    n=$(printf '%s' "$extra" | grep -c .)
+    [ "${nbase:-0}" -ne "$BASE_EXPECT" ] && note=" (baseline sites: $nbase, expected $BASE_EXPECT)"
+    if [ "${n:-0}" -eq 0 ]; then
+        echo "only the $nbase always-saturated tracing sites (early-boot/scheduler); every other count in this log is a real total$note"
     else
-        echo "$extra counter(s) BEYOND the always-saturated baseline are floors: $(printf '%s\n' "$floors" | grep -vE '^\[audio-isolate\]|^\[S2\] do_call|^\[S2\] stash|^\[u16conv\] src' | tr '\n' ' ')"
+        # Print bracketed TAGS, not marker prose. The old version echoed whole format strings
+        # ("[de-phonehome] skipped RCS Identity login call @0x31"), unreadable in a one-line report and
+        # it made two distinct sites sharing a tag look like one listed twice. Sites are still counted
+        # individually; a tag covering several is shown as [tag]xN.
+        tagsout=$(printf '%s\n' "$extra" | cut -f1 | sort | uniq -c \
+                  | awk '{ if ($1 > 1) printf "%sx%s ", $2, $1; else printf "%s ", $2 }')
+        echo "$n saturated site(s) beyond the baseline — counts here are FLOORS, not totals: ${tagsout}$note"
     fi
 }

@@ -1021,6 +1021,23 @@ else
                      || bad "the index names proofs that do not exist:$GHOST"
 fi
 
+# ---- every committed log is ONE capture, not several appended together --------------------------
+# `adb logcat` without -T re-dumps the entire ring buffer, so appending captures to one file
+# multiplies every count in it. That happened: PROOF_PHONE_abshim.txt is seven appended captures and
+# its numbers were 4.33x inflated in R50, a commit message and the memory record before anything
+# caught it. Detected structurally (an appended capture restarts the clock, so timestamps jump
+# backwards), because the obvious total/unique ratio cannot tell a re-dump from an honestly repetitive
+# dumpsys. One pinned exception, asserted BY JUMP COUNT so altering that evidence still fails.
+RCOUT=$(python3 port/validation/log_recapture_audit.py reports/shots/*.txt 2>&1); RCRC=$?
+RCN=$(printf '%s' "$RCOUT" | sed -n 's/.*  \([0-9]\+\) log(s) verified monotonic.*/\1/p')
+if [ "$RCRC" != 0 ]; then
+  bad "a committed log is built from appended captures, so its counts are inflated: $(printf '%s' "$RCOUT" | grep -a RECAPTURE | head -1)"
+elif [ "${RCN:-0}" -lt 40 ]; then
+  bad "the log-recapture audit examined only ${RCN:-0} logs — it is not seeing the corpus, so its pass is vacuous"
+else
+  ok "all $RCN committed logs are single captures (plus 1 pinned known-recapture, see R50)"
+fi
+
 [ "${CLEANUP_ORIG:-0}" = "1" ] && rm -f "$ORIG"
 echo
 if [ "$FAIL" = "0" ]; then

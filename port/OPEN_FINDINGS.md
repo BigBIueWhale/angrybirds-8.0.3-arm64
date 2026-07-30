@@ -143,6 +143,69 @@ heartbeats — neither of which duplication can manufacture. `uaf-survive 0` als
 worth noting against R41/R42: on real hardware, across a full play-win-advance cycle, **zero** wild
 memory accesses needed absorbing.
 
+### R52. Detecting the appended-capture defect structurally, not statistically
+
+R50's numbers were wrong because a log was seven `adb logcat` captures appended together. The obvious
+guard — flag files whose total/unique line ratio is high — was **measured across all 61 committed logs
+and rejected**:
+
+| log | ratio | verdict |
+|---|---|---|
+| `PROOF_PHONE_abshim.txt` | 4.33× | genuinely an appended re-dump |
+| `dump_api36.txt` | 2.43× | **honest** — a `dumpsys package` dump where 91 activities print identical boilerplate and `reason: assuming delivered` occurs 1052× |
+| median of all 61 | 1.01× | |
+
+Structural repetition and re-dump duplication are indistinguishable by ratio, so a ratio gate either
+misses real cases or fails honest files. The detector used instead is structural: **a logcat capture is
+monotonic in time, and appending a second capture restarts the clock, so timestamps jump backwards.**
+
+```
+PROOF_PHONE_abshim.txt      6 backward jumps > 2s (worst 639.8s)   <- 6 jumps == 7 appends
+all 49 other timestamped logs   0
+```
+
+Clean separation with nothing in between, so no threshold needed tuning. The 6 jumps independently
+confirm the 7 appends that `847 / 121 = 7` implied. `port/validation/log_recapture_audit.py` +
+`test_recapture.sh` (7 cases), wired into `verify_claims.sh` (now 50 checks) and `validate_all.sh`.
+
+The known-bad log is **kept as captured, not de-duplicated** — rewriting raw evidence to make a check
+pass is worse than the defect. It is pinned *by jump count*, and the pin is tested in both directions:
+de-duplicating the file fires it, and appending an eighth capture fires it. An allowlist that merely
+names a file is a check that cannot fail.
+
+### R53. The tool that exists to catch floors was dropping one of its own
+
+While correcting R50 I ran `saturated_report` on the phone log and it named 4 saturated sites.
+`capped_counts.py` on the same log reported 10. The missing one:
+
+```
+"[empty-json-guard] empty JSON parse -> '{}' (prevents the level-end ParseError->Lua-panic exit)"
+ ^ Python repr() switches to DOUBLE quotes when the string itself contains an apostrophe
+```
+
+`saturated_report` scraped the human report with a shell regex for a **single**-quoted marker, so that
+one never matched. The consequence is the precise inversion of the tool's purpose: a floor that is not
+reported reads as *"this count is a real total"*. On the phone log it hid `empty-json-guard` at 22 hits
+against a cap of 8 — one of the two counts R50 had already got wrong.
+
+Two further defects in the same function: the count and the printed list were filtered by **two
+different regexes** (`do_call ENTER|do_call RET` when counting, `do_call` when printing), so the number
+could contradict the list it introduced; and the list printed whole format strings rather than tags,
+which made two distinct sites sharing a tag look like one site listed twice.
+
+Fixed by giving the tool a machine interface — `--tags` emitting `TAG⇥COUNT⇥CAP⇥SITE`, tags extracted
+in Python where the format string is known exactly — plus a **parity assertion**: if `--tags` and the
+human report disagree on how many floors exist, `saturated_report` refuses to report at all rather than
+print the shorter number.
+
+**And the test written to pin this passed vacuously first.** Its fixtures were marker strings copied
+out of `--list`, which truncates to 70 characters for display, so they were *prefixes* of the real
+format strings and matched nothing. Two cases were negative assertions ("this must not be flagged")
+evaluated against a log the tool could not see at all — true of any file, including an empty one.
+Fixtures now come from `--markers` (untruncated), and every negative assertion is two-sided: it first
+proves the tool *sees* the marker, then proves it is not classified as a floor.
+`test_capped.sh`, 9 cases.
+
 ### R51. The A56 runs it at ~7 fps — which confirms R4/R4b and refutes the optimism in the record
 
 The last device-only unknown. R4/R4b measured the rasteriser at 5–7% of frame time and concluded
@@ -1501,7 +1564,7 @@ already built into it. But honest-and-absent is still absent, and a reader who s
 `ALL CHECKED CLAIMS HOLD` on the last line is not guaranteed to read the qualifier above it.
 
 One-line fix: run step 3 in the same container step 2 already uses. Now **49 checks, 0 skipped,
-0 failed**, and nothing about the artifact changed — the rebuild reproduces the same hash either way.
+0 failed** (50 since R52 added the appended-capture gate), and nothing about the artifact changed — the rebuild reproduces the same hash either way.
 
 The general shape is worth keeping in mind: this defect could not be found by any check, because it
 *was* the check not running. Only executing the user's actual path end to end surfaces that class.

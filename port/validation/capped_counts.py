@@ -41,6 +41,8 @@ this tool does.
 
     python3 capped_counts.py reports/shots/*abshim*.txt          # audit real logs
     python3 capped_counts.py --list                              # just show the caps found in source
+    python3 capped_counts.py --tags <log>...                     # TAG\tCOUNT\tCAP\tSITE, for scripts
+    python3 capped_counts.py --markers                           # TAG\tCAP\tSITE\tFULL LITERAL
 """
 import sys, os, re, glob
 
@@ -80,10 +82,49 @@ def main(argv):
         print("  [FAIL] no capped log sites found in the shim source — the regex has stopped matching,"
               "\n         which would make this check silently vacuous", file=sys.stderr)
         return 1
+    # --markers: TAG<TAB>CAP<TAB>SITE<TAB>FULL LITERAL. The literal is last and untruncated so that a
+    # consumer can `cut -f4` it regardless of the spaces and quotes it contains.
+    #
+    # This exists because test_capped.sh first hardcoded marker strings copied from `--list`, which
+    # truncates to 70 characters for display. The copies were therefore PREFIXES of the real format
+    # strings, matched nothing, and two of the tests passed vacuously — they were negative assertions
+    # ("this must not be reported") against a log the tool could not see at all. A test fixture must
+    # come from the tool, not from its display output.
+    if "--markers" in argv:
+        for cap, lit, f, ln in sorted(caps):
+            m = re.match(r"(\[[^\]]+\])", lit)
+            print(f"{m.group(1) if m else lit[:24]}\t{cap}\t{f}:{ln}\t{lit}")
+        return 0
+
     if listing or not logs:
         print(f"  {len(caps)} capped log site(s) in the shim:")
         for cap, lit, f, ln in sorted(caps):
             print(f"    cap {cap:>4}  {f}:{ln}  {lit[:70]!r}")
+        return 0
+
+    # --tags: a STABLE machine interface, deliberately separate from the human report below.
+    #
+    # lib_metrics.sh used to scrape the human lines with a shell regex for a single-quoted marker. That
+    # silently lost `[empty-json-guard]`, whose format string contains `'{}'` — Python's repr() switches
+    # to DOUBLE quotes when the string holds an apostrophe, so the marker never matched, and a real
+    # floor was dropped from the report. An omitted floor reads as "this count is a real total", which
+    # is precisely the error this tool exists to prevent, committed by the tool itself.
+    #
+    # Emits TAG<TAB>COUNT<TAB>CAP<TAB>SITE, one line per saturated marker, with the bracketed tag
+    # extracted in Python where the format string is known exactly. Always exits 0: this is a query,
+    # not a gate, and a non-zero exit here would abort any `set -e` caller that merely asked a question.
+    if "--tags" in argv:
+        for log in logs:
+            try:
+                text = open(log, encoding="utf-8", errors="replace").read()
+            except OSError:
+                continue
+            for cap, lit, f, ln in sorted(caps):
+                n = text.count(lit)
+                if n and n >= cap:
+                    m = re.match(r"(\[[^\]]+\])", lit)
+                    tag = m.group(1) if m else lit[:24]
+                    print(f"{tag}\t{n}\t{cap}\t{f}:{ln}")
         return 0
 
     saturated = 0
