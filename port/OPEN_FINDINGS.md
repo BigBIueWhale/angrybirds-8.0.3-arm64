@@ -723,6 +723,42 @@ for one of them.
   thread names containing spaces, not a real zero. Reported as a broken measurement rather than a
   finding, and redone at process level where names cannot confound it.
 
+### R65. The interaction lag is IDLE-LOOP WAKE-UP latency, not throughput — with confounds ruled out
+
+Measured on the A56 with the `ABSHIM_SLOWCALL` build, app foreground and idle on a static level:
+
+| measurement | value |
+|---|---|
+| tap → visible change, 10 samples | median **1.72 s**, min 0.85, max 2.55 |
+| `[slowcall]` lines (threshold 120 ms) | **zero** — no single `shim_call` is slow |
+| process CPU | **10% of one core** |
+| `frame[N]` heartbeat | reached `frame[301]`, then **no advance in 91 s** (<1 fps) |
+
+**Confounds explicitly ruled out** before interpreting any of it — screen `mState=ON`,
+`mWakefulness=Awake`, the app is BOTH `mCurrentFocus` and `topResumedActivity`, `Thermal Status: 0` with
+the AP at 37.8 °C. So this is not a backgrounded, unfocused, screen-off or thermally-throttled app.
+
+**This resolves an apparent contradiction with R51's 8.68 fps on the same phone.** The game renders *on
+demand*: R58 already established that `frame[N]` does not advance on a static scene. Idle on a level it
+draws almost nothing (<1 fps, 10% CPU); actively animating it reaches 6–8 fps. Both measurements are
+correct and describe different states.
+
+**So the lag is the game being slow to WAKE, not slow to RUN.** A tap must wait for the next iteration of
+an idle loop whose period is ~1.7 s. That fits every number above: each `shim_call` is fast (so nothing
+shows in `[slowcall]`), CPU is low (idle), and latency ≈ the idle period rather than a frame time at load.
+
+**This is compatible with R63's mechanism after all, with one correction.** R63 proposed that
+`idle_wait_pick` sleeps until the earliest guest deadline while holding the BEL. I withdrew that because
+`WK_SLEEP` deadlines come from `l_poll`, capped at 200 ms. But if the *game's own idle loop* sleeps ~1.7 s
+via a `WK_COND` timed wait (`sched_cond_wait` takes the guest's own deadline, uncapped), the scheduler
+sleeps with it and the BEL stays held — producing exactly this. The 3 `WK_COND` waiters in the dump, one
+with a deadline 6.4 s out, are the candidates.
+
+**Testable next step, and now specific:** log the deadline `idle_wait_pick` actually sleeps on. If it is
+~1.7 s during idle, the fix is to cap `sched_cond_wait`'s deadline the way `l_poll` already caps its nap,
+or to release the BEL across that sleep. Either way the target is now a single value in one function
+rather than "the port is slow".
+
 ### R59. The count fix is worth **11–14×**, not 2.75× — and it is reverted, because it is not yet correct
 
 > ⚠️ **THE HEADLINE NUMBER IN THIS ENTRY WAS WRONG AND TOO SMALL.** I first reported 2.75× by comparing
