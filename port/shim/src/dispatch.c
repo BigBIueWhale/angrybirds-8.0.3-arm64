@@ -4,6 +4,7 @@
  * class. This is the libc slice the init-time surface needs; the full per-symbol
  * descriptor table (Audit 01/09) generalises it for the whole libc/GL/JNI set. */
 #include "dispatch.h"
+#include <pthread.h>
 #include "regions.h"
 #include "marshal.h"
 #include "format.h"
@@ -561,6 +562,121 @@ static void br_ret(dispatch_t*d, const bent*b, uint64_t rv){
 /* hang-watchdog op marker: STRONG def in jni_entry.c (device); this WEAK no-op keeps the host
  * test builds (which link dispatch.c but not jni_entry.c) resolving — overridden on device. */
 __attribute__((weak)) void abshim_mark_op(const char *bridge, int slot){ (void)bridge; (void)slot; }
+/* ---- slice preemption WITHOUT uc_emu_start's instruction count ------------------------------
+ * MEASURED (identical work, only the count arg differing): uc_emu_start with a non-zero `count`
+ * costs x1.56 -- 0.0545 s chained vs 0.0849 s counted for the 125 engine ctors. Unicorn implements
+ * a non-zero count with an internal per-instruction mechanism that defeats TCG block chaining, and
+ * run_loop was paying that on EVERY green-thread slice for the life of the process. On a phone whose
+ * engine is confined to ONE core (measured 97% of it) that 56% is taken straight out of render and
+ * input.
+ *
+ * So the slice is now bounded by WALL CLOCK at a bridge boundary instead. Every bridged import call
+ * passes through the stub hook -- the engine makes tens of thousands per second (measured: 218M
+ * memcmp, 80M strlen, 52M free over one session) -- so a slice ends promptly, and uc_emu_stop() from
+ * inside a hook is Unicorn's documented way to end an emu_start early. The run loop's existing
+ * "quantum expired mid-execution" branch already handles exactly this exit shape (UC_ERR_OK with PC
+ * mid-code), so nothing downstream changes.
+ *
+ * The clock is sampled once per SLICE_CHECK_MASK+1 bridge calls, not every call: a clock_gettime is
+ * ~20-25 ns against a ~770 ns bridge call, and sampling keeps it under 0.02%.
+ *
+ * A BRIDGE BOUNDARY ALONE IS NOT ENOUGH, and the test suite said so immediately. I first shipped only
+ * the bridge check and wrote off the gap as "a longer slice, not a hang". run_tests.sh's
+ * "[T3] preemption of a non-yielding spin-loop" then HUNG outright: a guest loop that calls no bridge
+ * has no boundary to check at, so it never yields and the scheduler never round-robins. The hard
+ * instruction count used to bound exactly that case. So there is a second, independent bound: a timer
+ * thread that calls uc_emu_stop() once the deadline passes.
+ *
+ * uc_emu_stop() from another thread is Unicorn's interruption path (it raises the stop request and
+ * exits the cpu loop), and uc_emu_start() clears any pending request when it begins, so a stop that
+ * lands just after a slice ended cannot truncate the next one.
+ */
+#define SLICE_CHECK_MASK 0xFFu
+static volatile uint64_t g_slice_deadline_ns = 0;   /* 0 => no preemption armed */
+static uc_engine *volatile g_slice_uc = 0;
+/* 1 while a callback whose side effects MUST NOT REPEAT is mid-flight.
+ *
+ * The async timer must never stop inside one of these, because uc_emu_stop makes a UC_HOOK_CODE
+ * callback RE-FIRE at the same address on resume (proven by standalone test), and re-running a
+ * non-idempotent callback is what produced St9bad_alloc (double malloc) and then
+ * gr::GraphicsException (a doubled real JNI/ART call).
+ *
+ * Guarding the stub hook alone was NOT enough -- that was the bug in the previous attempt. THREE
+ * callback families have side effects that must not repeat:
+ *     stub_cb       bridged libc/GL/file calls   (malloc, free, fopen, glTexImage2D, ...)
+ *     jni_hook_cb   REAL JNI calls into ART      (jni_passthrough.c) <- the GraphicsException
+ *     h_svc         guest syscalls               (UC_HOOK_INTR)
+ *
+ * The ~27 neut_ and guard_ hooks in jni_entry.c are deliberately NOT guarded: each only reads
+ * registers and writes PC/R0/R2 with a value derived from the same inputs, so a re-fire recomputes
+ * the identical result. Checked individually rather than assumed.
+ *
+ * Non-static and unprefixed-by-accident is avoided: exported under an abshim_ name because
+ * jni_passthrough.c needs it too. */
+volatile int abshim_in_nonidem_cb = 0;   /* DEPTH, not a boolean: these callbacks nest */
+static uint64_t slice_now_ns(void){
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+    return (uint64_t)ts.tv_sec*1000000000ull + (uint64_t)ts.tv_nsec;
+}
+/* Backstop for guest code that reaches no bridge. Polls rather than condvar-waits: one wakeup every
+ * 2 ms is free next to an emulator saturating a core, and polling has no missed-wakeup edge cases. */
+static void *slice_timer_thread(void *arg){
+    (void)arg;
+    for(;;){
+        struct timespec ns={0, 2*1000*1000};   /* 2 ms */
+        nanosleep(&ns,0);
+        /* NEVER interrupt a stub callback. An async stop landing inside one would leave the stub
+         * instruction unretired with the bridge's side effect already applied, and the hook would
+         * re-fire and repeat it -- the same double-execution that produced St9bad_alloc. The bridge
+         * path has its own, precise preemption point (slice_check), so skipping here loses nothing;
+         * the timer exists only for guest code that reaches no bridge at all. */
+        if(abshim_in_nonidem_cb) continue;
+        uint64_t dl = g_slice_deadline_ns;
+        uc_engine *uc = g_slice_uc;
+        if(dl && uc && slice_now_ns() >= dl){ g_slice_deadline_ns = 0; uc_emu_stop(uc); }
+    }
+    return 0;
+}
+void dispatch_arm_slice(uc_engine *uc, uint64_t ns_from_now){
+    static int started = 0;
+    if(!ns_from_now){ g_slice_deadline_ns = 0; return; }
+    g_slice_uc = uc;
+    g_slice_deadline_ns = slice_now_ns() + ns_from_now;
+    if(!started){ started = 1; pthread_t t;
+        if(pthread_create(&t,0,slice_timer_thread,0)==0) pthread_detach(t); }
+}
+/* Called from the stub hook. Same host thread that called uc_emu_start, so no cross-thread race.
+ *
+ * RETURNS 1 WHEN THE SLICE ENDED, AND THE CALLER MUST THEN RETURN WITHOUT DOING THE BRIDGE WORK.
+ * This is not a style preference, it is the whole correctness argument, and getting it wrong cost a
+ * playthrough with a guest OOM:
+ *
+ *   uc_emu_stop() does NOT return from the hook -- it raises a stop request and the callback keeps
+ *   running. The first version called it and then fell through into the bridge dispatch, so the
+ *   bridge RAN. Unicorn then stopped with the stub instruction not yet retired, and on resume the
+ *   SAME hook fired again at the SAME address and ran the bridge A SECOND TIME. Proven with a
+ *   standalone Unicorn test: a hook at 0x1004 fires, stop, resume -> it fires at 0x1004 again while
+ *   each instruction still retires exactly once.
+ *
+ *   The shim's stub callback IS the bridge implementation, and those bridges are not idempotent --
+ *   malloc/free above all. One leaked allocation per preempted call is enough: the emulator
+ *   playthrough ended in THROW St9bad_alloc with a changed exception pattern
+ *   (1 IOException from a different site instead of the baseline's 15) rather than the baseline's
+ *   clean run.
+ *
+ * Preempting BEFORE the bridge runs is therefore the correct point: the guest instruction has not
+ * retired, no side effect has happened, and the re-fire on resume performs the call exactly once.
+ */
+static inline int slice_check(uc_engine *uc){
+    if(!g_slice_deadline_ns) return 0;
+    static unsigned tick = 0;
+    if(((++tick) & SLICE_CHECK_MASK) != 0u) return 0;
+    if(slice_now_ns() < g_slice_deadline_ns) return 0;
+    g_slice_deadline_ns = 0;
+    uc_emu_stop(uc);
+    return 1;                      /* caller MUST return immediately; see above */
+}
+
 #if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
 /* Time spent inside the NATIVE BRIDGES — every stub, i.e. GL + asset + libc + file + the bent
  * table. This is the second half of the frame-time split. The first measurement established that
@@ -596,15 +712,31 @@ static uint64_t stub_now_ns(void){
 static void stub_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *user);
 static void stub_cb(uc_engine *uc, uint64_t address, uint32_t size, void *user){
     if (g_stub_depth++){ stub_cb_inner(uc,address,size,user); g_stub_depth--; return; }
+    /* Slice end is decided HERE, before any bridge side effect, and the flag is set/cleared AROUND the
+     * body -- never inside it. The body has ~100 early-return fast paths, so a flag set at its top
+     * would never be cleared; the first version did exactly that and would have disabled the timer
+     * permanently after the first bridge call. A wrapper is the only place that covers every exit. */
+    if (slice_check(uc)) { g_stub_depth--; return; }
     uint64_t _s0 = stub_now_ns();
+    abshim_in_nonidem_cb++;
     stub_cb_inner(uc,address,size,user);
+    abshim_in_nonidem_cb--;
     g_stub_ns += stub_now_ns() - _s0; g_stub_n++; g_stub_depth--;
 }
 static void stub_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *user){
 #else
+/* Release has no timing wrapper, so add a minimal one purely for the slice guard: decide the slice
+ * before any bridge side effect, and bracket the body so g_in_stub is cleared on every exit path. */
+static void stub_cb_body(uc_engine *uc, uint64_t address, uint32_t size, void *user);
 static void stub_cb(uc_engine *uc, uint64_t address, uint32_t size, void *user){
+    if (slice_check(uc)) return;
+    abshim_in_nonidem_cb++;
+    stub_cb_body(uc, address, size, user);
+    abshim_in_nonidem_cb--;
+}
+static void stub_cb_body(uc_engine *uc, uint64_t address, uint32_t size, void *user){
 #endif
-    (void)uc;(void)size;
+    (void)size;
     dispatch_t *d=(dispatch_t*)user;
     uint32_t slot=((uint32_t)address - RG_STUB) >> 2;
     /* watchdog op-marker: mark bridge calls CHEAPLY (no per-call loader_stub_name lookup — that
@@ -672,7 +804,16 @@ cache:
  * few proc/time queries) MUST be emulated or they abort the enclosing JNI call. Observed:
  * sigaltstack(186) fires inside the scene ctor => nativeInit aborts => nothing renders.
  * Unemulated numbers are logged once and return -ENOSYS so the next gap is visible. */
+/* WRAPPER, not an inline set/clear at the top of the body. Setting a flag at a function's entry and
+ * hoping to clear it at "the end" is exactly the defect that made the previous attempt's guard
+ * permanently sticky: bodies here have many early returns. A wrapper covers every exit path. */
+static void h_svc_body(uc_engine*uc, uint32_t intno, void*user);
 static void h_svc(uc_engine*uc, uint32_t intno, void*user){
+    abshim_in_nonidem_cb++;      /* a guest syscall must not be re-executed */
+    h_svc_body(uc, intno, user);
+    abshim_in_nonidem_cb--;
+}
+static void h_svc_body(uc_engine*uc, uint32_t intno, void*user){
     dispatch_t*d=(dispatch_t*)user; cpu_t*c=d->cpu;
     uint32_t nr=0,a0=0,a1=0,a2=0;
     uc_reg_read(uc,UC_ARM_REG_R7,&nr);

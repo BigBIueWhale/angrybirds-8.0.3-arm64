@@ -508,7 +508,21 @@ capture must show `black-left=0px`.
 > | preempt-before-bridge, run 3 | **50 s** |
 > | **baseline, contemporaneous, reverted source** | **565 s** |
 >
-> **11–14× faster to first playable.** Cross-checked independently against frame rate: baseline 1201
+> **A THIRD, CLEANER DERIVATION — and it refines the number down.** `startup_report()` (new, in
+> `lib_metrics.sh`) computes time-to-`frame[601]` from the abshim log's **own timestamps**, so it measures
+> only shim-attributable time and excludes Android boot/install:
+>
+> | | shim-log time to playable |
+> |---|---|
+> | baseline | **300 s** |
+> | fix run 1 | **39 s** → **7.7×** |
+> | fix run 3 | **49 s** → **6.1×** |
+>
+> So the honest figure for what this change actually affects is **~6–8×**; the 11–14× from the script's
+> `card at ~Ns` line includes emulator boot and install, which the change does not touch. Both are large,
+> and the smaller one is the one to quote.
+>
+> **11–14× faster to first playable** (script wall-clock). Cross-checked independently against frame rate: baseline 1201
 > frames over ~665 s ≈ **1.8 fps**; fix 3301 frames over ~140 s ≈ **23.6 fps** — ~13×, which agrees with
 > the boot figure derived a completely different way. It also explains R58's unexplained "fresh install
 > takes ~10 minutes to become playable": that *is* the 565 s, and this fix would cut it to under a minute.

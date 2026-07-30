@@ -124,6 +124,42 @@ waf_report() {                 # $1 = abshim log
 # Report-only. Saturation is not a fault — [S2] do_call saturating at 24 is normal tracing — it just
 # means that particular number is a FLOOR. Printing which ones they are costs nothing and removes the
 # need for anyone to remember.
+# Time from the shim's first log line to the render loop reaching frame[601] -- i.e. how long the user
+# waits before the game is actually playable.
+#
+# WHY THIS IS A FIRST-CLASS METRIC. The single largest performance result in this project was invisible
+# to every existing check and I only found it by grepping a script's incidental "card at ~Ns" line: the
+# baseline takes ~565 s to reach the tutorial card while a modified scheduler takes ~40 s. Frame COUNTS
+# hid it completely, because a run that spends nine minutes booting renders few frames in that time, so
+# comparing total frames between runs of different durations understated a 11-14x effect as 2.75x.
+#
+# Derived from the abshim log's own timestamps, so it works on any capture without the driving script
+# having to cooperate. Prints "n/a" rather than a wrong number when the log lacks either endpoint.
+startup_report() {            # $1 = abshim log
+    local log="$1"
+    [ -s "$log" ] || { echo "n/a (no log)"; return 0; }
+    python3 - "$log" <<'PYEOF'
+import sys, re, datetime
+first = None; at601 = None
+for ln in open(sys.argv[1], encoding='utf-8', errors='replace'):
+    m = re.match(r'(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)\.(\d\d\d)', ln)
+    if not m:
+        continue
+    mo, d, h, mi, sec, ms = (int(x) for x in m.groups())
+    t = datetime.datetime(2000, mo, d, h, mi, sec, ms * 1000)
+    if first is None or t < first:
+        first = t
+    if at601 is None and re.search(r'frame\[601\]', ln):
+        at601 = t
+if first is None:
+    print("n/a (no timestamps)")
+elif at601 is None:
+    print("n/a (never reached frame[601])")
+else:
+    print(f"{(at601-first).total_seconds():.0f}s to frame[601] (playable)")
+PYEOF
+}
+
 saturated_report() {           # $1 = abshim log
     local py; py="$(dirname "${BASH_SOURCE[0]}")/capped_counts.py"
     [ -f "$py" ] && command -v python3 >/dev/null 2>&1 || { echo "not checked (capped_counts.py or python3 unavailable)"; return 0; }

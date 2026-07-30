@@ -264,7 +264,14 @@ static uc_err run_loop(sched *S, gthread *gt){
         /* The GEL stays HELD across uc_emu_start -> exactly one host thread ever drives
          * the shared engine. It is released only inside idle_wait_pick (cond_wait), when
          * this thread is blocked with nothing runnable and yields to another host thread. */
-        e=uc_emu_start(S->cpu->uc, begin, RG_RET, 0, SCHED_QUANTUM);
+        /* count=0, NOT SCHED_QUANTUM: a non-zero count makes Unicorn instrument every instruction
+         * and lose TCG block chaining, measured at x1.56 on identical work. The slice is bounded by
+         * wall clock at a bridge boundary instead -- see dispatch_arm_slice(). Armed immediately
+         * before and disarmed immediately after, on this same host thread, so a stale deadline can
+         * never truncate the following slice. */
+        dispatch_arm_slice(S->cpu->uc, SCHED_SLICE_NS);
+        e=uc_emu_start(S->cpu->uc, begin, RG_RET, 0, 0);
+        dispatch_arm_slice(S->cpu->uc, 0);
         if(e!=UC_ERR_OK){ S->fatal=1; snprintf(S->fatal_msg,sizeof S->fatal_msg,"uc_err %d",e);
             { uint32_t pc=rd(S,UC_ARM_REG_PC),sp=rd(S,UC_ARM_REG_SP),lr=rd(S,UC_ARM_REG_LR);
                 SLOG("[FAULT] e=%d(%s) pc=engine+0x%x sp=0x%x lr=+0x%x gt=%u begin=0x%x",
