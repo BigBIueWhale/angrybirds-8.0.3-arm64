@@ -455,6 +455,44 @@ on the validated build with its save intact (`HIGHSCORE 45500` reloaded). The pa
 `resolver_throttle_attempt.patch` for a retry that (a) fixes the counter, (b) throttles only a genuine
 spin rather than any resolver read, (c) bounds the added delay, and (d) is measured on x86 first.
 
+### R60. How NOT to get a framework attr ID offline — four dead ends, and the route they point to
+
+R57's fix needs `android:layoutInDisplayCutoutMode` in the manifest, and an AXML insertion needs that
+attribute's **resource ID**, because Android resolves a framework attribute through
+`resourceMap[nameIndex]`. Guessing a constant is not acceptable, so I went looking for an authoritative
+offline source. All four attempts failed, and the failures are worth recording so nobody repeats them:
+
+1. **The phone's own framework — `framework-res.apk` (API 36, pulled over USB, 38 MB).** Its
+   `resources.arsc` is 28.9 MB and contains the string `layoutInDisplayCutoutMode` **zero** times, in
+   either UTF-8 or UTF-16. Modern framework-res strips resource *names*; the IDs are compiled into
+   callers. A parser found the `android` package (id=1, 19,710 keyStrings) and the name simply is not
+   there. **The device cannot tell you an attr name → ID mapping.**
+2. **`aapt` / `aapt2` / `apktool` in `ab-port`.** None present — the image has `zipalign`, `apksigner`,
+   `javap`, `unzip`, `python3` and nothing else from build-tools.
+3. **`android.jar` (which carries `R$attr` constants that `javap` could dump).** Absent from `ab-port`
+   and from every `ab-emu*` image — those are system-image-only SDK installs with no `platforms/` tree.
+4. **On-device APKs that already declare it.** Scanned 14 (camera, YouTube, Settings, GMS, gallery,
+   video, notes, games, launchers): **none** declares `android:layoutInDisplayCutoutMode` in its
+   manifest. That is not bad luck — real apps set **`windowLayoutInDisplayCutoutMode` in a theme/style**,
+   not the manifest attribute. So manifest-scanning was the wrong source from the start.
+
+**Where that leaves the fix, and it is a better place.** The dead ends all stem from needing the raw
+constant — which is only necessary because I was planning to hand-write the AXML insertion. A real
+manifest tool (`aapt2`, or `apktool`, a single jar) **resolves the attribute name to its ID itself**, and
+also handles the string-pool insertion and resource-map renumbering that make hand-rolling risky. So the
+right move is to put such a tool into the toolchain image as a committed input — exactly how Unicorn is
+already vendored — rather than to reimplement AXML surgery.
+
+That keeps the build offline (`--network none`) with the tool as a pre-staged input, keeps
+reproducibility (same input → same output), and removes the need to know the constant at all. The
+trade-off to accept consciously: a re-encoded manifest will not be byte-identical to Rovio's original,
+only semantically equivalent — which is a real change to the "payloads are byte-for-byte authentic"
+claim's *scope* (it covers the payload `.so`s, not the manifest, which is already rewritten by
+`depermission.py` and friends).
+
+Verification stays objective either way: `mAppBounds` must become `Rect(0, 0 - 2340, 1080)` and a
+capture must show `black-left=0px`.
+
 ### R59. The 1.56× is real and buys 2.75× — and it is reverted, because it is not yet correct
 
 R56 found that `run_loop` bounded every slice by passing `SCHED_QUANTUM` as `uc_emu_start`'s **count**,
