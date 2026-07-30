@@ -570,6 +570,38 @@ Worse, committing it broke the repo's central invariant: the tree was building `
 the screenshot index and `verify_claims` all name `27548721a456ea99295469c3`. Restoring the three files
 to their state at `54214f0` rebuilds `27548721…` exactly, and `ALL CHECKED CLAIMS HOLD` again.
 
+**THE CONTEMPORANEOUS CONTROL SETTLED IT, AND THE ROOT CAUSE IS IDENTIFIED.** Re-running the reverted
+source on the same machine, same APK (`c5911a79`), while the arm64 suite ran alongside (load 3.69 on 24
+cores, so not confounded):
+
+```
+BASELINE control: all 125 ctors OK, frame[1201], h_fatal 0, St9bad_alloc 0,
+                  GraphicsException 0, win check: WIN CONFIRMED from pixels, DONE (FAIL=0)
+```
+
+Clean. So the environment is fine and **the fix genuinely introduced the `GraphicsException`** — not
+flakiness, not the container disruption. The revert was right.
+
+**Root cause: my `g_in_stub` guard covered only ONE of four callback families.** The proven hazard is
+that `uc_emu_stop` makes a `UC_HOOK_CODE` callback re-fire at the same address on resume. I guarded the
+stub hook and left exposed:
+
+| callback | what a re-fire would double-execute |
+|---|---|
+| `jni_hook_cb` (`UC_HOOK_CODE` over `RG_JNI`, `jni_passthrough.c:169`) | **a real JNI call into ART** — which is where GL/surface calls go. A doubled surface call is a very plausible `gr::GraphicsException`. |
+| `h_svc` (`UC_HOOK_INTR`, `dispatch.c:735`) | a guest syscall |
+| the ~27 `neut_*`/`guard_*` hooks in `jni_entry.c` | a neutralisation or guard action |
+
+The 2 ms timer thread can land inside any of them.
+
+**Design for the next attempt — remove the async stop entirely rather than guard 30 call sites.**
+Adaptive preemption: keep `count=0` plus the precise, already-correct bridge-boundary preemption for the
+common case (the engine makes tens of thousands of bridge calls per second, so slices end promptly); and
+when a slice *overruns* because the thread reached no bridge at all, have the scheduler use a **bounded
+count for that thread's next start only**. The pathological case then pays the 1.56× and nothing else
+does, and there is no asynchronous stop anywhere — so the re-fire hazard cannot exist. `[T3] non-yielding
+spin-loop` is exactly the case the fallback serves, so the test already covers it.
+
 **Preserved for the next attempt** so it starts from the measurements instead of repeating them:
 `port/validation/slice_preempt_attempt.patch`, plus the three run logs. What that attempt needs:
 a contemporaneous baseline control, the `GraphicsException` root-caused (not assumed to be a race), and
