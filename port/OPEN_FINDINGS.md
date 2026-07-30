@@ -745,7 +745,54 @@ R65. Median 1.72 s, max 7.45 s, Android delivering the tap in ~1 ms, no `shim_ca
 of my own proposed mechanisms falsified by probe-plus-control. Throughput and latency are different
 bottlenecks here and only the first has been improved.
 
-### R67. A tap makes the engine go IDLE, then it wakes in ~2.2 s bursts — that IS the latency
+### R68. Consolidation: R67's idle-burst state is a TRANSIENT; the steady state is one core saturated
+
+Two follow-up measurements on the same build and level force R67 back to a narrower claim.
+
+**1. The scheduler never idles after a tap.** Ran `[idlenap]` in exactly the state R67 describes — level
+loaded (`Tutorial_red_niko`), log cleared, tap injected, 25 s window:
+
+```
+idlenap=0   sched-dump=0   slowcall=0
+```
+
+`sched-dump` is the CONTROL and it is **also zero**, so `idle_wait_pick` was never entered at all. That
+does not mean "no long naps" — it means the question could not be asked. What it does establish is that
+the guest scheduler always had a runnable thread; it never sat waiting on a timer. **So the 2.2 s cycle is
+not the scheduler idling, and R63/R65's mechanism stays refuted rather than rehabilitated.**
+
+**2. The steady state is CPU-saturated, not idle.** Immediately afterwards, same level, app foreground:
+
+```
+CPU        510 jiffies / 5.1 s  = 100% of one core
+shim       24 log lines in 20 s, hot-stub memcmp at 1,572,864 calls  -> actively executing
+```
+
+R67 measured ~5% for eight consecutive samples after a tap, which was real — but it is a **transient**,
+not the resting state. The engine returns to saturating one core. R67's headline ("a tap makes the engine
+go idle") therefore overreaches: a tap can push it into a brief idle window, and it comes back.
+
+**Where that leaves your lag, stated only as far as the evidence goes:**
+
+| established | |
+|---|---|
+| Android delivers the tap in ~1 ms | the delay is entirely inside the app |
+| latency is a distribution: median 1.72 s, max 7.45 s | never quote a single draw |
+| no single `shim_call` exceeds 120 ms | the time is not inside one call |
+| the engine saturates ~100% of ONE core of eight during play | R56, re-confirmed here |
+| the guest scheduler does not idle-wait after a tap | `sched-dump=0` with a live app |
+
+**Best-supported reading:** latency ≈ one frame period, and the frame period is set by single-core
+emulation throughput — which is R56's original conclusion, reached again after two mechanisms
+(async-stop, idle-nap-under-BEL) were falsified and one (R67's idle burst) was narrowed to a transient.
+
+**That has a consequence I should state against my own earlier words.** I told the user the shipped 2.2×
+throughput improvement "does not fix the lag". On this reading it should *partially* help, because latency
+tracks frame period and frame period tracks throughput. The honest position is that it was never measured:
+the only device latency samples are from builds *before* the change. **Measuring the 8-sample distribution
+on `46c607f5…` is the outstanding task, and no claim either way should be made until it exists.**
+
+### R67. A tap makes the engine go IDLE, then it wakes in ~2.2 s bursts — NARROWED by R68 to a transient
 
 Profiled `/proc/<pid>/stat` (utime+stime) on-device across an injected tap, on the shipped build, app
 foreground on `Tutorial_red_niko`. Intervals **measured**, not assumed (mean 192 ms):
