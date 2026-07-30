@@ -37,7 +37,8 @@ DEX=/tmp/classes.dex; (cd /tmp && unzip -o -q "$IN" classes.dex 2>/dev/null || t
 [ -f "$DEX" ] && python3 /work/port/shim/gen_thunks.py "$ENGINE" "$DEX" > "$S/jni_thunks.gen.c" && echo "   regenerated $(grep -c JNIEXPORT "$S/jni_thunks.gen.c") thunks"
 MODS="cpu loader dispatch sched jni_passthrough jni_entry jni_thunks.gen jni_argbuild galloc elf32 ctype_tables marshal format utf handle_table fdtable bridge_gl bridge_asset bridge_libc bridge_file"
 SRCS=""; for m in $MODS; do SRCS="$SRCS $S/$m.c"; done
-$CC -shared -fPIC -O2 -Wno-unused -I/opt/unicorn/include -I"$S" $SRCS \
+[ -n "${ABSHIM_EXTRA_CFLAGS:-}" ] && echo "  !! ABSHIM_EXTRA_CFLAGS=${ABSHIM_EXTRA_CFLAGS} -- this is an EXPERIMENT build, not the reproducible one"
+$CC -shared -fPIC -O2 ${ABSHIM_EXTRA_CFLAGS:-} -Wno-unused -I/opt/unicorn/include -I"$S" $SRCS \
   -Wl,--start-group $UNI -Wl,--end-group -llog -landroid -lGLESv2 -lEGL -lm -ldl -Wl,-z,max-page-size=16384 -o /tmp/shim_x86.so
 echo "   arch: $(readelf -h /tmp/shim_x86.so 2>/dev/null | sed -n 's/.*Machine: *//p') (must be X86-64)"
 echo "   exports: $(readelf --dyn-syms -W /tmp/shim_x86.so 2>/dev/null | grep -cE ' (Java_com_rovio_|JNI_OnLoad$)') JNI entry points"

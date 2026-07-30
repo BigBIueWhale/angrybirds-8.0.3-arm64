@@ -1,5 +1,5 @@
 diff --git a/port/shim/src/dispatch.c b/port/shim/src/dispatch.c
-index c31c597..3a9acf4 100644
+index c31c597..92a37fe 100644
 --- a/port/shim/src/dispatch.c
 +++ b/port/shim/src/dispatch.c
 @@ -4,6 +4,7 @@
@@ -10,7 +10,7 @@ index c31c597..3a9acf4 100644
  #include "regions.h"
  #include "marshal.h"
  #include "format.h"
-@@ -561,6 +562,102 @@ static void br_ret(dispatch_t*d, const bent*b, uint64_t rv){
+@@ -561,6 +562,128 @@ static void br_ret(dispatch_t*d, const bent*b, uint64_t rv){
  /* hang-watchdog op marker: STRONG def in jni_entry.c (device); this WEAK no-op keeps the host
   * test builds (which link dispatch.c but not jni_entry.c) resolving — overridden on device. */
  __attribute__((weak)) void abshim_mark_op(const char *bridge, int slot){ (void)bridge; (void)slot; }
@@ -46,7 +46,26 @@ index c31c597..3a9acf4 100644
 +#define SLICE_CHECK_MASK 0xFFu
 +static volatile uint64_t g_slice_deadline_ns = 0;   /* 0 => no preemption armed */
 +static uc_engine *volatile g_slice_uc = 0;
-+static volatile int g_in_stub = 0;      /* 1 while a bridge callback is mid-flight */
++/* 1 while a callback whose side effects MUST NOT REPEAT is mid-flight.
++ *
++ * The async timer must never stop inside one of these, because uc_emu_stop makes a UC_HOOK_CODE
++ * callback RE-FIRE at the same address on resume (proven by standalone test), and re-running a
++ * non-idempotent callback is what produced St9bad_alloc (double malloc) and then
++ * gr::GraphicsException (a doubled real JNI/ART call).
++ *
++ * Guarding the stub hook alone was NOT enough -- that was the bug in the previous attempt. THREE
++ * callback families have side effects that must not repeat:
++ *     stub_cb       bridged libc/GL/file calls   (malloc, free, fopen, glTexImage2D, ...)
++ *     jni_hook_cb   REAL JNI calls into ART      (jni_passthrough.c) <- the GraphicsException
++ *     h_svc         guest syscalls               (UC_HOOK_INTR)
++ *
++ * The ~27 neut_ and guard_ hooks in jni_entry.c are deliberately NOT guarded: each only reads
++ * registers and writes PC/R0/R2 with a value derived from the same inputs, so a re-fire recomputes
++ * the identical result. Checked individually rather than assumed.
++ *
++ * Non-static and unprefixed-by-accident is avoided: exported under an abshim_ name because
++ * jni_passthrough.c needs it too. */
++volatile int abshim_in_nonidem_cb = 0;   /* DEPTH, not a boolean: these callbacks nest */
 +static uint64_t slice_now_ns(void){
 +    struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
 +    return (uint64_t)ts.tv_sec*1000000000ull + (uint64_t)ts.tv_nsec;
@@ -63,7 +82,14 @@ index c31c597..3a9acf4 100644
 +         * re-fire and repeat it -- the same double-execution that produced St9bad_alloc. The bridge
 +         * path has its own, precise preemption point (slice_check), so skipping here loses nothing;
 +         * the timer exists only for guest code that reaches no bridge at all. */
-+        if(g_in_stub) continue;
++        if(abshim_in_nonidem_cb) continue;
++        /* EXPERIMENT (ABSHIM_NO_SLICE_TIMER): isolate the async stop as cause. With this defined the
++         * timer never stops anything, so ONLY the bridge-boundary preemption (which is provably safe --
++         * it returns before any side effect) remains. [T3] will hang under this, which is expected and
++         * is exactly why the timer exists; the point is to attribute the playthrough fault. */
++#ifdef ABSHIM_NO_SLICE_TIMER
++        continue;
++#endif
 +        uint64_t dl = g_slice_deadline_ns;
 +        uc_engine *uc = g_slice_uc;
 +        if(dl && uc && slice_now_ns() >= dl){ g_slice_deadline_ns = 0; uc_emu_stop(uc); }
@@ -113,7 +139,7 @@ index c31c597..3a9acf4 100644
  #if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
  /* Time spent inside the NATIVE BRIDGES — every stub, i.e. GL + asset + libc + file + the bent
   * table. This is the second half of the frame-time split. The first measurement established that
-@@ -596,15 +693,31 @@ static uint64_t stub_now_ns(void){
+@@ -596,15 +719,31 @@ static uint64_t stub_now_ns(void){
  static void stub_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *user);
  static void stub_cb(uc_engine *uc, uint64_t address, uint32_t size, void *user){
      if (g_stub_depth++){ stub_cb_inner(uc,address,size,user); g_stub_depth--; return; }
@@ -123,9 +149,9 @@ index c31c597..3a9acf4 100644
 +     * permanently after the first bridge call. A wrapper is the only place that covers every exit. */
 +    if (slice_check(uc)) { g_stub_depth--; return; }
      uint64_t _s0 = stub_now_ns();
-+    g_in_stub = 1;
++    abshim_in_nonidem_cb++;
      stub_cb_inner(uc,address,size,user);
-+    g_in_stub = 0;
++    abshim_in_nonidem_cb--;
      g_stub_ns += stub_now_ns() - _s0; g_stub_n++; g_stub_depth--;
  }
  static void stub_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *user){
@@ -135,9 +161,9 @@ index c31c597..3a9acf4 100644
 +static void stub_cb_body(uc_engine *uc, uint64_t address, uint32_t size, void *user);
  static void stub_cb(uc_engine *uc, uint64_t address, uint32_t size, void *user){
 +    if (slice_check(uc)) return;
-+    g_in_stub = 1;
++    abshim_in_nonidem_cb++;
 +    stub_cb_body(uc, address, size, user);
-+    g_in_stub = 0;
++    abshim_in_nonidem_cb--;
 +}
 +static void stub_cb_body(uc_engine *uc, uint64_t address, uint32_t size, void *user){
  #endif
@@ -146,6 +172,65 @@ index c31c597..3a9acf4 100644
      dispatch_t *d=(dispatch_t*)user;
      uint32_t slot=((uint32_t)address - RG_STUB) >> 2;
      /* watchdog op-marker: mark bridge calls CHEAPLY (no per-call loader_stub_name lookup — that
+@@ -672,7 +811,16 @@ cache:
+  * few proc/time queries) MUST be emulated or they abort the enclosing JNI call. Observed:
+  * sigaltstack(186) fires inside the scene ctor => nativeInit aborts => nothing renders.
+  * Unemulated numbers are logged once and return -ENOSYS so the next gap is visible. */
++/* WRAPPER, not an inline set/clear at the top of the body. Setting a flag at a function's entry and
++ * hoping to clear it at "the end" is exactly the defect that made the previous attempt's guard
++ * permanently sticky: bodies here have many early returns. A wrapper covers every exit path. */
++static void h_svc_body(uc_engine*uc, uint32_t intno, void*user);
+ static void h_svc(uc_engine*uc, uint32_t intno, void*user){
++    abshim_in_nonidem_cb++;      /* a guest syscall must not be re-executed */
++    h_svc_body(uc, intno, user);
++    abshim_in_nonidem_cb--;
++}
++static void h_svc_body(uc_engine*uc, uint32_t intno, void*user){
+     dispatch_t*d=(dispatch_t*)user; cpu_t*c=d->cpu;
+     uint32_t nr=0,a0=0,a1=0,a2=0;
+     uc_reg_read(uc,UC_ARM_REG_R7,&nr);
+diff --git a/port/shim/src/jni_passthrough.c b/port/shim/src/jni_passthrough.c
+index e54b14a..52c2c3b 100644
+--- a/port/shim/src/jni_passthrough.c
++++ b/port/shim/src/jni_passthrough.c
+@@ -118,6 +118,13 @@ static void jni_trace(jni_state*J, uint32_t slot){
+     else if((slot>=34&&slot<=63)||(slot>=114&&slot<=143)) fprintf(stderr,"[jni] Call slot %u\n",slot);
+     else if((slot>=95&&slot<=112)||(slot>=145&&slot<=162)) fprintf(stderr,"[jni] Get/SetField slot %u\n",slot);
+ }
++/* This callback makes REAL JNI calls into ART, so the slice timer must never stop inside it:
++ * uc_emu_stop makes a UC_HOOK_CODE callback RE-FIRE at the same address on resume, and a doubled
++ * ART call is what produced gr::GraphicsException in the previous attempt (a GL/surface call run
++ * twice). Declared OUTSIDE the conditional below because BOTH build variants need the guard -- in the
++ * previous attempt the guard landed in the profiling-only branch and the shipping build had none. */
++extern volatile int abshim_in_nonidem_cb;
++
+ #if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
+ /* Time spent in guest->JVM JNI passthrough. This arrives on its own UC_HOOK_CODE at RG_JNI, NOT
+  * through dispatch.c's stub hook, so the bridge timer there cannot see it. Without this the JNI
+@@ -135,13 +142,23 @@ static uint64_t jnip_now_ns(void){
+ static void jni_hook_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *ud);
+ static void jni_hook_cb(uc_engine *uc, uint64_t address, uint32_t size, void *ud){
+     if (g_jnip_depth++){ jni_hook_cb_inner(uc,address,size,ud); g_jnip_depth--; return; }
++    abshim_in_nonidem_cb++;
+     uint64_t _j0 = jnip_now_ns();
+     jni_hook_cb_inner(uc,address,size,ud);
+     g_jnip_ns += jnip_now_ns() - _j0; g_jnip_n++; g_jnip_depth--;
++    abshim_in_nonidem_cb--;
+ }
+ static void jni_hook_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *ud){
+ #else
++/* Release has no timing wrapper, so add a minimal one purely for the guard, and bracket the body so the
++ * depth is decremented on every exit path. */
++static void jni_hook_cb_body(uc_engine *uc, uint64_t address, uint32_t size, void *ud);
+ static void jni_hook_cb(uc_engine *uc, uint64_t address, uint32_t size, void *ud){
++    abshim_in_nonidem_cb++;
++    jni_hook_cb_body(uc, address, size, ud);
++    abshim_in_nonidem_cb--;
++}
++static void jni_hook_cb_body(uc_engine *uc, uint64_t address, uint32_t size, void *ud){
+ #endif
+     (void)uc;(void)size;
+     jni_state *J=(jni_state*)ud;
 diff --git a/port/shim/src/sched.c b/port/shim/src/sched.c
 index ade28a8..96f43f4 100644
 --- a/port/shim/src/sched.c

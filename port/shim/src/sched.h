@@ -35,13 +35,6 @@
 
 #define SCHED_MAX_THREADS 64
 #define SCHED_MAX_KEYS    128
-/* SCHED_SLICE_NS replaces SCHED_QUANTUM as the actual preemption bound (see dispatch_arm_slice()).
- * 16 ms is chosen to match what the old 200000-instruction count worked out to in practice: at the
- * measured on-device rate of ~11 Minsn/s, 200000 insns is ~18 ms. So responsiveness is unchanged
- * while the x1.56 instruction-counting penalty is dropped. SCHED_QUANTUM is kept because
- * sched_once()/nested starts still use a bounded count, where the cost is irrelevant. */
-#define SCHED_SLICE_NS    16000000ull      /* 16 ms wall-clock slice, bridge-boundary preemption */
-void dispatch_arm_slice(uc_engine *uc, uint64_t ns_from_now);   /* dispatch.c */
 #define SCHED_QUANTUM     200000u          /* guest insns per time-slice (preemption). Kept at 200000: a 20M test
                                             * showed the gameplay fatal is DETERMINISTIC (same THEME_23 level-load
                                             * spot, pc=0x10000050, regardless of quantum) — NOT a preemption race, so

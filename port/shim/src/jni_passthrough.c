@@ -118,13 +118,6 @@ static void jni_trace(jni_state*J, uint32_t slot){
     else if((slot>=34&&slot<=63)||(slot>=114&&slot<=143)) fprintf(stderr,"[jni] Call slot %u\n",slot);
     else if((slot>=95&&slot<=112)||(slot>=145&&slot<=162)) fprintf(stderr,"[jni] Get/SetField slot %u\n",slot);
 }
-/* This callback makes REAL JNI calls into ART, so the slice timer must never stop inside it:
- * uc_emu_stop makes a UC_HOOK_CODE callback RE-FIRE at the same address on resume, and a doubled
- * ART call is what produced gr::GraphicsException in the previous attempt (a GL/surface call run
- * twice). Declared OUTSIDE the conditional below because BOTH build variants need the guard -- in the
- * previous attempt the guard landed in the profiling-only branch and the shipping build had none. */
-extern volatile int abshim_in_nonidem_cb;
-
 #if !defined(ABSHIM_RELEASE) || defined(ABSHIM_PERF)
 /* Time spent in guest->JVM JNI passthrough. This arrives on its own UC_HOOK_CODE at RG_JNI, NOT
  * through dispatch.c's stub hook, so the bridge timer there cannot see it. Without this the JNI
@@ -142,23 +135,13 @@ static uint64_t jnip_now_ns(void){
 static void jni_hook_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *ud);
 static void jni_hook_cb(uc_engine *uc, uint64_t address, uint32_t size, void *ud){
     if (g_jnip_depth++){ jni_hook_cb_inner(uc,address,size,ud); g_jnip_depth--; return; }
-    abshim_in_nonidem_cb++;
     uint64_t _j0 = jnip_now_ns();
     jni_hook_cb_inner(uc,address,size,ud);
     g_jnip_ns += jnip_now_ns() - _j0; g_jnip_n++; g_jnip_depth--;
-    abshim_in_nonidem_cb--;
 }
 static void jni_hook_cb_inner(uc_engine *uc, uint64_t address, uint32_t size, void *ud){
 #else
-/* Release has no timing wrapper, so add a minimal one purely for the guard, and bracket the body so the
- * depth is decremented on every exit path. */
-static void jni_hook_cb_body(uc_engine *uc, uint64_t address, uint32_t size, void *ud);
 static void jni_hook_cb(uc_engine *uc, uint64_t address, uint32_t size, void *ud){
-    abshim_in_nonidem_cb++;
-    jni_hook_cb_body(uc, address, size, ud);
-    abshim_in_nonidem_cb--;
-}
-static void jni_hook_cb_body(uc_engine *uc, uint64_t address, uint32_t size, void *ud){
 #endif
     (void)uc;(void)size;
     jni_state *J=(jni_state*)ud;

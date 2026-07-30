@@ -1042,6 +1042,33 @@ else
   ok "all $RCN committed logs are single captures (plus 1 pinned known-recapture, see R50)"
 fi
 
+# ---- the shim SOURCE still produces the documented artifact ---------------------------------------
+# THE GAP THIS CLOSES, found the hard way and twice in one session. Every other check here validates
+# the ARTIFACT in out/ against the documented hash. None of them can notice that the SOURCE has since
+# changed, so `git add -A` while carrying unproven work-in-progress silently committed a modified
+# scheduler and this script still printed ALL CHECKED CLAIMS HOLD -- because out/ still held the old,
+# correct APK. The tree was building bfe4ea0a while every document said 27548721.
+#
+# A full rebuild would catch it but costs minutes and this script runs constantly. A manifest of the
+# shim sources is exact, costs milliseconds, and fails in the one direction that matters: if the code
+# that produces the deliverable has moved, say so.
+#
+# When a shim change is INTENDED: rebuild, confirm the new hash, update the documented hash everywhere,
+# then regenerate this manifest in the same commit. The manifest is not a lock, it is a tripwire.
+SRCMAN=port/validation/shim_sources.sha256
+if [ ! -f "$SRCMAN" ]; then
+  bad "the shim source manifest $SRCMAN is missing — source drift can no longer be detected"
+else
+  ACTUAL=$( cd port/shim/src && sha256sum *.c *.h 2>/dev/null | grep -v " jni_thunks.gen.c$" | LC_ALL=C sort -k2 )
+  if [ "$ACTUAL" = "$(cat "$SRCMAN")" ]; then
+    ok "the shim source is byte-identical to the state that built the documented artifact ($(grep -ac . "$SRCMAN") files)"
+  else
+    DRIFT=$(diff <(printf '%s\n' "$ACTUAL") "$SRCMAN" 2>/dev/null | grep -acE '^[<>]')
+    bad "the shim source has DRIFTED from the documented artifact ($DRIFT differing line(s)) — a rebuild would not produce 27548721…; either rebuild+update every documented hash and regenerate $SRCMAN, or revert"
+    printf '%s\n' "$ACTUAL" | diff - "$SRCMAN" 2>/dev/null | grep -E '^[<>]' | head -6 | sed 's/^/           /'
+  fi
+fi
+
 [ "${CLEANUP_ORIG:-0}" = "1" ] && rm -f "$ORIG"
 echo
 if [ "$FAIL" = "0" ]; then
