@@ -745,6 +745,38 @@ R65. Median 1.72 s, max 7.45 s, Android delivering the tap in ~1 ms, no `shim_ca
 of my own proposed mechanisms falsified by probe-plus-control. Throughput and latency are different
 bottlenecks here and only the first has been improved.
 
+### R69. MEASURED: 2.2× throughput leaves interaction latency UNCHANGED — latency is not throughput-bound
+
+The outstanding task from R68, done. Same device, same level, same 8-sample protocol, both builds:
+
+| | median | min | max | mean |
+|---|---|---|---|---|
+| pre-change (9.57 fps play-phase) | **1.77 s** | 0.79 | 7.45 | 2.43 |
+| post-change (21.26 fps play-phase) | **1.79 s** | 0.83 | 3.41 | 2.09 |
+
+**The median did not move.** 1.77 → 1.79 s across a 2.2× throughput improvement is indistinguishable.
+The max and mean are lower, but with n=8 on a heavy-tailed distribution a single tail draw dominates
+those, so the tail cannot be claimed as improved either.
+
+**This settles a flip-flop, against my own most recent position.** I first told the user the shipped
+change "does not fix the lag"; R68 then argued it should *partially* help, because latency ≈ frame period
+and frame period tracks throughput. **The measurement says the first statement was right and R68's
+reasoning was wrong.** Latency and throughput are decoupled here.
+
+**What that rules out, which is the value of a negative result:** every "make the emulator faster" avenue
+— the remaining 1.56× from preemption, the 6.3× to the vsync cap, a box64-style recompiler — would leave
+your median interaction latency essentially where it is. The lag is a **fixed-duration cost that does not
+scale with emulation speed**: a polling interval, a framework-side cadence, or a wait whose length is set
+by something other than how fast guest instructions retire.
+
+**Consistent with every other measurement:** Android delivers the tap in ~1 ms; no single `shim_call`
+exceeds 120 ms; the guest scheduler never idle-waits after a tap (`sched-dump=0` with a live control); the
+engine saturates one core. A fixed ~1.8 s cost that is none of those things is what remains.
+
+**Method note:** measured on the diagnostic variant, which is the shipped code plus two `clock_gettime`
+calls per JNI entry — ~50 ns against a 1.8 s latency, so it cannot account for the result. Both arms used
+the identical screenshot-diff protocol, and the pre-change arm is R62's.
+
 ### R68. Consolidation: R67's idle-burst state is a TRANSIENT; the steady state is one core saturated
 
 Two follow-up measurements on the same build and level force R67 back to a narrower claim.
