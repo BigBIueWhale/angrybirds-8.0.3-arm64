@@ -1007,12 +1007,15 @@ IDX=reports/shots/README.md
 if [ ! -f "$IDX" ]; then bad "the screenshot index $IDX is missing"
 else
   UNLISTED=""; GHOST=""
-  for p in reports/shots/PROOF_*.png; do
+  # *.png AND *.txt: the log behind PROOF_22..27 is the one artifact with a caveat attached ("do not
+  # quote a count from this file"), and while this glob was png-only it was also the one artifact the
+  # index could not be required to describe. It had no entry.
+  for p in reports/shots/PROOF_*.png reports/shots/PROOF_*.txt; do
     [ -e "$p" ] || continue
     grep -qF "$(basename "$p")" "$IDX" || UNLISTED="$UNLISTED $(basename "$p")"
   done
-  # every PROOF_*.png named in the index must exist (catches renames like PROOF_4_flight.png)
-  for n in $(grep -oE 'PROOF_[A-Za-z0-9_]+\.png' "$IDX" | sort -u); do
+  # every PROOF_* named in the index must exist (catches renames like PROOF_4_flight.png)
+  for n in $(grep -oE 'PROOF_[A-Za-z0-9_]+\.(png|txt)' "$IDX" | sort -u); do
     [ -f "reports/shots/$n" ] || GHOST="$GHOST $n"
   done
   [ -z "$UNLISTED" ] && ok "every proof on disk is described in the index" \
