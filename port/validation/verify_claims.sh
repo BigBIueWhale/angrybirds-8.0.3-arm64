@@ -939,9 +939,10 @@ else
   # "the first ``` block", which is not the integrity block — the index has earlier code fences for
   # regeneration commands — so it parsed nothing and the check SKIPPED. It reported that honestly
   # instead of passing, which is the only reason it was noticed.
-  done < <(grep -oE '^[0-9a-f]{64}  PROOF_[A-Za-z0-9_.-]+\.png$' "$PIDX")
+  done < <(grep -oE '^[0-9a-f]{64}  PROOF_[A-Za-z0-9_.-]+\.(png|txt)$' "$PIDX")
   # every proof on disk must also BE listed, or a new one could appear unpinned
-  for f in reports/shots/PROOF_*.png; do
+  for f in reports/shots/PROOF_*.png reports/shots/PROOF_*.txt; do
+    [ -e "$f" ] || continue
     b=$(basename "$f"); grep -q " $b\$" "$PIDX" || PH_BAD="$PH_BAD $b(unlisted)"
   done
   if [ -n "$PH_BAD" ]; then

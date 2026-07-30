@@ -88,6 +88,8 @@ All of these run offline (`--network none`) against the emulator images built fr
 - `PROOF_25_PHONE_score15380.png` — **ON THE PHONE.** Slingshot drag launched the bird, destroyed the structure and the pig — **SCORE 15380**. Real Mali/Xclipse GPU, real ART. R50.
 - `PROOF_26_PHONE_levelcleared_3stars_45500.png` — **ON THE PHONE — the deepest bug's crash site, survived.** **LEVEL CLEARED! 3 stars, 45500.** The level-end results transition is where the session-long std::string UAF crashed; it held with h_fatal=0 while s-construct-null-guard fired 15x and empty-json-guard 29x. R50.
 - `PROOF_27_PHONE_level2_fresh.png` — **ON THE PHONE.** Tapping NEXT loaded level 2 as a genuinely fresh puzzle — score reset to 0, two pigs on stone/wood towers.
+- `PROOF_28_PHONE_soak_levelcleared_56010.png` — **ON THE PHONE, 67 MINUTES INTO ONE CONTINUOUS PROCESS.** A **second, distinct** win: `LEVEL CLEARED!` 3 stars, **56010** (PROOF_26 was 45500), episode total **9 stars**. Taken at process age 01:08, `frame[22801]`, pid 11197 — the same process that produced PROOF_22–27. R54.
+- `PROOF_PHONE_soak_clean.txt` — **ON THE PHONE — a CLEAN single-capture log (02:34:09→03:10:11).** 26,142 lines, **26,142 unique**; `log_recapture_audit.py` verifies it monotonic and `capped_counts.py` finds **no counter at its cap**, so unlike `PROOF_PHONE_abshim.txt` **every count in this file is a real total.** Contains the level-end traversal at 02:34:35 with honest per-event guard counts (`s-construct-null-guard` **4**, `empty-json-guard` **2**) and two distinct level files (`Tutorial_chuck_niko`, `Tutorial_red2_niko`). Faults: `h_fatal 0`, `uaf-survive 0`, `St11logic_error 0`, `FATAL 0`, `signal 11` 0. R54.
 - `PROOF_PHONE_abshim.txt` — **ON THE PHONE — the shim log behind PROOF_22–27.** `init_array 125/125`, eight distinct monotonic frame heartbeats `frame[1]`…`frame[2101]`, **`h_fatal 0`, `uaf-survive 0`, `THROW St11logic_error 0`**. R50, R51, R52.
   **⚠️ DO NOT QUOTE A COUNT FROM THIS FILE.** It is **seven appended `adb logcat` captures** (`adb logcat` without `-T` re-dumps the entire ring buffer), so it is **4.33× duplicated — 35,681 lines, 8,236 unique**, and every count in it is inflated. It is kept exactly as captured rather than de-duplicated, because rewriting raw evidence to make a check pass is worse than the defect; `log_recapture_audit.py` pins it by jump count (6) so any alteration fails the suite. The figures above are the ones duplication cannot affect: a zero cannot be inflated upward, and distinct monotonic values cannot be manufactured. See R50 for what was wrong and R52 for the detector. Play -> win -> advance, all on the device. R50.
 
@@ -183,4 +185,7 @@ b47ae5d0ac0203e38d310dc7039ab5d53ea623b79dddb9948819d06f37d1a6db  PROOF_24_PHONE
 5b53cb7e0f77b67ce119920b77a68bea8fcd55bd7a848e30a5df900a4a66a11f  PROOF_25_PHONE_score15380.png
 1de88b1d4adb25a6d98403a7b19d19be47b3ab22045dd88b75e84e17e44ed7a9  PROOF_26_PHONE_levelcleared_3stars_45500.png
 08a1c08478f49c70ad1b84d8fea33efbedb621aaa06b87fe07f1e2a6e77bb5c2  PROOF_27_PHONE_level2_fresh.png
+c1fe9dbbe406f8c63400dd2800904409005522b74c5ce8e3455ee0dbdfcec34f  PROOF_28_PHONE_soak_levelcleared_56010.png
+d5abfca19153206215e00aa2d9ff6e521fc0a951958ecd5b282a2fb9f4d7f33a  PROOF_PHONE_soak_clean.txt
+95f2909aa9383b5c4535d1fdc1c974d96cd3ee549f04403e6e61621557aa0e93  PROOF_PHONE_abshim.txt
 ```

@@ -143,6 +143,62 @@ heartbeats — neither of which duplication can manufacture. `uaf-survive 0` als
 worth noting against R41/R42: on real hardware, across a full play-win-advance cycle, **zero** wild
 memory accesses needed absorbing.
 
+### R54. A 68-minute single-process soak on the A56 — a second win, honest counts, and R42's leak question answered
+
+While correcting R50 I checked whether the phone was still attached and found **the app still running as
+pid 11197** — the same process that produced PROOF_22–27, alive **68 minutes**, still the focused window.
+That is an unplanned but genuine long-duration soak on the target hardware, and this time the log was
+captured correctly: **one** `adb logcat -d` dump, no appending.
+
+**The log is provably clean.** 26,142 lines, **26,142 unique**; `log_recapture_audit.py` reports it
+monotonic; `capped_counts.py` finds **no counter at its cap**. So unlike `PROOF_PHONE_abshim.txt`, every
+count below is a real total rather than a floor — which matters, because R50 had to report `≥5`/`≥7` and
+say the true values were unrecoverable. From a good capture they are recoverable:
+
+| in the clean window 02:34:09 → 03:10:11 | count | |
+|---|---|---|
+| `s-construct-null-guard` | **4** | first honest per-level-end count on real hardware |
+| `empty-json-guard` | **2** | ″ |
+| `h_fatal` | **0** | |
+| `uaf-survive` | **0** | |
+| `THROW St11logic_error` | **0** | |
+| `FATAL`, `signal 11` | **0** | |
+
+Both guards fired at a single timestamp — **02:34:35** — i.e. one level-end transition. That transition
+is the deepest bug's crash site (the session-long `std::string` UAF), and it was traversed on real
+silicon with zero faults, for the **second** time.
+
+**A second, distinct win.** `PROOF_28`: `LEVEL CLEARED!` 3 stars, **56010** — PROOF_26 was 45500, so this
+is not the same screen re-photographed — with an episode total of **9 stars**, at `frame[22801]`. Two
+distinct level files are named in the clean window: **`Tutorial_chuck_niko`** and
+**`Tutorial_red2_niko`**. *Honest caveat:* the app's data predates this session (`firstInstallTime`
+2026-07-27), so the 9-star total may include earlier progress and I am not claiming all nine were earned
+here. What is unambiguous is the distinct score, the two named level files, and the clean traversal.
+
+**Frame rate, unattended.** 12,300 frames over 2,139 s = **5.75 fps** average; across 41 windows of 300
+frames, **min 2.71 / median 6.20 / max 6.66**. Lower than R51's ~7.1 during active play — the results
+screen animates stars over a parallax background, so it is not idle work. Reported as measured; I am not
+going to invent a mechanism for the difference.
+
+**R42's leak question, answered by measurement.** R42 corrected "bounded ~64 tiny `_Rep`s" (a log cap) to
+a sustained 7–16 blocks/minute, leaving open whether that accumulates. Ten `dumpsys meminfo` samples at
+60 s intervals on this process:
+
+```
+PSS          spread 466 kB over 10 min,  slope -30.9 kB/min  (declining)
+Native Heap  sawtooth: +39.6 then +44.2 kB/min, with a -2,570 kB release between samples 4 and 5
+```
+
+A single linear fit over the native-heap series returns −19.7 MB/hour, which is an artifact of that
+release step, not a trend — so the segments are reported separately rather than fitted as one line.
+R42's predicted leak is ~30 kB/hour, **an order of magnitude below the 466 kB noise band**, and PSS is
+flat-to-declining across 68 minutes. **The targeted leak is real but does not accumulate measurably.**
+It is a correctness footnote, not an operational risk. Nothing to fix.
+
+The `.txt` proofs are now covered by the sha256 manifest as well as the images (previously `*.png` only),
+mutation-tested in both directions: tampering with `PROOF_PHONE_soak_clean.txt` fails the suite, and
+restoring it returns 50/50.
+
 ### R52. Detecting the appended-capture defect structurally, not statistically
 
 R50's numbers were wrong because a log was seven `adb logcat` captures appended together. The obvious
